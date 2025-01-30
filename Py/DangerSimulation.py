@@ -145,64 +145,38 @@ def fetch_all_risks(connection: sqlite3.Connection) -> list:
         return cursor.fetchall()
     except sqlite3.Error as e:
         raise RuntimeError(f"Error fetching all risk data: {e}")
-def update_risk(G, propagation_chance=0.3, decrease_chance=0.2):
+def update_risk(G: nx.DiGraph, propagation_chance=0.3, increase_chance=0.2):
     """
-    Actualiza los niveles de riesgo de los nodos en el grafo, reduciendo el riesgo hacia 0 (más peligroso).
+    Updates the risk levels of nodes in the graph, increasing the risk towards 1 (more dangerous).
 
-    Parámetros:
-        G (nx.DiGraph): Grafo con nodos y conexiones.
-        propagation_chance (float): Probabilidad de propagar riesgo a vecinos.
-        decrease_chance (float): Probabilidad de disminuir el nivel de seguridad del nodo.
+    Args:
+        G (nx.DiGraph): Graph with nodes and edges.
+        propagation_chance (float): Probability of risk spreading to neighbors.
+        increase_chance (float): Probability of increasing the node's risk level.
     """
     new_risks = {}
 
     for node in G.nodes:
         current_risk = G.nodes[node]["risk"]
 
-        # Reducir el nivel de seguridad del nodo
-        if random.random() < decrease_chance:
-            current_risk = max(0.0, current_risk - random.uniform(0.05, 0.2))  # Reducir el riesgo propio
+        # Increase the risk of the node (making it more dangerous)
+        if random.random() < increase_chance:
+            current_risk = min(1.0, current_risk + random.uniform(0.05, 0.2))  # Increase risk
 
-        # Redondear a un decimal el riesgo propio
+        # Round risk to 1 decimal place
         new_risks[node] = round(current_risk, 1)
 
-        # Propagación del riesgo a los vecinos
+        # Risk propagation to neighbors
         for neighbor in G.neighbors(node):
             if random.random() < propagation_chance:
-                # propagated_risk = G.nodes[node]["risk"] * random.uniform(0.1, 0.5)
-                propagated_risk = (1 - G.nodes[node]["risk"]) * random.uniform(0.1, 0.5)
+                # Compute risk increase based on the current node's risk
+                propagated_risk = G.nodes[node]["risk"] * random.uniform(0.1, 0.5)
                 neighbor_risk = G.nodes[neighbor]["risk"]
-                new_risk = max(0.0, neighbor_risk - propagated_risk)  # Reducir el riesgo del vecino
+                new_risk = min(1.0, neighbor_risk + propagated_risk)  # Increase neighbor's risk
 
-                # Redondear a un decimal el riesgo propagado
+                # Round propagated risk to 1 decimal place
                 new_risks[neighbor] = round(new_risk, 1)
 
-    # Aplicar los nuevos riesgos
+    # Apply the new risk values to the graph
     for node, risk in new_risks.items():
         G.nodes[node]["risk"] = risk
-
-# Crear el grafo
-G = nx.DiGraph()
-
-# Nodos y sus niveles iniciales de riesgo (0 a 1)
-nodes = {
-    "A": 0.2, "B": 0.1, "C": 0.0,
-    "D": 0.0, "E": 0.3, "F": 0.0,
-    "G": 0.5, "H": 0.0, "I": 0.0,
-}
-
-# Agregar nodos al grafo
-for node, risk in nodes.items():
-    G.add_node(node, risk=risk)
-
-# Definir las conexiones entre nodos
-edges = [
-    ("A", "B"), ("A", "F"), ("B", "A"), ("B", "E"), ("B", "C"),
-    ("C", "B"), ("C", "D"), ("D", "I"), ("D", "E"), ("D", "C"),
-    ("E", "D"), ("E", "F"), ("E", "B"), ("E", "H"), ("F", "A"),
-    ("F", "E"), ("F", "G"), ("G", "F"), ("G", "H"), ("H", "E"),
-    ("H", "G"), ("H", "I"),
-]
-
-# Agregar las aristas con un costo fijo (se puede ajustar)
-G.add_edges_from([(u, v, {"cost": 3}) for u, v in edges])

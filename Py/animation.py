@@ -113,7 +113,7 @@ def _get_geometry_traces(area):
             x=np.array(x),
             y=np.array(y),
             mode="lines",
-            line={"color": "grey"},
+            line={"color": "white"},
             showlegend=False,
             name="Exterior",
             hoverinfo="name",
@@ -128,7 +128,7 @@ def _get_geometry_traces(area):
                 x=np.array(xi),
                 y=np.array(yi),
                 mode="lines",
-                line={"color": "grey"},
+                line={"color": "white"},
                 showlegend=False,
                 name="Obstacle",
                 hoverinfo="name",
@@ -362,12 +362,15 @@ def _get_processed_frame_data(data_df, frame_num, max_agents):
 
 def generate_risk_colors():
     """
-    Genera una lista de colores desde rojo oscuro (riesgo máximo) hasta transparente.
+    Generates a list of colors transitioning from black (low risk) to intense red (high risk).
+
+    - Risk 0 → Black (`rgb(0,0,0)`)
+    - Risk 10 → Intense Red (`rgb(255,0,0)`)
     """
     colors = []
-    for i in range(11):  # Rango de riesgos 0 a 10
-        alpha = 1 - (i / 10)
-        color = f"rgba(200, 0, 0, {alpha:.2f})"
+    for i in range(11):  # Risk levels from 0 to 10
+        red = int((i / 10) * 255)  # Interpolates from 0 (black) to 255 (red)
+        color = f"rgb({red}, 0, 0)"  # No green or blue components
         colors.append(color)
     return colors
 

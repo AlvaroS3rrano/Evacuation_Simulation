@@ -44,7 +44,7 @@ sources = ["A"]  # Source nodes
 targets = ["I"]  # Target nodes
 
 # Calculate all efficient paths between source-target pairs
-gamma = 1.2  # Time tolerance factor
+gamma = 0.2  # Time tolerance factor
 
 
 def centralityMeasuresAlgorithm(G, sources, targets, gamma):
@@ -84,11 +84,11 @@ def centralityMeasuresAlgorithm(G, sources, targets, gamma):
             # ["A", "B", "C", "I"] -> zip(path, path[1:]) -> [("A", "B"), ("B", "C"), ("C", "I")]
             min_cost = min(sum(G[u][v]["cost"] for u, v in zip(path, path[1:])) for path in all_paths)
 
-            # Filter paths based on the maximum allowed cost (min_cost * gamma)
+            # Filter paths based on the maximum allowed cost (min_cost * (gamma + 1))
             efficient_paths[(source, target)] = [
                 path
                 for path in all_paths
-                if sum(G[u][v]["cost"] for u, v in zip(path, path[1:])) <= gamma * min_cost
+                if sum(G[u][v]["cost"] for u, v in zip(path, path[1:])) <= (1 + gamma) * min_cost
             ]
 
     # Step 2: Calculate Evacuation Betweenness Centrality for all nodes
