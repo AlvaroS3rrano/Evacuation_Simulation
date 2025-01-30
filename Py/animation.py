@@ -273,14 +273,11 @@ def _create_fig(
     minx, miny, maxx, maxy = area_bounds
     title = f"<b>{title_note + '  |  ' if title_note else ''}Number of Agents: {initial_agent_count}</b>"
 
-    #waypoint_trace = _create_waypoint(*waypoint_coords) if waypoint_coords else None
-
     fig = go.Figure(
         data=geometry_traces
         + initial_scatter_trace
         # + hover_traces
         + initial_hover_trace,
-        # + ([waypoint_trace] if waypoint_trace else []),
         frames=frames,
         layout=go.Layout(
             shapes=initial_shapes + initial_arrows, title=title, title_x=0.5
@@ -374,6 +371,47 @@ def generate_risk_colors():
         colors.append(color)
     return colors
 
+def add_static_risk_colorbar():
+    """
+    Creates a Scatter trace for a static risk level colorbar with colors from black to intense red.
+
+    Returns:
+        go.Scatter: Scatter trace with a fixed risk colorbar.
+    """
+    # Generate the fixed color scale from black to red
+    risk_colors = generate_risk_colors()  # e.g., ['rgb(0,0,0)', ..., 'rgb(255,0,0)']
+
+    # Convert the risk colors into a Plotly-compatible colorscale
+    colorscale = [
+        (i / (len(risk_colors) - 1), color)  # Normalize positions (0 to 1)
+        for i, color in enumerate(risk_colors)
+    ]
+
+    # Dummy data to create the colorbar (not visible in the plot)
+    dummy_x = [0]
+    dummy_y = [0]
+
+    # Create the scatter trace for the static risk colorbar
+    risk_trace = go.Scatter(
+        x=dummy_x,  # Dummy data
+        y=dummy_y,  # Dummy data
+        mode="markers",
+        marker=dict(
+            size=10,  # Small dummy size
+            color=[0],  # Single dummy value
+            colorscale=colorscale,  # Fixed black-to-red colorscale
+            colorbar=dict(
+                title="Risk Level",  # Title of the colorbar
+                x=1.25,  # Positioning to the right
+            ),
+            cmin=0,  # Fixed minimum risk (black)
+            cmax=1,  # Fixed maximum risk (red)
+        ),
+        showlegend=False,
+        hoverinfo="none",  # Disable hover info for dummy trace
+    )
+    return risk_trace
+
 def animate(
         data: pedpy.TrajectoryData,  # Datos de trayectorias (posiciones y tiempos de los agentes)
         area: pedpy.WalkableArea,  # Área transitable, definida como un polígono
@@ -436,6 +474,9 @@ def animate(
 
     # Generar el mapa de colores para representar velocidades
     color_map_trace = _get_colormap(initial_frame_data, max_speed)
+    risk_trace = add_static_risk_colorbar()
+
+    traces = color_map_trace + [risk_trace]
 
     risk_colors = generate_risk_colors()
 
@@ -499,7 +540,7 @@ def animate(
         initial_shapes,  # Formas iniciales
         initial_arrows,  # Flechas iniciales
         initial_hover_trace,  # Trazados de información iniciales
-        color_map_trace,  # Mapa de colores
+        traces,  # Includes both the speed and risk colorbars
         geometry_traces,  # Trazados geométricos del área
         frames,  # Frames generados
         steps,  # Pasos para el deslizador
