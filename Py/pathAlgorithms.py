@@ -34,7 +34,7 @@ def get_sortest_path(G, source, targets):
     if min_target is not None:
         return paths[min_target]
     else:
-        return []
+        return None
 
 
 def centralityMeasuresAlgorithm(G, source, targets, gamma):

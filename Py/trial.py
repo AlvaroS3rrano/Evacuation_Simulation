@@ -10,10 +10,13 @@ import networkx as nx
 from jupedsim.internal.notebook_utils import animate, read_sqlite_file
 
 import plotly.graph_objects as go
-from Py.centralityMeasures import centralityMeasuresAlgorithm
 
-from Py.animation import animate
+# from Py.centralityMeasures import centralityMeasuresAlgorithm
+from Py.RiskSimulationValues import RiskSimulationValues
 from Py.DangerSimulation import *
+from Py.animation import animate
+from Py.pathAlgorithms import get_sortest_path, centralityMeasuresAlgorithm
+from Py.simulation_config import SimulationConfig
 
 complete_area = Polygon(
     [
@@ -47,13 +50,13 @@ obstacles = [
     Polygon([(8.6, 9.9), (9.9, 9.9), (9.9, 8.6), (10.1, 8.6), (10.1, 9.9), (11.5, 9.9), (11.5, 10.1), (10.1, 10.1), (10.1, 11.5), (9.9, 11.5), (9.9, 10.1), (8.6, 10.1)  ]),
 
 ]
-
-exit_polygon = [(12.5, 12.5), (15, 12.5), (15, 15), (12.5, 15)]
+exit_polygons = {'I': [(12.5, 12.5), (15, 12.5), (15, 15), (12.5, 15)]}
 waypoints = {'B':([7.5, 2.5], 1.5), 'C':([12.5, 2.5], 1.5), 'D':([12.5, 7.5], 1.5), 'E':([7.5, 7.5], 1.5), 'F':([2.5, 7.5], 1.5), 'G':([2.5, 12.5], 1.5), 'H':([7.5, 12.5], 1.5)}
 distribution_polygon = Polygon([[0, 0], [5, 0], [5, 5], [0, 5]])
 obstacle = shapely.union_all(obstacles)  # combines obstacle polygons into only one polygon
 walkable_area = pedpy.WalkableArea(
     shapely.difference(complete_area, obstacle))  # difference subtracts obstacle form complete_area
+
 fig, ax = plt.subplots(nrows=1, ncols=1)
 ax.set_aspect("equal")
 pedpy.plot_walkable_area(walkable_area=walkable_area, axes=ax)
@@ -71,16 +74,41 @@ for idx, (waypoint, distance) in waypoints.items():
         (waypoint[0], waypoint[1]), distance, fc="red", ec="red", alpha=0.1
     )
     ax.add_patch(circle)
-
-x, y = Polygon(exit_polygon).exterior.xy
-plt.fill(x, y, alpha=0.1, color="orange")
-centroid = Polygon(exit_polygon).centroid
-plt.text(centroid.x, centroid.y, "Exit", ha="center", va="center", fontsize=8)
+for name, exit_polygon in exit_polygons.items():
+    x, y = Polygon(exit_polygon).exterior.xy
+    plt.fill(x, y, alpha=0.1, color="orange")
+    centroid = Polygon(exit_polygon).centroid
+    plt.text(centroid.x, centroid.y, f"Exit {name}", ha="center", va="center", fontsize=8)
 
 x, y = distribution_polygon.exterior.xy
 plt.fill(x, y, alpha=0.1, color="blue")
 centroid = distribution_polygon.centroid
 plt.text(centroid.x, centroid.y, "Start", ha="center", va="center", fontsize=10)
+
+def remove_obstacles_from_areas(specific_areas, obstacles):
+    """
+    Removes obstacles from specific areas by subtracting overlapping polygons.
+
+    Args:
+        specific_areas (dict): Dictionary of named areas {name: Polygon}.
+        obstacles (list): List of Polygon objects representing obstacles.
+
+    Returns:
+        dict: Dictionary of cleaned areas {name: Polygon without obstacles}.
+    """
+    cleaned_areas = {}
+
+    for name, area in specific_areas.items():
+        # Subtract all obstacles from the current area
+        cleaned_area = area
+        for obstacle in obstacles:
+            if cleaned_area.intersects(obstacle):  # Only process if they overlap
+                cleaned_area = cleaned_area.difference(obstacle)
+
+        # Store the cleaned area in the dictionary
+        cleaned_areas[name] = cleaned_area
+
+    return cleaned_areas
 
 specific_areas = dict()
 specific_areas['A'] = Polygon([(0,0), (5,0), (5,5), (0,5)])
@@ -93,23 +121,36 @@ specific_areas['G'] = Polygon([(0,10), (5,10), (5,15), (0,15)])
 specific_areas['H'] = Polygon([(5,10), (10,10), (10,15), (5,15)])
 specific_areas['I'] = Polygon([(10,10), (15,10), (15,15), (10,15)])
 
+specific_areas = remove_obstacles_from_areas(specific_areas, obstacles)
+
+# Dictionary to store simulations for different percentages of agents
 simulations = {}
+
+# List of percentages of agents that will be used in the simulation
 percentages = [0]
+
+# Total number of agents in the simulation (not currently used in this snippet)
 total_agents = 10
+
+# Loop over each percentage value to create a corresponding simulation
 for percentage in percentages:
+    # Define the output file path for storing the simulation trajectories
     trajectory_file = f"../sqlite_data/centrality_measures_percentage_{percentage}.sqlite"
+
+    # Create a new simulation instance using JPS (JuPedSim)
     simulation = jps.Simulation(
-        dt=0.005,
-        model=jps.CollisionFreeSpeedModel(
-            strength_neighbor_repulsion=2.6,
-            range_neighbor_repulsion=0.1,
-            range_geometry_repulsion=0.05,
+        model=jps.CollisionFreeSpeedModel(  # Define the agent movement model
+            strength_neighbor_repulsion=2.6,  # Strength of repulsion between neighboring agents
+            range_neighbor_repulsion=0.1,  # Distance at which agents start repelling each other
+            range_geometry_repulsion=0.05,  # Distance at which agents start avoiding obstacles
         ),
-        geometry=walkable_area.polygon,
-        trajectory_writer=jps.SqliteTrajectoryWriter(
-            output_file=pathlib.Path(trajectory_file),
+        geometry=walkable_area.polygon,  # Define the walkable area for the simulation
+        trajectory_writer=jps.SqliteTrajectoryWriter(  # Specify where to store simulation results
+            output_file=pathlib.Path(trajectory_file),  # Save output to the specified SQLite file
         ),
     )
+
+    # Store the simulation object in the dictionary using the percentage as a key
     simulations[percentage] = simulation
 
 # Create the graph
@@ -117,9 +158,9 @@ G = nx.DiGraph()
 
 # Nodos y sus niveles iniciales de riesgo (0 a 1)
 nodes = {
-    "A": 1.0, "B": 0.9, "C": 1.0,
-    "D": 0.5, "E": 0.4, "F": 1.0,
-    "G": 1.0, "H": 1.0, "I": 1.0,
+    "A": 0.0, "B": 0.6, "C": 0.0,
+    "D": 0.6, "E": 0.6, "F": 0.1,
+    "G": 0.0, "H": 0.0, "I": 0.0,
 }
 
 # Agregar nodos al grafo
@@ -139,95 +180,104 @@ edges = [
 G.add_edges_from([(u, v, {"cost": 3}) for u, v in edges])
 
 # Parameters for calculation
-sources = ["A"]  # Source nodes
+source = "A"  # Source nodes
 targets = ["I"]  # Target nodes
 
 # Calculate all efficient paths between source-target pairs
-gamma = 1.2  # Time tolerance factor
+gamma = 0.2  # Time tolerance factor
 
-_, _, possible_paths = centralityMeasuresAlgorithm(G, sources, targets, gamma)
+_, _, best_paths = centralityMeasuresAlgorithm(G, source, targets, gamma)
 
-def differentGraphs(start, end, paths, waypoint_ids, exit_id):
+def create_journeys_for_simulation(start, paths, waypoint_ids, exit_ids):
     """
-    Creates journey descriptions for agents based on paths ordered by centrality scores.
+    Generates journey descriptions for simulation agents using the best paths obtained previously.
 
     Args:
-        start (str): Starting node in the graph.
-        end (str): Ending node in the graph.
-        paths (dict): Dictionary of paths ordered by centrality scores.
-                      Structure: {source: [(path1, score1), (path2, score2), ...], ...}
-        waypoint_ids (dict): Dictionary mapping node IDs to waypoint IDs in the simulation.
-        exit_id (int): ID of the exit stage in the simulation.
+        start (str): The starting node in the graph.
+        paths (list): A list of paths (each path is a list of nodes).
+        waypoint_ids (dict): A dictionary mapping graph node IDs to simulation waypoint IDs.
+        exit_ids (dict): A dictionary mapping exit nodes to simulation exit IDs.
 
     Returns:
-        list[jps.JourneyDescription]: List of journey descriptions for the agents.
+        list: A list of tuples, where each tuple contains:
+              - A jps.JourneyDescription object describing the agent's journey.
+              - The original path (a list of nodes) used to generate the journey.
     """
     if not paths:
-        raise ValueError(f"No valid paths found from {start} to {end}.")
+        raise ValueError(f"No valid paths found from {start}.")
 
     journeys = []
-    for source, path_list in paths.items():
-        for path, score in path_list:  # Unpack path and its centrality score
-            if len(path) < 2:
-                continue
+    # Iterate over each path from the best_paths list.
+    for path in paths:
+        # Skip paths that do not have at least two nodes (start and end are required).
+        if len(path) < 2:
+            continue
 
-            # Map graph nodes in the path to waypoint IDs, excluding start and end nodes
-            needed_waypoints = [waypoint_ids[node] for node in path[1:-1]]
-            if not needed_waypoints:
-                continue
+        # Map the intermediate graph nodes to simulation waypoint IDs,
+        # excluding the start and end nodes.
+        needed_waypoints = [waypoint_ids[node] for node in path[1:-1]]
+        if not needed_waypoints:
+            continue
 
-            # Create the journey description
-            journey = jps.JourneyDescription([*needed_waypoints, exit_id])
+        # Ensure that the exit node (last node in the path) exists in the exit_ids dictionary.
+        if path[-1] not in exit_ids:
+            continue
 
-            # Set transitions between waypoints
-            for idx, waypoint in enumerate(needed_waypoints):
-                next_waypoint = exit_id if idx == len(needed_waypoints) - 1 else needed_waypoints[idx + 1]
-                journey.set_transition_for_stage(
-                    waypoint, jps.Transition.create_fixed_transition(next_waypoint)
-                )
+        # Create a JourneyDescription using the intermediate waypoints and append the exit stage.
+        journey = jps.JourneyDescription([*needed_waypoints, exit_ids[path[-1]]])
 
-            journeys.append((journey, path))
+        # Configure transitions between waypoints.
+        for idx, waypoint in enumerate(needed_waypoints):
+            # If it's the last waypoint, the next stage is the exit (mapped from exit_ids);
+            # otherwise, the next stage is the following waypoint.
+            next_waypoint = exit_ids[path[-1]] if idx == len(needed_waypoints) - 1 else needed_waypoints[idx + 1]
+            journey.set_transition_for_stage(
+                waypoint, jps.Transition.create_fixed_transition(next_waypoint)
+            )
+
+        # Append the journey description along with its corresponding path.
+        journeys.append((journey, path))
 
     return journeys
 
-def set_journeys(simulation, start, end, paths):
+def set_journeys(simulation, start, paths, waypoint_ids, exit_ids):
     """
-    Configures agent journeys in the simulation.
+    Configures agent journeys in the simulation by setting up waypoints, exit stages,
+    and journey paths between a start and end point.
 
     Args:
-        simulation (jps.Simulation): The simulation instance.
-        start (str): Starting node in the graph.
-        end (str): Ending node in the graph.
+        simulation (jps.Simulation): The simulation instance where journeys are added.
+        start (str): The starting node in the graph.
+        end (str): The destination node in the graph.
+        paths (dict): A list of paths (each path is a list of nodes)
+        waypoint_ids (dict): A dictionary mapping nodes to waypoint IDs in the simulation.
+        exit_ids (dict): A dictionary mapping exit nodes to simulation exit IDs.
 
     Returns:
-        tuple: Journeys IDs and the dictionary of waypoint IDs.
+        tuple:
+            - journeys_id (dict): A dictionary mapping the starting node to a list of tuples (journey ID, path) for each journey.
     """
-    # Add the exit stage to the simulation
-    exit_id = simulation.add_exit_stage(exit_polygon)
 
-    # Map nodes to waypoint IDs
-    waypoint_ids = {}
-    for node, (waypoint, distance) in waypoints.items():
-        waypoint_ids[node] = simulation.add_waypoint_stage(waypoint, distance)
+    # Generate different journey paths using the provided graph information
+    journeys = create_journeys_for_simulation(start, paths, waypoint_ids, exit_ids)
 
-    # Create the journey based on the best paths
-    journeys = differentGraphs(start, end, paths, waypoint_ids, exit_id)
+    # Initialize a dictionary to store journey IDs and their associated paths
+    journeys_id = {}
 
-    journeys_id = dict()  # Initialize an empty dictionary to store journey IDs and their associated paths
-
-    # Iterate over the journeys and their respective paths
+    # Iterate over the generated journeys and their respective paths
     for journey, path in journeys:
-        # Add each journey to the simulation and retrieve its unique ID
+        # Add the journey to the simulation and retrieve its unique ID
         journey_id = simulation.add_journey(journey)
 
         # Ensure the starting node is initialized in the dictionary
         if start not in journeys_id:
             journeys_id[start] = []
 
-        # Store the journey ID and the path in journeys_id for the starting node (start)
+        # Store the journey ID and its corresponding path in the dictionary
         journeys_id[start].append((journey_id, path))
 
-    return journeys_id, waypoint_ids
+    # Return the journey mapping IDs
+    return journeys_id
 
 positions = jps.distribute_by_number(
     polygon=distribution_polygon,
@@ -237,187 +287,278 @@ positions = jps.distribute_by_number(
     seed=45131502,
 )
 
-def simulate_risk_per_frame(
-    G: nx.DiGraph,
-    total_frames: int,
-    propagation_chance=0.3,
-    increase_chance=0.2,
-):
+def update_group_paths(simulation_config, risk_per_node, agent_group, G, risk_threshold=0.5):
     """
-    Genera niveles de riesgo por frame para sincronizar con la simulación de agentes.
-
-    Parámetros:
-        G (nx.DiGraph): Grafo con áreas y conexiones.
-        total_frames (int): Número total de frames de la simulación.
-        propagation_chance (float): Probabilidad de propagar riesgo.
-        increase_chance (float): Probabilidad de incrementar riesgo.
-
-    Retorna:
-        dict: Riesgos por frame en formato {frame: {area: riesgo}}.
-    """
-    risks_per_frame = {}
-
-    for frame in range(total_frames):
-        # Actualizar riesgos en el grafo
-        update_risk(G, propagation_chance, increase_chance)
-
-        # Guardar riesgos actuales
-        risks_per_frame[frame] = {node: G.nodes[node]["risk"] for node in G.nodes}
-
-    return risks_per_frame
-
-
-def update_group_paths(simulation, G, waypoint_id, journeys_id, agent_group, risk_threshold=0.5):
-    """
-    Updates the paths of a group of agents based on the current node of the first agent in the group.
-    If the path is considered unsafe, all agents in the group are updated.
+    Updates the path of a group of agents based on the current node of the first agent in the group.
+    If the path is considered unsafe, the path for all agents in the group is updated.
 
     Args:
-        simulation (jps.Simulation): Instance of the simulation.
-        G (networkx.DiGraph): Graph representing node connections and risks.
-        waypoint_id (dict): Dictionary mapping nodes to waypoint IDs.
-        journeys_id (dict): Dictionary mapping start nodes to a list of tuples (journey_id, path).
+        simulation_config (SimulationConfig): Instance containing:
+            - simulation: Object managing the simulation (agents and environment).
+            - every_nth_frame (int): Interval at which agent paths are updated.
+            - waypoints_ids (dict): Mapping from graph nodes to simulation waypoint IDs.
+            - journeys_ids (dict): Mapping of journey identifiers to tuples (journey_id, path).
+        risk_per_node (dict): Mapping of each node to its risk value.
         agent_group (tuple): Tuple containing a list of agent IDs and the current path.
-        risk_threshold (float): Risk threshold above which a path segment is considered unsafe.
+        risk_threshold (float): Threshold above which a path segment is considered unsafe.
 
     Returns:
-        tuple: Updated agent_group tuple with the new path, or the original if no update was made.
+        tuple: The updated agent_group with the new path, or the original if no update was made.
     """
-
+    shortest = True
     agents_ids, current_path = agent_group
     if not agents_ids:
-        # No agents in the group
+        # No agents in the group; return the original group.
         return agent_group
 
-    # Get the ID of the first agent in the group
-    first_agent_id = agents_ids[0]
+    simulation = simulation_config.simulation
+    waypoints_ids = simulation_config.waypoints_ids
 
-    # Check if the first agent still exists in the simulation
+    # Use the first agent in the list to evaluate the path.
+    first_agent_id = agents_ids[0]
+    # Check if the first agent still exists in the simulation.
     agent_exists = any(agent.id == first_agent_id for agent in simulation.agents())
     if not agent_exists:
-        # The first agent no longer exists in the simulation
         return agent_group
 
-    # Retrieve the first agent to evaluate the group's path
+    # Retrieve the agent for path evaluation.
     agent = simulation.agent(first_agent_id)
-
-    current_stage = agent.stage_id  # Current stage ID of the agent
-    current_node = None
-
-    # Find the node associated with the agent's current stage
-    for node, waypoint in waypoint_id.items():
-        if waypoint == current_stage:
-            current_node = node
-            break
-
+    current_stage = agent.stage_id  # Current stage ID of the agent.
     next_node = None
 
-    # Find the next node in the current path
-    if current_node in current_path:
-        current_index = current_path.index(current_node)
-        if current_index + 1 < len(current_path):
-            next_node = current_path[current_index + 1]
+    # Find the node corresponding to the agent's current stage.
+    for node, waypoint in waypoints_ids.items():
+        if waypoint == current_stage:
+            next_node = node
+            break
 
-    # If the next node is not found, exit
+    # If no corresponding node is found, return the original group.
     if not next_node:
         return agent_group
 
-    # Check if the next node is dangerous
-    if G.nodes[next_node]["risk"] < risk_threshold:
-        # The next node is safe; no changes needed
+    # Attempt to obtain the index of next_node in current_path.
+    try:
+        node_index = current_path.index(next_node)
+    except ValueError:
+        # next_node is not in the current_path.
         return agent_group
 
-    # If the next node is dangerous, search for alternative paths that pass through the current node
-    alternative_paths = []
-    for journey_id, path in journeys_id.get("A", []):  # Assuming all paths start from "A"
-        if current_node in path:
-            # Get the segment of the path from the current node to the end
-            start_index = path.index(current_node)
-            remaining_path = path[start_index:]
+    # Avoid using a negative index if next_node is the first element in current_path.
+    if node_index == 0:
+        return agent_group
 
-            # Calculate the total risk of the remaining path
-            total_risk = sum(G.nodes[node]["risk"] for node in remaining_path)
+    # The current node is defined as the node immediately before next_node in the path.
+    current_node = current_path[node_index - 1]
 
-            # Add the path and its risk if it's below the threshold
-            alternative_paths.append((journey_id, remaining_path, total_risk))
+    # If the risk of the next node is below the threshold, no update is needed.
+    if risk_per_node[next_node] < risk_threshold:
+        return agent_group
 
-    if alternative_paths:
-        # Select the best alternative path (lowest risk)
-        best_path = max(alternative_paths, key=lambda x: x[2])  # Maximice total security
-        new_journey_id = best_path[0]
-        remaining_path = best_path[1]
+    # Update the graph with the risk values for each node.
+    for node, risk in risk_per_node.items():
+        if G.has_node(node):
+            G.nodes[node]['risk'] = risk
 
-        # Determine the next node in the path
-        if len(remaining_path) > 1:
-            next_node = remaining_path[1]
-            next_stage_id = waypoint_id[next_node]
+    # Sort the neighbors of the current_node by their risk (lowest risk first).
+    neighbors_sorted = sorted(
+        G.neighbors(current_node),
+        key=lambda neighbor: G.nodes[neighbor].get('risk', float('inf'))
+    )
 
-            # Update all agents in the group to the new journey and stage
-            for agent_id in agents_ids:
-                simulation.switch_agent_journey(agent_id, new_journey_id, next_stage_id)
+    if shortest == False:
+        gamma = 0.2
+        # Get alternative paths using the centralityMeasuresAlgorithm.
+        _, _, alternative_paths = centralityMeasuresAlgorithm(
+            G, current_node, simulation_config.get_exit_ids_keys(), gamma
+        )
+        if alternative_paths:
+            best_path = None
+            # Iterate through the sorted neighbors to find the first alternative path
+            # where the second node matches one of the sorted neighbors.
+            for neighbor in neighbors_sorted:
+                for path in alternative_paths:
+                    if len(path) > 1 and path[1] == neighbor:
+                        best_path = path
+                        break  # Break inner loop if a valid path is found.
+                if best_path:
+                    break  # Break outer loop once a valid path is found.
+    else:
+        for neighbour in neighbors_sorted:
+            best_path = get_sortest_path(G, neighbour, simulation_config.get_exit_ids_keys())
+            if best_path is not None:
+                best_path.insert(0, current_node)
+                break
 
-            # Return the updated agent_group tuple with the new path
-            return (agents_ids, remaining_path)
+    # Ensure a valid alternative path was found and that it is different from the current path.
+    if best_path is not None and best_path != current_path:
+        journeys_ids = set_journeys(
+            simulation, current_node, [best_path], waypoints_ids, simulation_config.exit_ids
+        )
 
-    # If no update was made, return the original agent_group
+        # Assume best_path has at least two nodes.
+        next_node = best_path[1]
+        next_stage_id = waypoints_ids[next_node]
+
+        new_journey_id, _ = journeys_ids[current_node][0]
+        # Update all agents in the group with the new journey and stage.
+        for agent_id in agents_ids:
+            simulation.switch_agent_journey(agent_id, new_journey_id, next_stage_id)
+
+        # Return the updated agent group with the new path.
+        return (agents_ids, best_path)
+
+    # If no update is made, return the original agent_group.
     return agent_group
 
 
+def simulate_risk(riskSimulationValues, every_nth_frame, G, connection):
+    """
+    Simulates risk propagation in a graph over multiple frames and stores the results in a database.
+
+    Args:
+        iterations (int): Total number of frames to simulate.
+        every_nth_frame (int): Interval of frames at which risk updates are performed.
+        G (networkx.Graph): Graph where each node has a "risk" attribute.
+        propagation_chance (float): Probability of risk spreading between connected nodes.
+        increase_chance (float): Probability of individual nodes increasing their risk.
+        connection (sqlite3.Connection): Open SQLite database connection to store risk data.
+    """
+    # Validate the input arguments
+    if riskSimulationValues.iterations <= 0:
+        raise ValueError("iterations must be a positive integer.")
+    if every_nth_frame <= 0:
+        raise ValueError("every_nth_frame must be a positive integer.")
+
+    for frame in range(riskSimulationValues.iterations + 1):
+        if frame == 0:
+            # Save the initial risk levels of all nodes before any updates
+            try:
+                write_risk_levels(connection, 0, {node: G.nodes[node]["risk"] for node in G.nodes})
+            except Exception as e:
+                print(f"Error writing initial risks: {e}")
+            continue
+
+        if frame % every_nth_frame == 0:
+            try:
+                # Update risks in the graph based on propagation and increase chances
+                update_risk(G, riskSimulationValues.propagation_chance, riskSimulationValues.increase_chance)
+                # Save the updated risk levels for the current frame
+                write_risk_levels(connection, frame, {node: G.nodes[node]["risk"] for node in G.nodes})
+            except Exception as e:
+                print(f"Error updating risks at frame {frame}: {e}")
+
+def run_agent_simulation(simulation_config, agent_group, G, risk_threshold):
+    """
+    Runs the agent simulation, updating agent paths based on current risk levels retrieved from the database.
+
+    Args:
+        simulation_config (SimulationConfig): An instance of SimulationConfig containing:
+            - simulation: The simulation object managing agents and the environment.
+            - every_nth_frame (int): The interval at which agent paths are updated.
+            - waypoints_ids (dict): Mapping of graph node IDs to simulation waypoint IDs.
+            - journeys_ids (dict): Mapping of journey identifiers to tuples (journey_id, path).
+        agent_group (tuple): A tuple representing the current group of agents and their associated paths.
+        risk_threshold (float): The risk level threshold above which agents will attempt to avoid high-risk areas.
+    """
+    while simulation_config.simulation.agent_count() > 0:
+        # Advance the simulation by one frame
+        simulation_config.simulation.iterate()
+        frame = simulation_config.simulation.iteration_count()
+
+        # Update agent paths only at specified intervals
+        if frame % every_nth_frame == 0:
+            try:
+                # Fetch risk levels for the current frame from the database
+                risk_this_frame = get_risk_levels_by_frame(connection, frame)
+
+                # Update paths for the agents based on current risks and threshold
+                agent_group = update_group_paths(
+                    simulation_config, risk_this_frame, agent_group, G, risk_threshold=risk_threshold
+                )
+            except Exception as e:
+                print(f"Error updating paths at frame {frame}: {e}")
+
+# False -> to use the default risk evolution, True -> random risk evolution
+use_random_risk_layout = False
+
 trajectory_files = {}
 for percentage, simulation in simulations.items():
-    journeys_id, waypoint_id = set_journeys(
-        simulation, sources[0], targets[0], possible_paths  # 0 -> start, 5 -> exit
+
+    exit_ids = {}
+    for node, exit_polygon in exit_polygons.items():
+        exit_ids[node] = simulation.add_exit_stage(exit_polygon)
+
+    # Initialize a dictionary to store waypoint IDs
+    waypoints_ids = {}
+    # Convert waypoints into simulation waypoints with associated distances
+    for node, (waypoint, distance) in waypoints.items():
+        waypoints_ids[node] = simulation.add_waypoint_stage(waypoint, distance)
+
+    # Set up journeys and waypoints for the simulation
+    journeys_ids = set_journeys(
+        simulation, source, best_paths, waypoints_ids, exit_ids  # sources[0] -> start, targets[0] -> exit
     )
 
-    journey_id, best_path_source_0 = journeys_id[sources[0]][0]  # Best path and its journey ID
-    next_node = best_path_source_0[1]
-    first_waypoint_id = waypoint_id[next_node]
+    every_nth_frame = 50  # Interval of frames for risk updates
 
+    simulation_config = SimulationConfig(simulation, every_nth_frame, waypoints_ids, journeys_ids, exit_ids)
+
+    # Retrieve the best path for the first source and its associated journey ID
+    journey_id, best_path_source = journeys_ids[source][0]
+    next_node = best_path_source[1]  # Get the next node on the best path
+    first_waypoint_id = waypoints_ids[next_node]  # Determine the waypoint ID for the next node
+
+    # Calculate the number of items based on the percentage of positions
     num_items = int(len(positions) * (percentage / 100.0))
+
+    # Initialize an agent group
     agents = []
-    for position in positions[num_items:]:  # Second half of positions
+    for position in positions[num_items:]:  # Use the second half of the positions
+        # Add agents with specified parameters (e.g., position, journey, velocity)
         agents.append(
             simulation.add_agent(
                 jps.CollisionFreeSpeedModelAgentParameters(
-                    position=position,
-                    journey_id=journey_id,
-                    stage_id=first_waypoint_id,
+                    position=position,       # Initial position of the agent
+                    journey_id=journey_id,   # Journey ID for the agent
+                    stage_id=first_waypoint_id,  # Starting waypoint for the agent
+                    v0=0.8                   # Desired maximum speed of the agent
                 )
             )
         )
-    agent_group = (agents, best_path_source_0)
+    agent_group = (agents, best_path_source)  # Group the agents with their best path
 
-    every_nth_frame = 50  # The default value of every_nth_frame
-    propagation_chance = 0.003
-    increase_chance = 0.02
-    risks_per_frame = {}
+    # Simulation parameters
+    riskSimulationValues = RiskSimulationValues(3000, 0.005, 0.09)
 
-    # Save initial risks
-    risks_per_frame[0] = {node: G.nodes[node]["risk"] for node in G.nodes}
+    # Establish a connection to the appropriate SQLite database
+    default_connection_file = "../sqlite_data/default_centrality_measures_risks.db" # default risk evolution file
+    new_connection_file = "../sqlite_data/centrality_measures_risks.db" # random risk evolution file
+    if use_random_risk_layout:
+        connection_file = new_connection_file  # Use new database if random risk layout is enabled
+    else:
+        connection_file = default_connection_file  # Use default database otherwise
 
-    while simulation.agent_count() > 0:
-        simulation.iterate()
-        if simulation.iteration_count() % every_nth_frame == 0:
-            update_risk(G, propagation_chance, increase_chance)
-            # Save current risks
-            risks_per_frame[simulation.iteration_count()] = {node: G.nodes[node]["risk"] for node in G.nodes}
+    connection = sqlite3.connect(connection_file)
 
-            # Call the function to update the agents' paths
-            agent_group = update_group_paths(simulation, G, waypoint_id, journeys_id, agent_group, risk_threshold=0.5)
+    try:
+        if use_random_risk_layout:
+            # Create or reset the risk table if random risk layout is enabled
+            create_risk_table(connection)
 
-    trajectory_file = f"../../sqlite_data/centrality_measures_percentage_{percentage}.sqlite"
+            # Simulate risk propagation and store results in the database
+            simulate_risk(riskSimulationValues, every_nth_frame, G, connection)
+
+        # Run the agent simulation, updating paths based on the risk levels
+        run_agent_simulation(
+            simulation_config,
+            agent_group,
+            G,
+            risk_threshold=0.5,  # Threshold for avoiding high-risk areas
+        )
+    finally:
+        # Ensure the database connection is closed after operations
+        connection.close()
+
+    # Generate the trajectory file for the current percentage and store its path
+    trajectory_file = f"../sqlite_data/centrality_measures_percentage_{percentage}.sqlite"
     trajectory_files[percentage] = trajectory_file
-
-agent_trajectories = {}
-for percentage in percentages:
-    trajectory_file = trajectory_files[percentage]
-    agent_trajectories[percentage], walkable_area = read_sqlite_file(
-        trajectory_file
-    )
-    animate(
-        agent_trajectories[percentage],
-        walkable_area,
-        title_note=f"Percentage using the shortest path: {percentage}%",
-        risks_per_frame=risks_per_frame,
-        specific_areas=specific_areas
-    ).show()
