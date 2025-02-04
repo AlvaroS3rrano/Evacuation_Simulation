@@ -17,6 +17,7 @@ from Py.DangerSimulation import *
 from Py.animation import animate
 from Py.pathAlgorithms import get_sortest_path, centralityMeasuresAlgorithm
 from Py.simulation_config import SimulationConfig
+from Py.agentGroup import AgentGroup
 
 complete_area = Polygon(
     [
@@ -287,6 +288,7 @@ positions = jps.distribute_by_number(
     seed=45131502,
 )
 
+
 def update_group_paths(simulation_config, risk_per_node, agent_group, G, risk_threshold=0.5):
     """
     Updates the path of a group of agents based on the current node of the first agent in the group.
@@ -299,14 +301,21 @@ def update_group_paths(simulation_config, risk_per_node, agent_group, G, risk_th
             - waypoints_ids (dict): Mapping from graph nodes to simulation waypoint IDs.
             - journeys_ids (dict): Mapping of journey identifiers to tuples (journey_id, path).
         risk_per_node (dict): Mapping of each node to its risk value.
-        agent_group (tuple): Tuple containing a list of agent IDs and the current path.
+        agent_group (AgentGroup): An AgentGroup instance containing:
+            - agents (list): List of agent IDs.
+            - path (list): List representing the group's current path.
+            - algorithm (int): Identifier for the algorithm used.
+            - knowledge_level (int): The knowledge level of the agents.
         risk_threshold (float): Threshold above which a path segment is considered unsafe.
 
     Returns:
-        tuple: The updated agent_group with the new path, or the original if no update was made.
+        AgentGroup: The updated AgentGroup with the new path if a change was made,
+                or the original AgentGroup if no update occurred.
     """
-    shortest = True
-    agents_ids, current_path = agent_group
+    algo = agent_group.algorithm
+    agents_ids = agent_group.agents
+    current_path = agent_group.path
+
     if not agents_ids:
         # No agents in the group; return the original group.
         return agent_group
@@ -365,7 +374,10 @@ def update_group_paths(simulation_config, risk_per_node, agent_group, G, risk_th
         key=lambda neighbor: G.nodes[neighbor].get('risk', float('inf'))
     )
 
-    if shortest == False:
+    if current_node != current_path[0]:
+        neighbors_sorted.remove(current_path[0])
+
+    if algo == 1:
         gamma = 0.2
         # Get alternative paths using the centralityMeasuresAlgorithm.
         _, _, alternative_paths = centralityMeasuresAlgorithm(
@@ -373,15 +385,7 @@ def update_group_paths(simulation_config, risk_per_node, agent_group, G, risk_th
         )
         if alternative_paths:
             best_path = None
-            # Iterate through the sorted neighbors to find the first alternative path
-            # where the second node matches one of the sorted neighbors.
-            for neighbor in neighbors_sorted:
-                for path in alternative_paths:
-                    if len(path) > 1 and path[1] == neighbor:
-                        best_path = path
-                        break  # Break inner loop if a valid path is found.
-                if best_path:
-                    break  # Break outer loop once a valid path is found.
+            for path in alternative_paths:
     else:
         for neighbour in neighbors_sorted:
             best_path = get_sortest_path(G, neighbour, simulation_config.get_exit_ids_keys())
@@ -404,8 +408,10 @@ def update_group_paths(simulation_config, risk_per_node, agent_group, G, risk_th
         for agent_id in agents_ids:
             simulation.switch_agent_journey(agent_id, new_journey_id, next_stage_id)
 
+        agent_group.path = best_path
+
         # Return the updated agent group with the new path.
-        return (agents_ids, best_path)
+        return agent_group
 
     # If no update is made, return the original agent_group.
     return agent_group
@@ -525,7 +531,7 @@ for percentage, simulation in simulations.items():
                 )
             )
         )
-    agent_group = (agents, best_path_source)  # Group the agents with their best path
+    agent_group = AgentGroup(agents, best_path_source, 0, 1)
 
     # Simulation parameters
     riskSimulationValues = RiskSimulationValues(3000, 0.005, 0.09)
