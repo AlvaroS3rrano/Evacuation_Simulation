@@ -36,39 +36,49 @@ def get_sortest_path(G, source, targets):
     else:
         return None
 
+
 def compute_efficient_paths(G, source, targets, gamma):
     """
-    Computes all efficient paths from a single source to each target node based on a cost tolerance factor.
+    Computes all efficient paths from a single source to a set of target nodes based on a cost tolerance factor.
+
+    This function collects all simple paths from the source to any of the target nodes, computes the cost
+    for each path, and then filters the paths to include only those with a cost less than or equal to
+    (1 + gamma) * global_min_cost (where global_min_cost is the smallest cost among all paths).
 
     Args:
         G (networkx.DiGraph): A directed graph where nodes represent locations and edges have a 'cost' attribute.
         source (node): The source node (starting point for paths).
         targets (list): List of target nodes.
         gamma (float): Tolerance factor for path cost. Only paths with a total cost less than or equal to
-                       (1 + gamma) * min_cost (minimum cost among all paths) are considered efficient.
+                       (1 + gamma) * global_min_cost are considered efficient.
 
     Returns:
-        dict: A dictionary where keys are (source, target) pairs and values are lists of efficient paths (each path is a list of nodes)
-              that satisfy the cost tolerance.
+        list: A list of efficient paths (each path is a list of nodes) that satisfy the cost tolerance across all targets.
     """
-    efficient_paths = {}
-
-    # For each target, compute all efficient paths from the source.
+    # Gather all simple paths from source to each target in one list.
+    all_paths = []
     for target in targets:
-        # Get all simple paths between source and target.
-        all_paths = list(nx.all_simple_paths(G, source=source, target=target))
-        if not all_paths:
-            continue  # Skip if no path exists.
+        for path in nx.all_simple_paths(G, source=source, target=target):
+            all_paths.append(path)
 
-        # Pre-calculate costs for all paths to avoid recomputation.
-        path_costs = [sum(G[u][v]["cost"] for u, v in zip(path, path[1:])) for path in all_paths]
-        min_cost = min(path_costs)
-        max_allowed_cost = (1 + gamma) * min_cost
+    if not all_paths:
+        return []  # No paths found
 
-        # Filter paths based on the allowed cost tolerance.
-        efficient_paths[(source, target)] = [
-            path for path, cost in zip(all_paths, path_costs) if cost <= max_allowed_cost
-        ]
+    # Compute the cost for each path.
+    path_costs = [
+        sum(G[u][v]["cost"] for u, v in zip(path, path[1:]))
+        for path in all_paths
+    ]
+
+    # Determine the global minimum cost among all paths.
+    min_cost = min(path_costs)
+    max_allowed_cost = (1 + gamma) * min_cost
+
+    # Filter and return only those paths that satisfy the cost tolerance.
+    efficient_paths = [
+        path for path, cost in zip(all_paths, path_costs)
+        if cost <= max_allowed_cost
+    ]
 
     return efficient_paths
 
@@ -77,9 +87,11 @@ def centralityMeasuresAlgorithm(G, source, targets, gamma):
     Computes efficient evacuation paths, calculates node centralities (Evacuation Betweenness Centrality),
     and identifies the best paths for the given source based on the centrality scores of the nodes within those paths.
 
+    This version assumes that compute_efficient_paths returns a single list of efficient paths (each being a list of nodes)
+    from the source to any of the target nodes.
+
     Args:
-        G (networkx.DiGraph): A directed graph where nodes represent locations, and edges have a 'cost' attribute
-            representing the travel cost or time between nodes.
+        G (networkx.DiGraph): A directed graph where nodes represent locations and edges have a 'cost' attribute.
         source (node): The source node (starting point of the evacuation paths).
         targets (list): List of target nodes (end points of evacuation paths).
         gamma (float): Tolerance factor for path cost. Only paths with a total cost less than or equal to
@@ -87,36 +99,32 @@ def centralityMeasuresAlgorithm(G, source, targets, gamma):
 
     Returns:
         tuple: A tuple containing:
-            - efficient_paths (dict): A dictionary with keys as (source, target) pairs and values as lists
-              of efficient paths (each path is a list of nodes) that satisfy the cost tolerance.
+            - efficient_paths (list): A list of efficient paths (each path is a list of nodes) that satisfy the cost tolerance.
             - evacuation_betweenness (dict): A dictionary where keys are nodes and values are their
               Evacuation Betweenness Centrality scores, reflecting their importance in efficient paths.
             - best_paths (list): A list of paths (each path is a list of nodes), sorted in descending order
               by the sum of node centrality scores.
     """
-    # Step 1: Compute efficient paths for each target from the source.
+    # Step 1: Compute efficient paths from the source to all targets.
+    # The updated compute_efficient_paths returns a single list of paths.
     efficient_paths = compute_efficient_paths(G, source, targets, gamma)
 
-    # Step 2: Calculate Evacuation Betweenness Centrality for all nodes
-    # Only intermediate nodes (excluding the source and target) contribute.
+    # Step 2: Calculate Evacuation Betweenness Centrality for all nodes.
+    # Only intermediate nodes (excluding the source and target nodes in each path) contribute.
     evacuation_betweenness = {node: 0.0 for node in G.nodes()}
+    total_paths = len(efficient_paths)
 
-    for paths in efficient_paths.values():
-        total_paths = len(paths)
-        if total_paths == 0:
-            continue  # Skip if there are no efficient paths for this pair.
-        for path in paths:
-            for node in path[1:-1]:  # Exclude the first and last node (source and target).
+    if total_paths > 0:
+        for path in efficient_paths:
+            # Contribute only from intermediate nodes (skip first and last node)
+            for node in path[1:-1]:
                 evacuation_betweenness[node] += 1 / total_paths
 
-    # Step 3: Identify the best paths for the given source based on the sum of node centrality scores.
+    # Step 3: Identify the best paths based on the sum of node centrality scores along each path.
     scored_paths = []
-    for (s, _), paths in efficient_paths.items():
-        # 's' is always equal to the input source.
-        for path in paths:
-            # Compute the total centrality score for the entire path.
-            total_centrality_score = sum(evacuation_betweenness[node] for node in path)
-            scored_paths.append((path, total_centrality_score))
+    for path in efficient_paths:
+        total_centrality_score = sum(evacuation_betweenness[node] for node in path)
+        scored_paths.append((path, total_centrality_score))
 
     # Sort the paths in descending order by their centrality scores.
     scored_paths.sort(key=lambda x: x[1], reverse=True)
