@@ -1,5 +1,26 @@
 import networkx as nx
 
+def get_paths_with_distances(G, source, weight='cost'):
+    """
+       Computes the shortest paths and corresponding distances from the given source node using Dijkstra's algorithm.
+
+       This function leverages Dijkstra's algorithm to compute the minimal weighted paths from the specified 'source'
+       node to all other nodes in the graph 'G'. The edge attribute provided in 'weight' is used to determine the cost
+       of each path. The function returns two dictionaries: one mapping each node to its total distance (cost) from the
+       source, and another mapping each node to the actual sequence of nodes representing the shortest path.
+
+       Parameters:
+           G (networkx.Graph): The graph on which to compute the shortest paths.
+           source (node): The starting node from which the shortest paths are computed.
+           weight (str): The name of the edge attribute that defines the weight used for calculating the path cost.
+
+       Returns:
+           distances (dict): A dictionary mapping each node to the total cost (distance) from the source node.
+           paths (dict): A dictionary mapping each node to the list of nodes representing the shortest path from the source.
+       """
+    distances, paths = nx.single_source_dijkstra(G, source=source, weight=weight)
+    return distances, paths
+
 def get_sortest_path(G, source, targets):
     """
     Finds and returns the target node with the shortest weighted path from the given source node.
@@ -19,7 +40,7 @@ def get_sortest_path(G, source, targets):
                                    or None if no target is reachable.
     """
     # Compute the shortest paths and distances using Dijkstra's algorithm
-    distances, paths = nx.single_source_dijkstra(G, source=source, weight='cost')
+    distances, paths = get_paths_with_distances(G, source=source, weight='cost')
 
     # Initialize variables to store the target with the minimum distance
     min_distance = float('inf')
@@ -32,16 +53,17 @@ def get_sortest_path(G, source, targets):
             min_target = target
 
     if min_target is not None:
-        return paths[min_target]
+        return distances[min_target], paths[min_target]
     else:
         return None
 
 
-def compute_efficient_paths(G, source, targets, gamma):
+def compute_efficient_paths(G, source, targets, gamma, sort_paths=False):
     """
-    Computes all efficient paths from a single source to a set of target nodes based on a cost tolerance factor.
+    Computes all efficient paths from a single source to a set of target nodes based on a cost tolerance factor,
+    and optionally sorts them by their cost from lowest to highest.
 
-    This function collects all simple paths from the source to any of the target nodes, computes the cost
+    This function collects all simple paths from the source to each target node, computes the cost
     for each path, and then filters the paths to include only those with a cost less than or equal to
     (1 + gamma) * global_min_cost (where global_min_cost is the smallest cost among all paths).
 
@@ -51,9 +73,12 @@ def compute_efficient_paths(G, source, targets, gamma):
         targets (list): List of target nodes.
         gamma (float): Tolerance factor for path cost. Only paths with a total cost less than or equal to
                        (1 + gamma) * global_min_cost are considered efficient.
+        sort_paths (bool, optional): If True, returns the efficient paths sorted in ascending order by cost.
+                                     If False, returns the paths in the order they were found. Default is True.
 
     Returns:
-        list: A list of efficient paths (each path is a list of nodes) that satisfy the cost tolerance across all targets.
+        list: A list of efficient paths (each path is a list of nodes) that satisfy the cost tolerance across all
+              targets. If sort_paths is True, the paths are sorted by cost from lowest to highest.
     """
     # Gather all simple paths from source to each target in one list.
     all_paths = []
@@ -74,13 +99,18 @@ def compute_efficient_paths(G, source, targets, gamma):
     min_cost = min(path_costs)
     max_allowed_cost = (1 + gamma) * min_cost
 
-    # Filter and return only those paths that satisfy the cost tolerance.
+    # Filter the paths to include only those that satisfy the cost tolerance.
     efficient_paths = [
-        path for path, cost in zip(all_paths, path_costs)
+        (path, cost) for path, cost in zip(all_paths, path_costs)
         if cost <= max_allowed_cost
     ]
 
-    return efficient_paths
+    # Optionally sort the efficient paths by cost (ascending order).
+    if sort_paths:
+        efficient_paths = sorted(efficient_paths, key=lambda x: x[1])
+
+    # Return only the paths (excluding their cost values).
+    return [path for path, cost in efficient_paths]
 
 def centralityMeasuresAlgorithm(G, source, targets, gamma):
     """
