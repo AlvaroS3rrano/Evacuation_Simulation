@@ -12,8 +12,8 @@ from jupedsim.internal.notebook_utils import animate, read_sqlite_file
 import plotly.graph_objects as go
 
 # from Py.centralityMeasures import centralityMeasuresAlgorithm
-from Py.RiskSimulationValues import RiskSimulationValues
-from Py.DangerSimulation import *
+from Py.riskSimulationValues import RiskSimulationValues
+from Py.dangerSimulation import *
 from Py.animation import animate
 from Py.pathAlgorithms import get_sortest_path, centralityMeasuresAlgorithm, compute_efficient_paths, get_paths_with_distances
 from Py.simulation_config import SimulationConfig

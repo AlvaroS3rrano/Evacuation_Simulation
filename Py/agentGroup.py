@@ -5,6 +5,7 @@ class AgentGroup:
     Attributes:
         agents (list): List of agent IDs.
         path (list): List representing the group's path.
+        current_node (string): Identifier for the node where the agent is.
         algorithm (int): Identifier for the algorithm used:
             - 0: shortest path
             - 1: centrality measures
@@ -12,9 +13,10 @@ class AgentGroup:
             - 0: Knows only when reaching the neighboring node
             - 1: Knows every change as it happens
     """
-    def __init__(self, agents, path, algorithm, knowledge_level):
+    def __init__(self, agents, path, current_node, algorithm, knowledge_level):
         self.agents = agents            # List of agent IDs.
         self.path = path                # List representing the group's path.
+        self.current_node = current_node # String identifying the current node
         self.algorithm = algorithm      # Integer representing the algorithm.
         self.knowledge_level = knowledge_level  # Integer representing the knowledge level.
 

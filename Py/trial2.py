@@ -13,7 +13,7 @@ import plotly.graph_objects as go
 from Py.centralityMeasures import centralityMeasuresAlgorithm
 
 from Py.animation import animate
-from Py.DangerSimulation import *
+from Py.dangerSimulation import *
 
 complete_area = Polygon(
     [
