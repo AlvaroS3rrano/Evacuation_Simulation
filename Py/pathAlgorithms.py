@@ -20,43 +20,64 @@ def get_paths_with_distances(G, source, weight='cost'):
        """
     distances, paths = nx.single_source_dijkstra(G, source=source, weight=weight)
     return distances, paths
-
-def get_sortest_path(G, source, targets):
+def get_shortest_path(G: nx.Graph, source, targets):
     """
-    Finds and returns the target node with the shortest weighted path from the given source node.
+    Finds and returns a sorted list of paths from the source node to the target nodes,
+    ordered from the least costly path to the most costly one.
 
-    This function uses Dijkstra's algorithm to compute the shortest paths and their corresponding
-    distances from the 'source' node to all other nodes in the graph 'G'. It then iterates over the
-    provided list of 'targets' to determine which target is reachable with the minimum total weight.
-    If none of the target nodes are reachable from the source, the function returns None.
+    For each target, the function attempts to compute the shortest path using the "cost"
+    edge attribute via nx.shortest_path. If a path is found, its total cost is calculated by
+    summing the "cost" values along its edges. The list of (cost, path) tuples is then sorted
+    in ascending order based on the total cost. If no target is reachable from the source, an
+    empty list is returned.
 
     Parameters:
         G (networkx.Graph): The graph on which to compute the shortest paths.
         source (node): The starting node from which paths are computed.
-        targets (list): A list of target nodes for which the shortest path is to be determined.
+        targets (list): A list of target nodes.
 
     Returns:
-        min_target (node or None): The target node with the shortest weighted path from the source,
-                                   or None if no target is reachable.
+        list: A list of paths (each path is a list of nodes), sorted from least costly to most costly.
     """
-    # Compute the shortest paths and distances using Dijkstra's algorithm
-    distances, paths = get_paths_with_distances(G, source=source, weight='cost')
-
-    # Initialize variables to store the target with the minimum distance
-    min_distance = float('inf')
-    min_target = None
-
-    # Loop through the list of targets and find the one with the shortest weighted distance
+    paths = []
     for target in targets:
-        if target in distances and distances[target] < min_distance:
-            min_distance = distances[target]
-            min_target = target
+        try:
+            # Attempt to compute the shortest path using the "cost" attribute.
+            path = nx.shortest_path(G, source=source, target=target, weight="cost")
+            # Calculate the total cost for this path.
+            cost = sum(G[u][v]["cost"] for u, v in zip(path, path[1:]))
+            paths.append((cost, path))
+        except nx.NetworkXNoPath:
+            # Skip this target if no path exists.
+            continue
 
-    if min_target is not None:
-        return distances[min_target], paths[min_target]
-    else:
-        return None
+    # Sort the paths based on cost in ascending order.
+    paths.sort(key=lambda x: x[0])
+    # Return only the paths, discarding the cost values.
+    return [path for cost, path in paths]
 
+def collect_unblocked_paths(G: nx.DiGraph, source, targets):
+    """
+    Collects all simple paths from the source node to each target node,
+    filtering out any paths that contain nodes with the attribute 'blocked' set to True.
+
+    Parameters:
+        G (networkx.DiGraph): The directed graph with node attributes.
+        source (node): The source node from which paths start.
+        targets (list): A list of target nodes.
+
+    Returns:
+        list: A list of simple paths (each path is a list of nodes) that do not include any node
+              with 'blocked' set to True.
+    """
+    paths = []
+    for target in targets:
+        for path in nx.all_simple_paths(G, source=source, target=target):
+            # Skip the path if any node is blocked.
+            if any(G.nodes[node].get("blocked", False) for node in path):
+                continue
+            paths.append(path)
+    return paths
 
 def compute_efficient_paths(G, source, targets, gamma, sort_paths=False):
     """
@@ -81,13 +102,17 @@ def compute_efficient_paths(G, source, targets, gamma, sort_paths=False):
               targets. If sort_paths is True, the paths are sorted by cost from lowest to highest.
     """
     # Gather all simple paths from source to each target in one list.
-    all_paths = []
-    for target in targets:
-        for path in nx.all_simple_paths(G, source=source, target=target):
-            all_paths.append(path)
+    all_paths = collect_unblocked_paths(G, source, targets)
 
     if not all_paths:
-        return []  # No paths found
+        # Reset the 'blocked' attribute for all nodes.
+        for node in G.nodes():
+            if G.nodes[node].get("blocked", False):
+                G.nodes[node]["blocked"] = False
+        all_paths = collect_unblocked_paths(G, source, targets)
+
+    if not all_paths:
+        return []
 
     # Compute the cost for each path.
     path_costs = [
