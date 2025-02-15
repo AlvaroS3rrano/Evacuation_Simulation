@@ -90,6 +90,8 @@ class RiskSimulationValues:
                 f"increase_chance={self._increase_chance})")
 
 
-# Example usage:
-simulation = RiskSimulationValues()
-print(simulation)  # Displays the default values
+if __name__ == "__main__":
+
+    # Example usage:
+    simulation = RiskSimulationValues()
+    print(simulation)  # Displays the default values

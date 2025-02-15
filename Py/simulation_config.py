@@ -12,7 +12,7 @@ class SimulationConfig:
         exit_ids (dict): A dictionary of exit IDs representing nodes where the simulation might terminate or transition.
     """
 
-    def __init__(self, simulation=None, every_nth_frame=1, waypoints_ids=None, exit_ids=None):
+    def __init__(self, simulation=None, every_nth_frame_simulation=4, every_nth_frame_animation= 50, waypoints_ids=None, exit_ids=None):
         """
         Initializes the SimulationConfig with provided or default values.
 
@@ -25,7 +25,8 @@ class SimulationConfig:
             exit_ids (dict): A dictionary of exit IDs. Default is an empty dictionary.
         """
         self.simulation = simulation
-        self.every_nth_frame = every_nth_frame  # Uses the setter for validation.
+        self.every_nth_frame_simulation = every_nth_frame_simulation  # Uses the setter for validation.
+        self.every_nth_frame_animation = every_nth_frame_animation  # Uses the setter for validation.
         self.waypoints_ids = waypoints_ids if waypoints_ids is not None else {}
         self.exit_ids = exit_ids if exit_ids is not None else {}
 

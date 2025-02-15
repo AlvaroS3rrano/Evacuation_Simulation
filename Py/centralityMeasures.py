@@ -120,21 +120,24 @@ def centralityMeasuresAlgorithm(G, sources, targets, gamma):
 
     return efficient_paths, evacuation_betweenness, all_paths_sorted
 
-efficient_paths, evacuation_betweenness, all_paths_sorted = centralityMeasuresAlgorithm(G, sources, targets, gamma)
 
-# Display results
-print("Efficient Paths:")
-for (source, target), paths in efficient_paths.items():
-    print(f"{source} -> {target}: {paths}")
+if __name__ == "__main__":
 
-print("\nEvacuation Betweenness Centrality:")
-for node, value in evacuation_betweenness.items():
-    print(f"{node}: {value}")
+    efficient_paths, evacuation_betweenness, all_paths_sorted = centralityMeasuresAlgorithm(G, sources, targets, gamma)
 
-# Display the best path and its score for each source
-print("\nPath with the highest Evacuation Betweenness Centrality for each source:")
-for source, data in all_paths_sorted.items():
-    for path, val in data:
-        print(f"Source: {source}")
-        print(f"Path: {path}")
-        print(f"Centrality Score: {val}\n")
+    # Display results
+    print("Efficient Paths:")
+    for (source, target), paths in efficient_paths.items():
+        print(f"{source} -> {target}: {paths}")
+
+    print("\nEvacuation Betweenness Centrality:")
+    for node, value in evacuation_betweenness.items():
+        print(f"{node}: {value}")
+
+    # Display the best path and its score for each source
+    print("\nPath with the highest Evacuation Betweenness Centrality for each source:")
+    for source, data in all_paths_sorted.items():
+        for path, val in data:
+            print(f"Source: {source}")
+            print(f"Path: {path}")
+            print(f"Centrality Score: {val}\n")
