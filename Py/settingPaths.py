@@ -15,8 +15,38 @@ def update_graph_risks(G, risk_per_node):
             # Update the 'risk' attribute of the node in the graph.
             G.nodes[node]['risk'] = risk
 
+def handle_blocked_node_in_path(best_path, agent_group):
+    """
+    Checks if the best_path contains any blocked node from agent_group.blocked_nodes.
+    If a blocked node is found, sets agent_group.wait_until_node to that blocked node.
+    Additionally, if the node preceding the blocked node exists in best_path, it is added
+    to agent_group.blocked_nodes to prevent backtracking.
 
-def select_best_alternative_path(alternative_paths, neighbors_sorted, min_risk_neighbors):
+    Parameters:
+        best_path (list): The computed best alternative path as a list of nodes.
+        agent_group: The agent group object that contains properties such as `blocked_nodes`
+                     and `wait_until_node`.
+
+    Returns:
+        None
+    """
+    # Check if best_path is not empty and if any blocked node is present in best_path
+    if best_path and any(node in best_path for node in agent_group.blocked_nodes):
+        # Find the first blocked node that is in best_path
+        blocked_node = next(node for node in agent_group.blocked_nodes if node in best_path)
+        # Set the wait_until_node to the found blocked node
+        agent_group.wait_until_node = blocked_node
+
+        # Find the index of the blocked_node in best_path
+        index = best_path.index(blocked_node)
+        # If there is a node before the blocked_node in best_path, add it to blocked_nodes
+        if index > 0:
+            previous_node = best_path[index - 1]
+            # Add the previous_node to agent_group.blocked_nodes if it's not already there
+            if previous_node not in agent_group.blocked_nodes:
+                agent_group.blocked_nodes.append(previous_node)
+
+def select_best_alternative_path(alternative_paths, neighbors_sorted, min_risk_neighbors, agent_group):
     """
     Selects the best alternative path based on the provided alternative paths and neighbor lists.
 
@@ -37,6 +67,14 @@ def select_best_alternative_path(alternative_paths, neighbors_sorted, min_risk_n
         alternative_paths (list): A list of alternative paths (each path is a list of nodes).
         neighbors_sorted (list): A list of neighbors sorted by risk.
         min_risk_neighbors (list): A list of candidate neighbors that have the minimum risk.
+        agent_group (AgentGroup): An instance of AgentGroup containing:
+            - agents (list): List of agent IDs.
+            - path (list): Designated path for the group.
+            - current_node (str): Identifier of the current node.
+            - algorithm (int): Identifier for the algorithm used (e.g., 0 for shortest path, 1 for centrality measures).
+            - knowledge_level (int): The knowledge level of the agents (0 or 1).
+            - blocked_nodes (list, optional): List of nodes initially marked as blocked.
+            - wait_until_node (str, optional): Node identifier where execution is paused until current_node matches it.
 
     Returns:
         list or None: The selected best alternative path if found, or None if no valid path is found.
@@ -63,26 +101,33 @@ def select_best_alternative_path(alternative_paths, neighbors_sorted, min_risk_n
                         break  # Found a valid alternative path.
                 if best_path:
                     break  # Exit once a valid path is found.
+
+    handle_blocked_node_in_path(best_path, agent_group)
+
     return best_path
 def compute_low_Knowledge_alternative_path(exits, risk_per_node, next_node, current_node, agent_group, G, gamma, risk_threshold):
     """
     Computes an alternative path based on node risk values and the selected algorithm.
     If the risk of the next node is below the threshold, no update is needed and None is returned.
 
-    Args:
-        exits (list): List of exits.
+    Parameters:
+        exits (list): List of exit nodes.
         risk_per_node (dict): Mapping of each node to its risk value.
         next_node: The node following the current node in the current path.
         current_node: The current node in the path.
-        agent_group (AgentGroup): An AgentGroup instance containing:
+        agent_group (AgentGroup): An instance of AgentGroup containing:
             - agents (list): List of agent IDs.
-            - path (list): List representing the group's current path.
-            - algorithm (int): Identifier for the algorithm used.
-            - knowledge_level (int): The knowledge level of the agents.
+            - path (list): Designated path for the group.
+            - current_node (str): Identifier of the current node.
+            - algorithm (int): Identifier for the algorithm used (e.g., 0 for shortest path, 1 for centrality measures).
+            - knowledge_level (int): The knowledge level of the agents (0 or 1).
+            - blocked_nodes (list, optional): List of nodes initially marked as blocked.
+            - wait_until_node (str, optional): Node identifier where execution is paused until current_node matches it.
         G: The graph representing the environment.
         gamma (float): Tolerance factor for path cost. Only paths with a total cost less than or equal to
                        (1 + gamma) * global_min_cost are considered efficient.
         risk_threshold (float): Threshold above which a node is considered unsafe.
+
     Returns:
         list or None: The best alternative path if one is found, or None if no update is needed or found.
     """
@@ -127,12 +172,12 @@ def compute_low_Knowledge_alternative_path(exits, risk_per_node, next_node, curr
         _, _, alternative_paths = centralityMeasuresAlgorithm(
             G, current_node, exits, gamma
         )
-        return select_best_alternative_path(alternative_paths, neighbors_sorted, min_risk_neighbors)
+        return select_best_alternative_path(alternative_paths, neighbors_sorted, min_risk_neighbors, agent_group)
     elif algo == 0:
         #not get_shortest_path because the blocked nodes need to be taken into account
         #alternative_paths = get_shortest_path(G, current_node, exits)
         alternative_paths = compute_efficient_paths(G, current_node, exits, gamma, True)
-        return select_best_alternative_path(alternative_paths, neighbors_sorted, min_risk_neighbors)
+        return select_best_alternative_path(alternative_paths, neighbors_sorted, min_risk_neighbors, agent_group)
 
 
 def compute_high_Knowledge_alternative_path(exits, risk_per_node, current_node, agent_group, G, gamma, risk_threshold):
@@ -221,7 +266,7 @@ def compute_alternative_path(exits, agent_group, G, current_node=None, next_node
 
     Parameters:
         exits: The list of exit nodes.
-        agent_group: The agent group object containing properties such as blocked_nodes and knowledge_level.
+        agent_group: The agent group object containing properties such as blocked_nodes, wait_until_node, and knowledge_level.
         G (networkx.Graph or nx.DiGraph): The graph representing the environment.
         current_node: The current node where the agent group is located.
         next_node: The next planned node (used in low-knowledge alternative path computation).
@@ -229,39 +274,49 @@ def compute_alternative_path(exits, agent_group, G, current_node=None, next_node
         risk_threshold (float): The risk threshold value to consider when computing the alternative path.
 
     Returns:
-        best_path: The computed best alternative path as a list of nodes.
+        best_path: The computed best alternative path as a list of nodes, or None if no alternative path is computed.
     """
     gamma = 0.4
 
-    # Temporarily mark the nodes in agent_group.blocked_nodes as blocked.
+    # Temporarily mark nodes in agent_group.blocked_nodes as blocked in the graph G.
     for node in agent_group.blocked_nodes:
         G.nodes[node]['blocked'] = True
 
+    best_path = None
     try:
-        # Compute the alternative path based on the agent group's knowledge level.
-        if agent_group.knowledge_level == 0:
-            best_path = compute_low_Knowledge_alternative_path(
-                exits,
-                risk_per_node,
-                next_node,
-                current_node,
-                agent_group,
-                G,
-                gamma,
-                risk_threshold,
-            )
-        elif agent_group.knowledge_level == 1:
-            best_path = compute_high_Knowledge_alternative_path(
-                exits,
-                risk_per_node,
-                current_node,
-                agent_group,
-                G,
-                gamma,
-                risk_threshold,
-            )
+        # Check if there is no wait condition or if the wait condition is satisfied.
+        if agent_group.wait_until_node is None or agent_group.current_node == agent_group.wait_until_node:
+            # If the current node matches wait_until_node, reset wait_until_node to None.
+            if agent_group.current_node == agent_group.wait_until_node:
+                agent_group.wait_until_node = None
+
+            # Compute the alternative path based on the agent group's knowledge level.
+            if agent_group.knowledge_level == 0:
+                best_path = compute_low_Knowledge_alternative_path(
+                    exits,
+                    risk_per_node,
+                    next_node,
+                    current_node,
+                    agent_group,
+                    G,
+                    gamma,
+                    risk_threshold,
+                )
+            elif agent_group.knowledge_level == 1:
+                best_path = compute_high_Knowledge_alternative_path(
+                    exits,
+                    risk_per_node,
+                    current_node,
+                    agent_group,
+                    G,
+                    gamma,
+                    risk_threshold,
+                )
+            else:
+                # For unexpected knowledge levels, no alternative path is computed.
+                best_path = None
         else:
-            # Handle unexpected knowledge levels if necessary.
+            # If the wait condition is not satisfied, no alternative path is computed.
             best_path = None
     finally:
         # Unblock all nodes in the graph regardless of the outcome.
@@ -269,6 +324,7 @@ def compute_alternative_path(exits, agent_group, G, current_node=None, next_node
             G.nodes[node]['blocked'] = False
 
     return best_path
+
 
 def is_sublist(sub, main):
     """
