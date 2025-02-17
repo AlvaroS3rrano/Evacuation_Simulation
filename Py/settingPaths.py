@@ -276,7 +276,7 @@ def compute_alternative_path(exits, agent_group, G, current_node=None, next_node
     Returns:
         best_path: The computed best alternative path as a list of nodes, or None if no alternative path is computed.
     """
-    gamma = 0.4
+    gamma = 0.2
 
     # Temporarily mark nodes in agent_group.blocked_nodes as blocked in the graph G.
     for node in agent_group.blocked_nodes:
