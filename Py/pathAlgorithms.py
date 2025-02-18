@@ -1,5 +1,7 @@
 import networkx as nx
 
+
+### CURRENTLY NOT USED ###
 def get_paths_with_distances(G, source, weight='cost'):
     """
        Computes the shortest paths and corresponding distances from the given source node using Dijkstra's algorithm.
@@ -55,6 +57,8 @@ def get_shortest_path(G: nx.Graph, source, targets):
     paths.sort(key=lambda x: x[0])
     # Return only the paths, discarding the cost values.
     return [path for cost, path in paths]
+
+##########################
 
 def collect_unblocked_paths(G: nx.DiGraph, source, targets):
     """

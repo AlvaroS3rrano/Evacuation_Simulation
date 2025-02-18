@@ -149,13 +149,7 @@ def compute_low_Knowledge_alternative_path(exits, risk_per_node, next_node, curr
         key=lambda neighbor: G.nodes[neighbor].get('risk', float('inf'))
     )
 
-    ## If a current path is provided, remove its starting node from the neighbors (if applicable).
-    ## to prevent going backwards
-    #if current_path is not None and len(current_path) > 0:
-    #    previous_node = current_path[0]
-    #    if current_node != previous_node and previous_node in neighbors_sorted:
-    #        neighbors_sorted.remove(previous_node)
-
+    # Block the riskier neighbouring nodes
     for neighbour in neighbors_sorted:
         if risk_per_node[neighbour] >= risk_threshold and neighbour not in agent_group.blocked_nodes:
             agent_group.blocked_nodes.append(neighbour)
@@ -175,7 +169,6 @@ def compute_low_Knowledge_alternative_path(exits, risk_per_node, next_node, curr
         return select_best_alternative_path(alternative_paths, neighbors_sorted, min_risk_neighbors, agent_group)
     elif algo == 0:
         #not get_shortest_path because the blocked nodes need to be taken into account
-        #alternative_paths = get_shortest_path(G, current_node, exits)
         alternative_paths = compute_efficient_paths(G, current_node, exits, gamma, True)
         return select_best_alternative_path(alternative_paths, neighbors_sorted, min_risk_neighbors, agent_group)
 
@@ -276,7 +269,7 @@ def compute_alternative_path(exits, agent_group, G, current_node=None, next_node
     Returns:
         best_path: The computed best alternative path as a list of nodes, or None if no alternative path is computed.
     """
-    gamma = 0.2
+    gamma = 0.4
 
     # Temporarily mark nodes in agent_group.blocked_nodes as blocked in the graph G.
     for node in agent_group.blocked_nodes:

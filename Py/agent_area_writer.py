@@ -74,6 +74,62 @@ def read_agent_area_data(connection: sqlite3.Connection) -> pd.DataFrame:
     except Exception as e:
         raise RuntimeError(f"Error reading agent area data: {e}")
 
+def get_total_risk(connection: sqlite3.Connection) -> float:
+    """
+    Calculates the total risk level across all agents and frames in the simulation,
+    rounding the result up to one decimal place.
+
+    Args:
+        connection (sqlite3.Connection): An open SQLite database connection.
+
+    Returns:
+        float: The overall total risk level in the simulation, rounded up to 1 decimal place.
+
+    Raises:
+        RuntimeError: If there is an error retrieving the data.
+    """
+    try:
+        query = "SELECT SUM(risk) AS total_risk FROM agent_area_data;"
+        cursor = connection.cursor()
+        cursor.execute(query)
+        result = cursor.fetchone()
+
+        if result and result[0] is not None:
+            # Round up to one decimal place
+            return math.ceil(result[0] * 10) / 10
+        return 0.0  # Return 0.0 if there is no data
+
+    except sqlite3.Error as e:
+        raise RuntimeError(f"Error retrieving total risk: {e}")
+
+def get_max_risk(connection: sqlite3.Connection) -> float:
+    """
+    Calculates the highest risk level among all agents and frames in the simulation,
+    rounding the result up to one decimal place.
+
+    Args:
+        connection (sqlite3.Connection): An open SQLite database connection.
+
+    Returns:
+        float: The highest risk level in the simulation, rounded up to 1 decimal place.
+
+    Raises:
+        RuntimeError: If there is an error retrieving the data.
+    """
+    try:
+        query = "SELECT MAX(risk) AS max_risk FROM agent_area_data;"
+        cursor = connection.cursor()
+        cursor.execute(query)
+        result = cursor.fetchone()
+
+        if result and result[0] is not None:
+            # Round up to one decimal place
+            return math.ceil(result[0] * 10) / 10
+        return 0.0  # Return 0.0 if there is no data
+
+    except sqlite3.Error as e:
+        raise RuntimeError(f"Error retrieving maximum risk: {e}")
+
 def get_average_risk(connection: sqlite3.Connection) -> float:
     """
     Calculates the average risk level across all agents and frames in the simulation,
