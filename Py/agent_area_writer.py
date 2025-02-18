@@ -30,23 +30,30 @@ def create_agent_area_table(connection: sqlite3.Connection):
     except sqlite3.Error as e:
         raise RuntimeError(f"Error creating agent_area_data table: {e}")
 
-def write_agent_area(connection: sqlite3.Connection, frame: int, agents: List[int], area: str, risk: float):
+def write_agent_area(connection: sqlite3.Connection, frame: int, agents: List[int], areas: dict, risk_this_frame: dict):
     """
     Stores the area assignment for a list of agents in a specific frame into the database, including risk levels.
+    Each agent's area is determined from the provided 'areas' dictionary, and the risk is obtained from the
+    'risk_this_frame' dictionary using the area as the key.
 
     Args:
         connection (sqlite3.Connection): An open SQLite database connection.
         frame (int): The frame number to which the assignments correspond.
-        agents (List[int]): A list of agent IDs (integers) that are assigned to the specified area.
-        area (str): The name of the area to which the agents are assigned.
-        risk (float): The risk level associated with the area.
+        agents (List[int]): A list of agent IDs (integers) that are assigned to an area.
+        areas (dict): A dictionary mapping each agent ID to the area (e.g., current node) to which the agent is assigned.
+        risk_this_frame (dict): A dictionary mapping each area (str) to its risk value (float).
 
     Raises:
         RuntimeError: If there is an error while inserting the data into the database.
     """
     try:
         with connection:
-            data = [(frame, agent_id, area, risk) for agent_id in agents]
+            data = []
+            for agent_id in agents:
+                area = areas.get(agent_id, "")
+                # Get the risk for the area, defaulting to 0.0 if not found
+                risk = risk_this_frame.get(area, 0.0)
+                data.append((frame, agent_id, area, risk))
             connection.executemany(
                 "INSERT OR REPLACE INTO agent_area_data (frame, agent_id, area, risk) VALUES (?, ?, ?, ?)",
                 data,
@@ -73,6 +80,26 @@ def read_agent_area_data(connection: sqlite3.Connection) -> pd.DataFrame:
         return pd.read_sql_query(query, connection)
     except Exception as e:
         raise RuntimeError(f"Error reading agent area data: {e}")
+
+def read_agent_area_data_by_frame(connection: sqlite3.Connection, frame: int) -> pd.DataFrame:
+    """
+    Reads the data stored in the agent_area_data table for a specified frame.
+
+    Args:
+        connection (sqlite3.Connection): An open SQLite database connection.
+        frame (int): The frame number to filter the data by.
+
+    Returns:
+        pd.DataFrame: A DataFrame containing all columns for the rows where frame equals the provided value.
+
+    Raises:
+        RuntimeError: If there is an error reading the data.
+    """
+    try:
+        query = "SELECT * FROM agent_area_data WHERE frame = ?"
+        return pd.read_sql_query(query, connection, params=(frame,))
+    except Exception as e:
+        raise RuntimeError(f"Error reading agent area data for frame {frame}: {e}")
 
 def get_total_risk(connection: sqlite3.Connection) -> float:
     """
