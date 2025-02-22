@@ -87,12 +87,14 @@ def select_best_alternative_path(alternative_paths, neighbors_sorted, min_risk_n
                 if len(path) > 1 and path[1] in min_risk_neighbors:
                     best_path = path
                     break
-            # Remove candidate neighbors from neighbors_sorted to avoid reconsidering them.
-            for candidate in min_risk_neighbors:
-                if candidate in neighbors_sorted:
-                    neighbors_sorted.remove(candidate)
 
-        # If no best_path has been found yet, iterate through the sorted neighbors.
+            # Remove candidate neighbors from neighbors_sorted to avoid reconsidering them if a path could not be found.
+            if not best_path:
+                for candidate in min_risk_neighbors:
+                    if candidate in neighbors_sorted:
+                        neighbors_sorted.remove(candidate)
+
+        # If no best_path has been found yet, iterate through the sorted neighbors or min_risk_neighbors == 1.
         if best_path is None:
             for neighbor in neighbors_sorted:
                 for path in alternative_paths:
