@@ -12,7 +12,7 @@ class SimulationConfig:
         exit_ids (dict): A dictionary of exit IDs representing nodes where the simulation might terminate or transition.
     """
 
-    def __init__(self, simulation=None, every_nth_frame_simulation=4, every_nth_frame_animation= 50, waypoints_ids=None, exit_ids=None):
+    def __init__(self, simulation=None, every_nth_frame_simulation=4, every_nth_frame_animation= 50, waypoints_ids=None, exit_ids=None, gamma=0.4):
         """
         Initializes the SimulationConfig with provided or default values.
 
@@ -23,12 +23,15 @@ class SimulationConfig:
             journeys_ids (dict): A dictionary mapping journey identifiers to a tuple (journey_id, path).
                                  Default is an empty dictionary.
             exit_ids (dict): A dictionary of exit IDs. Default is an empty dictionary.
+            gamma (float): A weighting parameter that influences the alternative path computation by controlling the
+                       trade-off between risk minimization and path optimality.
         """
         self.simulation = simulation
         self.every_nth_frame_simulation = every_nth_frame_simulation  # Uses the setter for validation.
         self.every_nth_frame_animation = every_nth_frame_animation  # Uses the setter for validation.
         self.waypoints_ids = waypoints_ids if waypoints_ids is not None else {}
         self.exit_ids = exit_ids if exit_ids is not None else {}
+        self.gamma = gamma
 
     def get_exit_ids_keys(self):
         """
@@ -46,7 +49,8 @@ class SimulationConfig:
         return (f"SimulationConfig(simulation={self.simulation}, "
                 f"every_nth_frame={self.every_nth_frame}, "
                 f"waypoints_ids={self.waypoints_ids}, "
-                f"exit_ids={self.exit_ids})")
+                f"exit_ids={self.exit_ids},"
+                f"gamma={self.gamma})")
 
 
 # Example usage:
@@ -60,6 +64,7 @@ if __name__ == "__main__":
 
     config = SimulationConfig(simulation="MySimulation", every_nth_frame=5,
                               waypoints_ids={"A": 101, "B": 102},
-                              exit_ids=example_exit_ids)
+                              exit_ids=example_exit_ids,
+                              gamma=0.2)
     print(config)
     print("Exit IDs keys:", config.get_exit_ids_keys())

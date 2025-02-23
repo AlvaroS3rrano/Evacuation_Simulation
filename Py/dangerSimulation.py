@@ -145,38 +145,52 @@ def fetch_all_risks(connection: sqlite3.Connection) -> list:
         return cursor.fetchall()
     except sqlite3.Error as e:
         raise RuntimeError(f"Error fetching all risk data: {e}")
-def update_risk(G: nx.DiGraph, propagation_chance=0.3, increase_chance=0.2):
+
+
+def update_risk(G: nx.DiGraph, increase_chance=0.2, danger_threshold=0.5):
     """
-    Updates the risk levels of nodes in the graph, increasing the risk towards 1 (more dangerous).
+    Actualiza los niveles de riesgo de los nodos en el grafo.
+    Se elimina la propagación probabilística y se propaga el riesgo de forma simétrica:
+      - Si un nodo tiene riesgo >= danger_threshold, se considera peligroso.
+      - Se propaga a todos sus vecinos (en sentido no dirigido) un incremento de riesgo igual a 1/3 de su riesgo.
+      - A los vecinos de estos (excluyendo al nodo original y a los vecinos directos) se les asigna 1/9 de su riesgo.
 
     Args:
-        G (nx.DiGraph): Graph with nodes and edges.
-        propagation_chance (float): Probability of risk spreading to neighbors.
-        increase_chance (float): Probability of increasing the node's risk level.
+        G (nx.DiGraph): Grafo con nodos y aristas.
+        increase_chance (float): Probabilidad de aumentar el riesgo base de cada nodo.
+        danger_threshold (float): Umbral a partir del cual un nodo es peligroso.
     """
     new_risks = {}
 
+    # Actualización aleatoria del riesgo para cada nodo
     for node in G.nodes:
         current_risk = G.nodes[node]["risk"]
-
-        # Increase the risk of the node (making it more dangerous)
         if random.random() < increase_chance:
-            current_risk = min(1.0, current_risk + random.uniform(0.05, 0.2))  # Increase risk
-
-        # Round risk to 1 decimal place
+            current_risk = min(1.0, current_risk + random.uniform(0.05, 0.2))
         new_risks[node] = round(current_risk, 1)
 
-        # Risk propagation to neighbors
-        for neighbor in G.neighbors(node):
-            if random.random() < propagation_chance:
-                # Compute risk increase based on the current node's risk
-                propagated_risk = G.nodes[node]["risk"] * random.uniform(0.1, 0.5)
-                neighbor_risk = G.nodes[neighbor]["risk"]
-                new_risk = min(1.0, neighbor_risk + propagated_risk)  # Increase neighbor's risk
+    # Convertir el grafo a una versión no dirigida para propagar simétricamente
+    UG = G.to_undirected()
 
-                # Round propagated risk to 1 decimal place
-                new_risks[neighbor] = round(new_risk, 1)
+    # Propagación determinística desde nodos peligrosos de forma simétrica
+    for node in G.nodes:
+        node_risk = G.nodes[node]["risk"]
+        if node_risk >= danger_threshold:
+            # Primer nivel: vecinos directos en sentido no dirigido
+            risk_direct = round(node_risk / 3, 1)
+            for neighbor in UG.neighbors(node):
+                new_risks[neighbor] = max(new_risks.get(neighbor, G.nodes[neighbor]["risk"]), risk_direct)
+            # Segundo nivel: vecinos de vecinos
+            # Se excluyen el nodo original y sus vecinos directos para evitar solapamientos
+            first_level = set(UG.neighbors(node))
+            for neighbor in first_level:
+                for second_neighbor in UG.neighbors(neighbor):
+                    if second_neighbor == node or second_neighbor in first_level:
+                        continue
+                    risk_second = round(node_risk / 9, 1)
+                    new_risks[second_neighbor] = max(new_risks.get(second_neighbor, G.nodes[second_neighbor]["risk"]),
+                                                     risk_second)
 
-    # Apply the new risk values to the graph
+    # Aplicar los nuevos valores de riesgo al grafo
     for node, risk in new_risks.items():
         G.nodes[node]["risk"] = risk

@@ -357,17 +357,39 @@ def _get_processed_frame_data(data_df, frame_num, max_agents):
     return frame_data, agent_count
 
 
-def generate_risk_colors():
+def generate_risk_colors(risk_threshold=0.5):
     """
-    Generates a list of colors transitioning from black (low risk) to intense red (high risk).
+    Generates a list of color strings for risk levels from 0 to 10 using two distinct gradients:
+      - For normalized risk values below the risk_threshold, a gradient from transparent blue to opaque blue.
+      - For normalized risk values equal to or above the risk_threshold, a gradient from light purple to dark purple.
 
-    - Risk 0 → Black (`rgb(0,0,0)`)
-    - Risk 10 → Intense Red (`rgb(255,0,0)`)
+    Parameters:
+        risk_threshold (float): The normalized risk threshold (between 0 and 1) that separates low risk from high risk.
+
+    Returns:
+        list: A list of color strings formatted as "rgba(r, g, b, a)" for risk levels 0 through 10.
     """
     colors = []
-    for i in range(11):  # Risk levels from 0 to 10
-        red = int((i / 10) * 255)  # Interpolates from 0 (black) to 255 (red)
-        color = f"rgb({red}, 0, 0)"  # No green or blue components
+    # Define constant blue for the low risk gradient.
+    blue = (0, 0, 255)
+    # Define the start (light purple) and end (dark purple) colors for the high risk gradient.
+    light_purple = (221, 160, 221)
+    dark_purple = (128, 0, 128)
+
+    for i in range(11):  # Risk levels from 0 to 10.
+        normalized_risk = i / 10.0
+        if normalized_risk < risk_threshold:
+            # For low risk: compute the alpha (transparency) value from 0 (transparent) to 1 (opaque)
+            fraction = normalized_risk / risk_threshold if risk_threshold != 0 else 0
+            alpha = fraction  # Alpha increases as risk approaches the threshold.
+            color = f"rgba({blue[0]}, {blue[1]}, {blue[2]}, {alpha:.2f})"
+        else:
+            # For high risk: compute a gradient from light purple to dark purple.
+            fraction = (normalized_risk - risk_threshold) / (1 - risk_threshold) if risk_threshold != 1 else 0
+            r = int(light_purple[0] + fraction * (dark_purple[0] - light_purple[0]))
+            g = int(light_purple[1] + fraction * (dark_purple[1] - light_purple[1]))
+            b = int(light_purple[2] + fraction * (dark_purple[2] - light_purple[2]))
+            color = f"rgba({r}, {g}, {b}, 1)"
         colors.append(color)
     return colors
 

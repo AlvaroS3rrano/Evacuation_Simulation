@@ -251,13 +251,14 @@ def compute_high_Knowledge_alternative_path(exits, risk_per_node, current_node, 
     # Return the alternative path with the lowest computed risk.
     return best_path
 
-def compute_alternative_path(exits, agent_group, G, current_node=None, next_node=None, risk_per_node=None, risk_threshold=0.5):
+def compute_alternative_path(exits, agent_group, G, current_node=None, next_node=None, risk_per_node=None, risk_threshold=0.5, gamma=0.4):
     """
     Computes an alternative evacuation path for the agent group based on its knowledge level and risk assessment.
 
     The function temporarily marks nodes specified in the agent group's `blocked_nodes` as blocked in the graph.
     Depending on the group's knowledge level, it calls either the low-knowledge or high-knowledge alternative path
-    computation function with a fixed gamma value. Finally, it resets the blocked status of all nodes and returns the best path.
+    computation function using a fixed gamma value. Finally, it resets the blocked status of all nodes and returns
+    the best path found.
 
     Parameters:
         exits: The list of exit nodes.
@@ -267,11 +268,12 @@ def compute_alternative_path(exits, agent_group, G, current_node=None, next_node
         next_node: The next planned node (used in low-knowledge alternative path computation).
         risk_per_node: The risk value associated with each node.
         risk_threshold (float): The risk threshold value to consider when computing the alternative path.
+        gamma (float): A weighting parameter that influences the alternative path computation by controlling the
+                       trade-off between risk minimization and path optimality.
 
     Returns:
         best_path: The computed best alternative path as a list of nodes, or None if no alternative path is computed.
     """
-    gamma = 0.4
 
     # Temporarily mark nodes in agent_group.blocked_nodes as blocked in the graph G.
     for node in agent_group.blocked_nodes:
@@ -319,6 +321,7 @@ def compute_alternative_path(exits, agent_group, G, current_node=None, next_node
             G.nodes[node]['blocked'] = False
 
     return best_path
+
 
 
 def is_sublist(sub, main):
