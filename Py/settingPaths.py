@@ -226,12 +226,12 @@ def compute_high_Knowledge_alternative_path(exits, risk_per_node, current_node, 
         if algo == 1:
             # Use centralityMeasuresAlgorithm to compute alternative paths based on node centrality.
             _, _, alternative_paths = centralityMeasuresAlgorithm(
-                G, current_node, exits, gamma
+                G, current_node, exits, gamma,
             )
         elif algo == 0:
             # Use compute_efficient_paths to compute alternative efficient paths.
             alternative_paths = compute_efficient_paths(
-                G, current_node, exits, gamma
+                G, current_node, exits, gamma, True
             )
 
         best_risk = float('inf')  # Initialize the best (lowest) risk value.

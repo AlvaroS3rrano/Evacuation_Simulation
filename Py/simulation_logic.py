@@ -28,7 +28,7 @@ def compute_current_nodes(simulation_config, agent_group, frame) -> dict:
         # Check if the agent exists in the simulation.
         if not any(agent.id == agent_id for agent in simulation.agents()):
             current_nodes[agent_id] = current_path[-1]
-            continue
+            break
 
         # Retrieve the agent and its current stage.
         agent = simulation.agent(agent_id)
