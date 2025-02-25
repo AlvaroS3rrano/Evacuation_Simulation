@@ -72,7 +72,7 @@ def select_best_alternative_path(alternative_paths, neighbors_sorted, min_risk_n
             - path (list): Designated path for the group.
             - current_node (str): Identifier of the current node.
             - algorithm (int): Identifier for the algorithm used (e.g., 0 for shortest path, 1 for centrality measures).
-            - knowledge_level (int): The knowledge level of the agents (0 or 1).
+            - awareness_level (int): The awareness level of the agents (0 or 1).
             - blocked_nodes (list, optional): List of nodes initially marked as blocked.
             - wait_until_node (str, optional): Node identifier where execution is paused until current_node matches it.
 
@@ -107,7 +107,7 @@ def select_best_alternative_path(alternative_paths, neighbors_sorted, min_risk_n
     handle_blocked_node_in_path(best_path, agent_group)
 
     return best_path
-def compute_low_Knowledge_alternative_path(exits, risk_per_node, next_node, current_node, agent_group, G, gamma, risk_threshold):
+def compute_low_awareness_alternative_path(exits, risk_per_node, next_node, current_node, agent_group, G, gamma, risk_threshold):
     """
     Computes an alternative path based on node risk values and the selected algorithm.
     If the risk of the next node is below the threshold, no update is needed and None is returned.
@@ -122,7 +122,7 @@ def compute_low_Knowledge_alternative_path(exits, risk_per_node, next_node, curr
             - path (list): Designated path for the group.
             - current_node (str): Identifier of the current node.
             - algorithm (int): Identifier for the algorithm used (e.g., 0 for shortest path, 1 for centrality measures).
-            - knowledge_level (int): The knowledge level of the agents (0 or 1).
+            - awareness_level (int): The awareness level of the agents (0 or 1).
             - blocked_nodes (list, optional): List of nodes initially marked as blocked.
             - wait_until_node (str, optional): Node identifier where execution is paused until current_node matches it.
         G: The graph representing the environment.
@@ -175,9 +175,9 @@ def compute_low_Knowledge_alternative_path(exits, risk_per_node, next_node, curr
         return select_best_alternative_path(alternative_paths, neighbors_sorted, min_risk_neighbors, agent_group)
 
 
-def compute_high_Knowledge_alternative_path(exits, risk_per_node, current_node, agent_group, G, gamma, risk_threshold):
+def compute_high_awareness_alternative_path(exits, risk_per_node, current_node, agent_group, G, gamma, risk_threshold):
     """
-    Computes an alternative path for a high-knowledge agent group when the current path contains nodes
+    Computes an alternative path for a high-awareness agent group when the current path contains nodes
     with risk values at or above a given threshold. It evaluates the risk of the current path and, if necessary,
     computes alternative paths using either centrality measures or efficient paths, selecting the path with
     the lowest total risk (excluding the first and last nodes).
@@ -253,19 +253,19 @@ def compute_high_Knowledge_alternative_path(exits, risk_per_node, current_node, 
 
 def compute_alternative_path(exits, agent_group, G, current_node=None, next_node=None, risk_per_node=None, risk_threshold=0.5, gamma=0.4):
     """
-    Computes an alternative evacuation path for the agent group based on its knowledge level and risk assessment.
+    Computes an alternative evacuation path for the agent group based on its awareness level and risk assessment.
 
     The function temporarily marks nodes specified in the agent group's `blocked_nodes` as blocked in the graph.
-    Depending on the group's knowledge level, it calls either the low-knowledge or high-knowledge alternative path
+    Depending on the group's awareness level, it calls either the low-awareness or high-awareness alternative path
     computation function using a fixed gamma value. Finally, it resets the blocked status of all nodes and returns
     the best path found.
 
     Parameters:
         exits: The list of exit nodes.
-        agent_group: The agent group object containing properties such as blocked_nodes, wait_until_node, and knowledge_level.
+        agent_group: The agent group object containing properties such as blocked_nodes, wait_until_node, and awareness_level.
         G (networkx.Graph or nx.DiGraph): The graph representing the environment.
         current_node: The current node where the agent group is located.
-        next_node: The next planned node (used in low-knowledge alternative path computation).
+        next_node: The next planned node (used in low-awareness alternative path computation).
         risk_per_node: The risk value associated with each node.
         risk_threshold (float): The risk threshold value to consider when computing the alternative path.
         gamma (float): A weighting parameter that influences the alternative path computation by controlling the
@@ -287,9 +287,9 @@ def compute_alternative_path(exits, agent_group, G, current_node=None, next_node
             if agent_group.current_node == agent_group.wait_until_node:
                 agent_group.wait_until_node = None
 
-            # Compute the alternative path based on the agent group's knowledge level.
-            if agent_group.knowledge_level == 0:
-                best_path = compute_low_Knowledge_alternative_path(
+            # Compute the alternative path based on the agent group's awareness level.
+            if agent_group.awareness_level == 0:
+                best_path = compute_low_awareness_alternative_path(
                     exits,
                     risk_per_node,
                     next_node,
@@ -299,8 +299,8 @@ def compute_alternative_path(exits, agent_group, G, current_node=None, next_node
                     gamma,
                     risk_threshold,
                 )
-            elif agent_group.knowledge_level == 1:
-                best_path = compute_high_Knowledge_alternative_path(
+            elif agent_group.awareness_level == 1:
+                best_path = compute_high_awareness_alternative_path(
                     exits,
                     risk_per_node,
                     current_node,
@@ -310,7 +310,7 @@ def compute_alternative_path(exits, agent_group, G, current_node=None, next_node
                     risk_threshold,
                 )
             else:
-                # For unexpected knowledge levels, no alternative path is computed.
+                # For unexpected awareness levels, no alternative path is computed.
                 best_path = None
         else:
             # If the wait condition is not satisfied, no alternative path is computed.
