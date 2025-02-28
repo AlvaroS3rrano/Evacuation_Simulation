@@ -2,6 +2,7 @@ import sqlite3
 import pandas as pd
 from typing import List
 import math
+from collections import defaultdict
 
 def create_agent_area_table(connection: sqlite3.Connection):
     """
@@ -101,6 +102,7 @@ def read_agent_area_data_by_frame(connection: sqlite3.Connection, frame: int) ->
     except Exception as e:
         raise RuntimeError(f"Error reading agent area data for frame {frame}: {e}")
 
+# not used
 def get_total_risk(connection: sqlite3.Connection) -> float:
     """
     Calculates the total risk level across all agents and frames in the simulation,
@@ -128,6 +130,65 @@ def get_total_risk(connection: sqlite3.Connection) -> float:
 
     except sqlite3.Error as e:
         raise RuntimeError(f"Error retrieving total risk: {e}")
+
+
+def calculate_average_agent_combined_risk(connection: sqlite3.Connection) -> float:
+    """
+    Calculates the combined risk for each agent in the simulation and returns the average of these risks.
+
+    In the 'agent_area_data' table, each row contains:
+        - frame: The simulation frame.
+        - agent_id: The identifier of the agent.
+        - area: The area where the agent is located.
+        - risk: The risk value (between 0 and 1) for that area/frame.
+
+    The combined risk for an agent is computed as:
+        combined_risk = 1 - ∏ (1 - risk)
+    across all rows (frames/areas) associated with that agent.
+
+    The function then returns the average combined risk across all agents, rounded up to one decimal place.
+
+    Args:
+        connection (sqlite3.Connection): An open SQLite database connection.
+
+    Returns:
+        float: The average combined risk across all agents, rounded up to one decimal place.
+
+    Raises:
+        RuntimeError: If there is an error retrieving the data.
+        ValueError: If any risk value is not between 0 and 1.
+    """
+    try:
+        query = "SELECT agent_id, risk FROM agent_area_data;"
+        cursor = connection.cursor()
+        cursor.execute(query)
+        rows = cursor.fetchall()
+
+        # Dictionary to accumulate the product of complements for each agent
+        agent_product = defaultdict(lambda: 1.0)
+
+        for agent_id, risk in rows:
+            if risk is None or not (0 <= risk <= 1):
+                raise ValueError(f"Invalid risk value: {risk}")
+            agent_product[agent_id] *= (1 - risk)
+
+        total_combined_risk = 0.0
+        count = 0
+
+        # Calculate combined risk per agent and accumulate the sum
+        for agent_id, product in agent_product.items():
+            combined_risk = 1 - product
+            total_combined_risk += combined_risk
+            count += 1
+
+        if count == 0:
+            return 0.0
+
+        average_risk = total_combined_risk / count
+        return math.ceil(average_risk * 10) / 10
+
+    except sqlite3.Error as e:
+        raise RuntimeError(f"Error retrieving agent risk data: {e}")
 
 def get_max_risk(connection: sqlite3.Connection) -> float:
     """

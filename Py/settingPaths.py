@@ -251,7 +251,9 @@ def compute_high_awareness_alternative_path(exits, risk_per_node, current_node, 
     # Return the alternative path with the lowest computed risk.
     return best_path
 
-def compute_alternative_path(exits, agent_group, G, current_node=None, next_node=None, risk_per_node=None, risk_threshold=0.5, gamma=0.4):
+
+def compute_alternative_path(exits, agent_group, G, current_node=None, next_node=None, risk_per_node=None,
+                             risk_threshold=0.5, gamma=0.4):
     """
     Computes an alternative evacuation path for the agent group based on its awareness level and risk assessment.
 
@@ -274,18 +276,18 @@ def compute_alternative_path(exits, agent_group, G, current_node=None, next_node
     Returns:
         best_path: The computed best alternative path as a list of nodes, or None if no alternative path is computed.
     """
-
     # Temporarily mark nodes in agent_group.blocked_nodes as blocked in the graph G.
     for node in agent_group.blocked_nodes:
         G.nodes[node]['blocked'] = True
 
     best_path = None
     try:
-        # Check if there is no wait condition or if the wait condition is satisfied.
-        if agent_group.wait_until_node is None or agent_group.current_node == agent_group.wait_until_node:
-            # If the current node matches wait_until_node, reset wait_until_node to None.
-            if agent_group.current_node == agent_group.wait_until_node:
-                agent_group.wait_until_node = None
+        # Use a local variable for clarity.
+        wait_node = agent_group.wait_until_node
+
+        # If there is no wait condition, or if any agent is at the wait node, clear the condition.
+        if wait_node is None or (agent_group.current_nodes and wait_node in agent_group.current_nodes.values()):
+            agent_group.wait_until_node = None
 
             # Compute the alternative path based on the agent group's awareness level.
             if agent_group.awareness_level == 0:
@@ -310,18 +312,15 @@ def compute_alternative_path(exits, agent_group, G, current_node=None, next_node
                     risk_threshold,
                 )
             else:
-                # For unexpected awareness levels, no alternative path is computed.
                 best_path = None
         else:
-            # If the wait condition is not satisfied, no alternative path is computed.
             best_path = None
     finally:
-        # Unblock all nodes in the graph regardless of the outcome.
-        for node in G.nodes():
+        # Unblock all blocked nodes in the graph regardless of the outcome.
+        for node in agent_group.blocked_nodes:
             G.nodes[node]['blocked'] = False
 
     return best_path
-
 
 
 def is_sublist(sub, main):
