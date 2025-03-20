@@ -217,9 +217,8 @@ def compute_high_awareness_alternative_path(exits, risk_per_node, current_node, 
 
     # If a dangerous node is found in the current path, attempt to compute an alternative path.
     if dangerous_path:
-        if current_path is not None:
-            # Update the graph with the current risk values for each node.
-            update_graph_risks(G, risk_per_node)
+        # Update the graph with the current risk values for each node.
+        update_graph_risks(G, risk_per_node)
 
 
         # Depending on the algorithm specified in the agent group, compute alternative paths.

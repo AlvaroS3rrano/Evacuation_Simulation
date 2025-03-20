@@ -371,7 +371,7 @@ def generate_risk_colors(risk_threshold=0.5):
     """
     colors = []
     # Define constant blue for the low risk gradient.
-    blue = (0, 0, 255)
+    firt_color = (255, 192, 203); # pink
     # Define the start (light purple) and end (dark purple) colors for the high risk gradient.
     light_purple = (221, 160, 221)
     dark_purple = (128, 0, 128)
@@ -382,7 +382,7 @@ def generate_risk_colors(risk_threshold=0.5):
             # For low risk: compute the alpha (transparency) value from 0 (transparent) to 1 (opaque)
             fraction = normalized_risk / risk_threshold if risk_threshold != 0 else 0
             alpha = fraction  # Alpha increases as risk approaches the threshold.
-            color = f"rgba({blue[0]}, {blue[1]}, {blue[2]}, {alpha:.2f})"
+            color = f"rgba({firt_color[0]}, {firt_color[1]}, {firt_color[2]}, {alpha:.2f})"
         else:
             # For high risk: compute a gradient from light purple to dark purple.
             fraction = (normalized_risk - risk_threshold) / (1 - risk_threshold) if risk_threshold != 1 else 0
