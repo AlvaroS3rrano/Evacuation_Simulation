@@ -9,10 +9,12 @@ class SimulationConfig:
         waypoints_ids (dict): A dictionary mapping graph node IDs to simulation waypoint IDs.
         exit_ids (dict): A dictionary mapping exit names to node identifiers, representing points where the simulation might terminate or transition.
         gamma (float): A weighting parameter influencing the alternative path computation by controlling the trade-off between risk minimization and path optimality.
+        normal_max_speed (float): The maximum speed allowed under normal conditions.
+        stairs_max_speed (float): The maximum speed allowed when using stairs.
     """
 
     def __init__(self, simulation=None, every_nth_frame_simulation=4, every_nth_frame_animation=50,
-                 waypoints_ids=None, exit_ids=None, gamma=0.4):
+                 waypoints_ids=None, exit_ids=None, gamma=0.4, normal_max_speed=1.0, stairs_max_speed=0.5):
         """
         Initializes the SimulationConfig with provided or default values.
 
@@ -23,6 +25,8 @@ class SimulationConfig:
             waypoints_ids (dict): A dictionary mapping node IDs to simulation waypoint IDs. Default is an empty dictionary.
             exit_ids (dict): A dictionary of exit IDs mapping exit names to node identifiers. Default is an empty dictionary.
             gamma (float): A weighting parameter for alternative path computation. Default is 0.4.
+            normal_max_speed (float): The maximum speed under normal conditions. Default is 1.0.
+            stairs_max_speed (float): The maximum speed when using stairs. Default is 0.5.
         """
         self.simulation = simulation
         self.every_nth_frame_simulation = every_nth_frame_simulation
@@ -30,6 +34,8 @@ class SimulationConfig:
         self.waypoints_ids = waypoints_ids if waypoints_ids is not None else {}
         self.exit_ids = exit_ids if exit_ids is not None else {}
         self.gamma = gamma
+        self.normal_max_speed = normal_max_speed
+        self.stairs_max_speed = stairs_max_speed
 
     def get_exit_ids_keys(self):
         """
@@ -49,7 +55,9 @@ class SimulationConfig:
                 f"every_nth_frame_animation={self.every_nth_frame_animation}, "
                 f"waypoints_ids={self.waypoints_ids}, "
                 f"exit_ids={self.exit_ids}, "
-                f"gamma={self.gamma})")
+                f"gamma={self.gamma}, "
+                f"normal_max_speed={self.normal_max_speed}, "
+                f"stairs_max_speed={self.stairs_max_speed})")
 
 
 # Example usage:
@@ -63,6 +71,8 @@ if __name__ == "__main__":
     config = SimulationConfig(simulation="MySimulation", every_nth_frame_simulation=5,
                               waypoints_ids={"A": 101, "B": 102},
                               exit_ids=example_exit_ids,
-                              gamma=0.2)
+                              gamma=0.2,
+                              normal_max_speed=1.2,
+                              stairs_max_speed=0.7)
     print(config)
     print("Exit IDs keys:", config.get_exit_ids_keys())

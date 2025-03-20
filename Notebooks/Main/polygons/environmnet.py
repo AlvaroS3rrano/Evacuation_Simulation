@@ -253,7 +253,11 @@ def get_comparing_algorithms_pol():
 
     # Add nodes to the graph with their attributes
     for node, risk in nodes.items():
-        G.add_node(node, risk=risk, blocked=False)
+        G.add_node(node, risk=risk, blocked=False, is_stairs=False)
+
+    G.nodes["2R"]["is_stairs"] = True
+    G.nodes["2S"]["is_stairs"] = True
+    G.nodes["2Q"]["is_stairs"] = True
 
     # Define edges between nodes (directed connections)
     # Each tuple represents an edge: (from_node, to_node)
@@ -494,7 +498,7 @@ def get_simple_3x3():
 
     # Agregar nodos al grafo
     for node, risk in nodes.items():
-        G.add_node(node, risk=risk)
+        G.add_node(node, risk=risk, blocked=False, is_stairs=False)
 
     # Definir las conexiones entre nodos
     edges = [

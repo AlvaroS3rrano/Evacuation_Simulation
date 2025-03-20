@@ -15,7 +15,7 @@ class AgentGroup:
         blocked_nodes (list): List of nodes that are currently blocked.
     """
 
-    def __init__(self, agents, path, current_nodes, algorithm, awareness_level, *, blocked_nodes=None, wait_until_node=None):
+    def __init__(self, agents, path, current_nodes, algorithm, awareness_level, *, blocked_nodes=None, wait_until_node=None, areInStairs=[]):
         """
         Initializes an AgentGroup instance.
 
@@ -37,6 +37,7 @@ class AgentGroup:
         self.awareness_level = awareness_level        # Awareness level (0 or 1).
         self.blocked_nodes = blocked_nodes if blocked_nodes is not None else []
         self.wait_until_node = wait_until_node        # Node at which to continue looking for new paths
+        self.areInStairs = areInStairs                # List of agents IDs that are in a stairs node
 
     def __repr__(self):
         """
