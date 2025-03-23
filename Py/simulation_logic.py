@@ -89,10 +89,9 @@ def update_agent_speed_on_stairs(G, simulation_config, agent_group):
     simulation = simulation_config.simulation
 
     for agent_id in agent_group.agents:
-        # Retrieve the agent object
         if not any(agent.id == agent_id for agent in simulation.agents()):
             continue
-
+        # Retrieve the agent object
         agent = simulation.agent(agent_id)
         # Get the current node for the agent from the group
         current_node = agent_group.current_nodes.get(agent_id)
@@ -109,3 +108,32 @@ def update_agent_speed_on_stairs(G, simulation_config, agent_group):
         else:
             # If the current node is undefined, default to normal speed
             agent.model.v0 = simulation_config.normal_max_speed
+
+
+def transform_position(old_pos, old_area, new_area):
+    """
+    Transforms the position of an agent from the original area to the equivalent position in a new area.
+
+    Assumes that the new area is the same size and shape as the original area.
+
+    Args:
+        old_pos (tuple): The (x, y) position of the agent in the original area.
+        old_area (Polygon): The original area (as a shapely Polygon).
+        new_area (Polygon): The new area (as a shapely Polygon) where the agent will be transported.
+
+    Returns:
+        tuple: The (x, y) position in the new area equivalent to old_pos.
+    """
+    # Get the bounding boxes for both areas: (minx, miny, maxx, maxy)
+    old_minx, old_miny, old_maxx, old_maxy = old_area.bounds
+    new_minx, new_miny, new_maxx, new_maxy = new_area.bounds
+
+    # Calculate the relative position within the original area.
+    rel_x = (old_pos[0] - old_minx) / (old_maxx - old_minx)
+    rel_y = (old_pos[1] - old_miny) / (old_maxy - old_miny)
+
+    # Map the relative position to the new area.
+    new_x = new_minx + rel_x * (new_maxx - new_minx)
+    new_y = new_miny + rel_y * (new_maxy - new_miny)
+
+    return (new_x, new_y)
