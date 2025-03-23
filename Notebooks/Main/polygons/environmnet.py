@@ -1,47 +1,20 @@
 from shapely.geometry import Polygon
-import shapely  # Used for union_all and difference
-import pedpy  # Ensure this module is installed
 import networkx as nx
+from .floor import Floor
 
 class Environment:
     """
-    Class that encapsulates various sets of polygons and associated structures.
+    Represents the overall environment (e.g., a building) that contains multiple floors and an associated graph.
 
     Attributes:
-        complete_area: Polygon defining the complete area.
-        obstacles: List of Polygons representing obstacles.
-        exit_polygons: Dictionary with exit polygons.
-        waypoints: Dictionary with waypoints.
-        distribution_polygons: Dictionary with distribution polygons.
-        G: Some structure, e.g., a graph.
-        sources: List or structure of source nodes.
-        targets: List or structure of target nodes.
-        specific_areas: Dictionary of specific areas.
-
-    Additionally, if complete_area and obstacles are provided, the following are computed:
-        obstacle: Union of all obstacles.
-        walkable_area: Walkable area resulting from subtracting obstacle from complete_area,
-                       wrapped in pedpy.WalkableArea.
+        floors: Dictionary of Floor objects, keyed by their unique identifier
+        graph: Graph (e.g., using networkx) that can connect the floors.
     """
 
-    def __init__(self, name, complete_area, obstacles, exit_polygons, waypoints,
-                 distribution_polygons, G, sources, targets, specific_areas):
+    def __init__(self, name, floors, graph):
         self.name = name
-        self.complete_area = complete_area
-        self.obstacles = obstacles
-        self.exit_polygons = exit_polygons
-        self.waypoints = waypoints
-        self.distribution_polygons = distribution_polygons
-        self.G = G
-        self.sources = sources
-        self.targets = targets
-        self.specific_areas = specific_areas
-
-        # Compute derived attributes
-        self.obstacle = shapely.union_all(self.obstacles)
-        self.walkable_area = pedpy.WalkableArea(
-            shapely.difference(self.complete_area, self.obstacle)
-        )
+        self.floors = floors  # List of Floor objects
+        self.graph = graph
 
 def remove_obstacles_from_areas(specific_areas, obstacles):
     """
@@ -62,8 +35,6 @@ def remove_obstacles_from_areas(specific_areas, obstacles):
         for obstacle in obstacles:
             if cleaned_area.intersects(obstacle):  # Only process if they overlap
                 cleaned_area = cleaned_area.difference(obstacle)
-
-        # Store the cleaned area in the dictionary
         cleaned_areas[name] = cleaned_area
 
     return cleaned_areas
@@ -73,37 +44,28 @@ def get_comparing_algorithms_pol():
     sources = ["C", "F"]  # Starting node for pathfinding
     targets = ["EA", "EB", "EC", "ED"]  # Target nodes for pathfinding
 
-    complete_area = Polygon(
-        [
-            (0, -1),
-            (0, 17),
-            (32, 17),
-            (32, -1),
-        ]
-    )
+    complete_area = Polygon([(0, -1), (0, 17), (32, 17), (32, -1)])
+
     obstacles = [
-        # bottom
         Polygon([(0, -1), (14, -1), (14, 1), (0, 1)]),
         Polygon([(16, -1), (32, -1), (32, 1), (16, 1)]),
-
-        # top
         Polygon([(0, 15), (14, 15), (14, 17), (0, 17)]),
         Polygon([(16, 15), (32, 15), (32, 17), (16, 17)]),
-
         Polygon([(2, 3), (14, 3), (14, 7), (2, 7)]),
         Polygon([(16, 3), (28, 3), (28, 7), (16, 7)]),
         Polygon([(2, 9), (14, 9), (14, 13), (2, 13)]),
         Polygon([(16, 9), (28, 9), (28, 13), (16, 13)]),
-
         Polygon([(30, 1), (32, 1), (32, 3), (30, 3)]),
         Polygon([(30, 5), (32, 5), (32, 11), (30, 11)]),
         Polygon([(30, 13), (32, 13), (32, 17), (30, 17)]),
     ]
 
-    exit_polygons = {'EA': [(14, 1), (14, -1), (16, -1), (16, 1)],
-                     'EB': [(14, 15), (14, 17), (16, 17), (16, 15)],
-                     'EC': [(30, 3), (32, 3), (32, 5), (30, 5)],
-                     'ED': [(30, 11), (32, 11), (32, 13), (30, 13)]}
+    exit_polygons = {
+        'EA': [(14, 1), (14, -1), (16, -1), (16, 1)],
+        'EB': [(14, 15), (14, 17), (16, 17), (16, 15)],
+        'EC': [(30, 3), (32, 3), (32, 5), (30, 5)],
+        'ED': [(30, 11), (32, 11), (32, 13), (30, 13)]
+    }
 
     waypoints = {
         # left (8)
@@ -428,28 +390,26 @@ def get_comparing_algorithms_pol():
     for key, value in exit_polygons.items():
         specific_areas[key] = Polygon(value)
 
-    return Environment(
-        name="comparing_algorithms",
+    floor = Floor(
+        name="First floor",
         complete_area=complete_area,
         obstacles=obstacles,
         exit_polygons=exit_polygons,
         waypoints=waypoints,
         distribution_polygons=distribution_polygons,
-        G=G,
         sources=sources,
         targets=targets,
         specific_areas=specific_areas
     )
+    floors_dict = {0: floor}
+    return Environment(
+        name="comparing_algorithms",
+        floors=floors_dict,
+        graph=G
+    )
 
 def get_simple_3x3():
-    complete_area = Polygon(
-        [
-            (0, 0),
-            (0, 15),
-            (15, 15),
-            (15, 0),
-        ]
-    )
+    complete_area = Polygon([(0, 0), (0, 15), (15, 15), (15, 0)])
     obstacles = [
         # bottom
         Polygon([(4.9, 0.0), (4.9, 1.5), (5.1, 1.5), (5.1, 0.0)]),
@@ -481,8 +441,16 @@ def get_simple_3x3():
     ]
     exit_polygons = {'I': [(12.5, 12.5), (15, 12.5), (15, 15), (12.5, 15)]}
 
-    waypoints = {'A': ([2.5, 2.5], 1.5), 'B': ([7.5, 2.5], 1.5), 'C': ([12.5, 2.5], 1.5), 'D': ([12.5, 7.5], 1.5), 'E': ([7.5, 7.5], 1.5),
-                 'F': ([2.5, 7.5], 1.5), 'G': ([2.5, 12.5], 1.5), 'H': ([7.5, 12.5], 1.5)}
+    waypoints = {
+        'A': ([2.5, 2.5], 1.5),
+        'B': ([7.5, 2.5], 1.5),
+        'C': ([12.5, 2.5], 1.5),
+        'D': ([12.5, 7.5], 1.5),
+        'E': ([7.5, 7.5], 1.5),
+        'F': ([2.5, 7.5], 1.5),
+        'G': ([2.5, 12.5], 1.5),
+        'H': ([7.5, 12.5], 1.5)
+    }
 
     distribution_polygons = {'A': Polygon([[0, 0], [5, 0], [5, 5], [0, 5]])}
 
@@ -516,29 +484,35 @@ def get_simple_3x3():
     sources = "A"  # Source nodes
     targets = ["I"]  # Target nodes
 
-    specific_areas = dict()
-    specific_areas['A'] = Polygon([(0, 0), (5, 0), (5, 5), (0, 5)])
-    specific_areas['B'] = Polygon([(5, 0), (10, 0), (10, 5), (5, 5)])
-    specific_areas['C'] = Polygon([(10, 0), (15, 0), (15, 5), (10, 5)])
-    specific_areas['D'] = Polygon([(10, 5), (15, 5), (15, 10), (10, 10)])
-    specific_areas['E'] = Polygon([(5, 5), (10, 5), (10, 10), (5, 10)])
-    specific_areas['F'] = Polygon([(0, 5), (5, 5), (5, 10), (0, 10)])
-    specific_areas['G'] = Polygon([(0, 10), (5, 10), (5, 15), (0, 15)])
-    specific_areas['H'] = Polygon([(5, 10), (10, 10), (10, 15), (5, 15)])
-    specific_areas['I'] = Polygon([(10, 10), (15, 10), (15, 15), (10, 15)])
+    specific_areas = {
+        'A': Polygon([(0, 0), (5, 0), (5, 5), (0, 5)]),
+        'B': Polygon([(5, 0), (10, 0), (10, 5), (5, 5)]),
+        'C': Polygon([(10, 0), (15, 0), (15, 5), (10, 5)]),
+        'D': Polygon([(10, 5), (15, 5), (15, 10), (10, 10)]),
+        'E': Polygon([(5, 5), (10, 5), (10, 10), (5, 10)]),
+        'F': Polygon([(0, 5), (5, 5), (5, 10), (0, 10)]),
+        'G': Polygon([(0, 10), (5, 10), (5, 15), (0, 15)]),
+        'H': Polygon([(5, 10), (10, 10), (10, 15), (5, 15)]),
+        'I': Polygon([(10, 10), (15, 10), (15, 15), (10, 15)]),
+    }
 
     # so that the walls are properly shown
     specific_areas = remove_obstacles_from_areas(specific_areas, obstacles)
 
-    return Environment(
-        name="simple_3x3",
+    floor = Floor(
+        name="First floor",
         complete_area=complete_area,
         obstacles=obstacles,
         exit_polygons=exit_polygons,
         waypoints=waypoints,
         distribution_polygons=distribution_polygons,
-        G=G,
-        sources=sources,
-        targets=targets,
+        sources=["A"],
+        targets=["I"],
         specific_areas=specific_areas
+    )
+    floors_dict = {0: floor}
+    return Environment(
+        name="simple_3x3",
+        floors=floors_dict,
+        graph=G
     )
