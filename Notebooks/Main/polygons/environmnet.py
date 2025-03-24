@@ -468,6 +468,8 @@ def get_simple_3x3():
     for node, risk in nodes.items():
         G.add_node(node, risk=risk, blocked=False, is_stairs=False)
 
+    G.nodes["I"]["is_stairs"] = True
+
     # Definir las conexiones entre nodos
     edges = [
         ("A", "B"), ("A", "F"), ("B", "A"), ("B", "E"), ("B", "C"),

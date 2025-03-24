@@ -1,4 +1,5 @@
 import jupedsim as jps
+from jupedsim.internal.notebook_utils import read_sqlite_file
 
 from Py.pathFinding.settingPaths import *
 from Py.journey_configuration import set_journeys
@@ -227,3 +228,44 @@ def set_agents_in_simulation(simulation, positions, journey_id, first_waypoint_i
             )
         )
     return agents
+
+def get_stairs_agents(prev_floor_key, mode, floor_simulation_data, G):
+    """
+    Check the simulation on the previous floor (higher floor) for agents
+    that ended at a node with is_stairs == True.
+
+    Parameters:
+        prev_floor_key (numeric): The key of the previous (higher) floor.
+        mode (str): The simulation mode to use for reading trajectory data.
+        floor_simulation_data (dict): Global dictionary containing simulation data for each floor.
+        G (networkx.Graph): Graph that includes nodes with attribute is_stairs.
+
+    Returns:
+        dict: Dictionary mapping agent IDs to a dictionary with 'position' and 'frame'
+              where the agent reached stairs.
+    """
+    stairs_agents = {}
+
+    prev_trajectory_file = floor_simulation_data[prev_floor_key]["trajectory_files"][mode]
+    trajectory_data, _ = read_sqlite_file(prev_trajectory_file)
+    df = trajectory_data.data
+
+    # Get the last frame for each agent.
+    last_frames = df.loc[df.groupby("id")["frame"].idxmax()].reset_index(drop=True)
+
+    prev_agent_groups = floor_simulation_data[prev_floor_key]["agent_groups_per_mode"][mode]
+
+    for source, agent_group in prev_agent_groups.items():
+        last_node = agent_group.path[-1]
+        if G.nodes[last_node].get("is_stairs", False):
+            for agent in agent_group.agents:
+                agent_frame_row = last_frames[last_frames["id"] == agent]
+                if not agent_frame_row.empty:
+                    pos = (agent_frame_row.iloc[0]["x"], agent_frame_row.iloc[0]["y"])
+                    frame_reached = agent_frame_row.iloc[0]["frame"]
+                    stairs_agents[agent] = {
+                        "position": pos,
+                        "frame": frame_reached
+                    }
+                    # print(f"Agent {agent} reached stairs at node '{last_node}' on frame {frame_reached} with position {pos}")
+    return stairs_agents
