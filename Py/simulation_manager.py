@@ -7,6 +7,7 @@ from Py.database.agent_area_db_manager import *
 from Py.simulation_logic import compute_current_nodes, update_agent_speed_on_stairs
 from Py.database.danger_sim_db_manager import *
 from Py.dangerSimulation.risk_simulation import update_risk
+from Notebooks.Main.polygons.environmnet import get_floor_segment
 def update_group_paths(simulation_config, risk_per_node, agent_group, G, risk_threshold=0.5):
     """
     Updates the group's path based on the current status of each agent using the provided current_nodes mapping.
@@ -97,6 +98,9 @@ def update_group_paths(simulation_config, risk_per_node, agent_group, G, risk_th
 
         # If a valid alternative path is found and it is different from the current path...
         if best_path is not None and not is_sublist(best_path, current_path):
+            agent_group.path = best_path
+            if agent_group.awareness_level == 1:
+                best_path = get_floor_segment(best_path, simulation_config.environment, agent_group.current_floor)
             journeys_ids = set_journeys(
                 simulation, current_node,
                 [best_path],
@@ -111,7 +115,7 @@ def update_group_paths(simulation_config, risk_per_node, agent_group, G, risk_th
             for agent_id in agents_ids:
                 simulation.switch_agent_journey(agent_id, new_journey_id, next_stage_id)
 
-            agent_group.path = best_path
+            agent_group.floor_path = best_path
 
             # Return the updated agent group with the new path.
             return agent_group
@@ -146,26 +150,30 @@ def simulate_risk(riskSimulationValues, every_nth_frame, G, exits, connection):
             for exit_node in exits:
                 if exit_node in G.nodes:
                     G.nodes[exit_node]["risk"] = 0
-            # Save the initial risk levels of all nodes before any updates
+            # Save the initial risk levels and floor for all nodes before any updates
             try:
-                write_risk_levels(connection, 0, {node: G.nodes[node]["risk"] for node in G.nodes})
+                write_risk_levels(connection, 0, {node: {"risk": G.nodes[node]["risk"],
+                                                         "floor": G.nodes[node]["floor"]}
+                                                  for node in G.nodes})
             except Exception as e:
                 print(f"Error writing initial risks: {e}")
             continue
 
-        # directly use the iteration as frames
+        # Update risk only every nth frame
         if frame % every_nth_frame == 0:
             try:
                 # Update risks in the graph based on propagation and increase chances
-                update_risk(G,riskSimulationValues.increase_chance, riskSimulationValues.danger_threshold)
+                update_risk(G, riskSimulationValues.increase_chance, riskSimulationValues.danger_threshold)
 
                 # Ensure that exit nodes retain a risk of 0 after the update
                 for exit_node in exits:
                     if exit_node in G.nodes:
                         G.nodes[exit_node]["risk"] = 0
 
-                # Save the updated risk levels for the current frame
-                write_risk_levels(connection, frame, {node: G.nodes[node]["risk"] for node in G.nodes})
+                # Save the updated risk levels and floor for the current frame
+                write_risk_levels(connection, frame, {node: {"risk": G.nodes[node]["risk"],
+                                                             "floor": G.nodes[node]["floor"]}
+                                                      for node in G.nodes})
             except Exception as e:
                 print(f"Error updating risks at frame {frame}: {e}")
 
@@ -188,6 +196,9 @@ def run_agent_simulation(simulation_config, agent_groups, G, connection, agent_a
 
         every_nth_frame_simulation = simulation_config.every_nth_frame_simulation
         every_nth_frame_animation = simulation_config.every_nth_frame_animation
+
+        if iteration == 1:
+            print("hola")
 
         if iteration % every_nth_frame_simulation == 0:
             frame = iteration / every_nth_frame_simulation

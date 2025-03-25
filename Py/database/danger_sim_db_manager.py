@@ -20,6 +20,7 @@ def create_risk_table(connection: sqlite3.Connection):
                     frame INTEGER NOT NULL,
                     area TEXT NOT NULL,
                     risk_level REAL NOT NULL,
+                    floor INTEGER NOT NULL,
                     PRIMARY KEY (frame, area)
                 )
                 """
@@ -42,9 +43,12 @@ def write_risk_levels(connection: sqlite3.Connection, frame: int, risks: dict):
     """
     try:
         with connection:
-            risk_data = [(frame, area, risk) for area, risk in risks.items()]
+            risk_data = [
+                (frame, area, value["risk"], value["floor"])
+                for area, value in risks.items()
+            ]
             connection.executemany(
-                "INSERT OR REPLACE INTO risk_data (frame, area, risk_level) VALUES (?, ?, ?)",
+                "INSERT OR REPLACE INTO risk_data (frame, area, risk_level, floor) VALUES (?, ?, ?, ?)",
                 risk_data,
             )
     except sqlite3.Error as e:
@@ -94,31 +98,43 @@ def get_risk_levels_by_frame(connection: sqlite3.Connection, frame: int) -> dict
         raise RuntimeError(f"Error retrieving risk levels for frame {frame}: {e}")
 
 
-def get_risks_grouped_by_frame(connection: sqlite3.Connection) -> dict:
+def get_risks_grouped_by_frame_and_floor(connection: sqlite3.Connection) -> dict:
     """
-    Retrieves a nested dictionary where each frame maps to a dictionary of areas and risk levels.
+    Retrieves a nested dictionary where each floor maps to a dictionary where each frame maps to
+    a dictionary of areas and risk levels.
+
+    The returned dictionary has the following structure:
+        {
+            floor: {
+                frame: { area: risk_level, ... },
+                ...
+            },
+            ...
+        }
 
     Args:
         connection (sqlite3.Connection): Open SQLite database connection.
 
     Returns:
-        dict: {frame: {area: risk_level, ...}, ...}
+        dict: Nested dictionary with risk data grouped by floor and frame.
 
     Raises:
         RuntimeError: If there is an error fetching data.
     """
     try:
-        query = "SELECT frame, area, risk_level FROM risk_data ORDER BY frame, area"
+        # Ensure we select the floor column along with frame, area, and risk_level.
+        query = "SELECT frame, area, risk_level, floor FROM risk_data ORDER BY floor, frame, area"
         cursor = connection.cursor()
         cursor.execute(query)
         results = cursor.fetchall()
 
-        # Grouping results into a nested dictionary
-        risks_per_frame = defaultdict(dict)
-        for frame, area, risk_level in results:
-            risks_per_frame[frame][area] = risk_level  # Nesting areas inside each frame
+        # Group the results into a nested dictionary: floor -> frame -> {area: risk_level}
+        risks_per_floor = defaultdict(lambda: defaultdict(dict))
+        for frame, area, risk_level, floor in results:
+            risks_per_floor[floor][frame][area] = risk_level
 
-        return dict(risks_per_frame)  # Convert defaultdict to a normal dict
+        # Convert nested defaultdicts to regular dicts before returning.
+        return {floor: dict(frames) for floor, frames in risks_per_floor.items()}
     except sqlite3.Error as e:
         raise RuntimeError(f"Error retrieving grouped risk data: {e}")
 

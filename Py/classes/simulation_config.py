@@ -13,7 +13,7 @@ class SimulationConfig:
         stairs_max_speed (float): The maximum speed allowed when using stairs.
     """
 
-    def __init__(self, simulation=None, every_nth_frame_simulation=4, every_nth_frame_animation=50,
+    def __init__(self, simulation=None, environment=None, every_nth_frame_simulation=4, every_nth_frame_animation=50,
                  waypoints_ids=None, exit_ids=None, gamma=0.4, normal_max_speed=1.0, stairs_max_speed=0.5):
         """
         Initializes the SimulationConfig with provided or default values.
@@ -29,6 +29,7 @@ class SimulationConfig:
             stairs_max_speed (float): The maximum speed when using stairs. Default is 0.5.
         """
         self.simulation = simulation
+        self.environment = environment
         self.every_nth_frame_simulation = every_nth_frame_simulation
         self.every_nth_frame_animation = every_nth_frame_animation
         self.waypoints_ids = waypoints_ids if waypoints_ids is not None else {}

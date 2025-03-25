@@ -16,6 +16,60 @@ class Environment:
         self.floors = floors  # List of Floor objects
         self.graph = graph
 
+def create_global_graph(floors):
+    global_graph = nx.DiGraph()
+    mapping = {}  # Guarda el mapeo: piso -> lista de nuevos nodos
+    for floor in floors.values():
+        # # Rename nodes by adding the floor name as a prefix (acting as an offset)
+        # relabeled = nx.relabel_nodes(floor.graph, lambda n: f"{floor.name}_{n}")
+        # # Combine graphs using disjoint_union to avoid identifier conflicts
+        # global_graph = nx.disjoint_union(global_graph, relabeled)
+        # mapping[floor.name] = list(relabeled.nodes)
+        global_graph = nx.compose(global_graph, floor.graph)
+        mapping[floor.name] = list(floor.graph.nodes)
+    return global_graph
+
+def get_floor_segment(path, env):
+    """
+    Given a path from the global graph, returns the contiguous segment of the path
+    that belongs to the floor of the starting node.
+
+    Parameters:
+        path (list): A list of node names representing the path in the global graph.
+        env (Environment): An Environment object that has a 'floors' attribute, a dictionary
+                           where each value is a Floor object containing its own graph.
+
+    Returns:
+        list: The sublist of the path that belongs to the same floor as the starting node.
+
+    Raises:
+        ValueError: If the starting node is not found in any floor.
+    """
+    if not path:
+        return []
+
+    first_node = path[0]
+    starting_floor = None
+
+    # Find the floor that contains the starting node.
+    for floor in env.floors.values():
+        if first_node in floor.graph:
+            starting_floor = floor
+            break
+
+    if starting_floor is None:
+        raise ValueError("The starting node was not found in any floor graph.")
+
+    # Build the segment containing nodes only from the starting floor.
+    segment = []
+    for node in path:
+        if node in starting_floor.graph:
+            segment.append(node)
+        else:
+            break
+
+    return segment
+
 def remove_obstacles_from_areas(specific_areas, obstacles):
     """
     Removes obstacles from specific areas by subtracting overlapping polygons.
@@ -215,7 +269,7 @@ def get_comparing_algorithms_pol():
 
     # Add nodes to the graph with their attributes
     for node, risk in nodes.items():
-        G.add_node(node, risk=risk, blocked=False, is_stairs=False)
+        G.add_node(node, risk=risk, blocked=False, is_stairs=False, floor=0)
 
     G.nodes["2R"]["is_stairs"] = True
     G.nodes["2S"]["is_stairs"] = True
@@ -392,6 +446,7 @@ def get_comparing_algorithms_pol():
 
     floor = Floor(
         name="First floor",
+        graph=G,
         complete_area=complete_area,
         obstacles=obstacles,
         exit_polygons=exit_polygons,
@@ -405,7 +460,7 @@ def get_comparing_algorithms_pol():
     return Environment(
         name="comparing_algorithms",
         floors=floors_dict,
-        graph=G
+        graph=create_global_graph(floors_dict)
     )
 
 def get_simple_3x3():
@@ -466,7 +521,7 @@ def get_simple_3x3():
 
     # Agregar nodos al grafo
     for node, risk in nodes.items():
-        G.add_node(node, risk=risk, blocked=False, is_stairs=False)
+        G.add_node(node, risk=risk, blocked=False, is_stairs=False, floor=0)
 
     G.nodes["I"]["is_stairs"] = True
 
@@ -481,10 +536,6 @@ def get_simple_3x3():
 
     # Agregar las aristas con un costo fijo (se puede ajustar)
     G.add_edges_from([(u, v, {"cost": 3}) for u, v in edges])
-
-    # Parameters for calculation
-    sources = "A"  # Source nodes
-    targets = ["I"]  # Target nodes
 
     specific_areas = {
         'A': Polygon([(0, 0), (5, 0), (5, 5), (0, 5)]),
@@ -503,6 +554,7 @@ def get_simple_3x3():
 
     floor = Floor(
         name="First floor",
+        graph=G,
         complete_area=complete_area,
         obstacles=obstacles,
         exit_polygons=exit_polygons,
@@ -516,5 +568,158 @@ def get_simple_3x3():
     return Environment(
         name="simple_3x3",
         floors=floors_dict,
-        graph=G
+        graph=create_global_graph(floors_dict)
+    )
+
+def get_multi_floor_3x3():
+    complete_area = Polygon([(0, 0), (0, 15), (15, 15), (15, 0)])
+    obstacles = [
+        # bottom
+        Polygon([(4.9, 0.0), (4.9, 1.5), (5.1, 1.5), (5.1, 0.0)]),
+        Polygon([(9.9, 0.0), (9.9, 1.5), (10.1, 1.5), (10.1, 0.0)]),
+        # right
+        Polygon([(13.6, 4.9), (15, 4.9), (15, 5.1), (13.6, 5.1)]),
+        Polygon([(13.6, 9.9), (15, 9.9), (15, 10.1), (13.6, 10.1)]),
+        # top
+        Polygon([(4.9, 15), (4.9, 13.6), (5.1, 13.6), (5.1, 15)]),
+        Polygon([(9.9, 15), (9.9, 13.6), (10.1, 13.6), (10.1, 15)]),
+        # left
+        Polygon([(1.5, 4.9), (0, 4.9), (0, 5.1), (1.5, 5.1)]),
+        Polygon([(1.5, 9.9), (0, 9.9), (0, 10.1), (1.5, 10.1)]),
+        # center
+        ## bottom left
+        Polygon(
+            [(3.6, 4.9), (4.9, 4.9), (4.9, 3.6), (5.1, 3.6), (5.1, 4.9), (6.4, 4.9), (6.4, 5.1), (5.1, 5.1), (5.1, 6.5),
+             (4.9, 6.5), (4.9, 5.1), (3.6, 5.1)]),
+        ## bottom right
+        Polygon([(8.6, 4.9), (9.9, 4.9), (9.9, 3.6), (10.1, 3.6), (10.1, 4.9), (11.5, 4.9), (11.5, 5.1), (10.1, 5.1),
+                 (10.1, 6.5), (9.9, 6.5), (9.9, 5.1), (8.6, 5.1)]),
+        ## top left
+        Polygon([(3.6, 9.9), (4.9, 9.9), (4.9, 8.6), (5.1, 8.6), (5.1, 9.9), (6.4, 9.9), (6.4, 10.1), (5.1, 10.1),
+                 (5.1, 11.5), (4.9, 11.5), (4.9, 10.1), (3.6, 10.1)]),
+        ## top right
+        Polygon([(8.6, 9.9), (9.9, 9.9), (9.9, 8.6), (10.1, 8.6), (10.1, 9.9), (11.5, 9.9), (11.5, 10.1), (10.1, 10.1),
+                 (10.1, 11.5), (9.9, 11.5), (9.9, 10.1), (8.6, 10.1)]),
+
+    ]
+
+    exit_polygons = {'A': [(0, 0), (2.5, 0), (2.5, 2.5), (0, 2.5)]}
+
+    waypoints = {
+        'B': ([7.5, 2.5], 1.5),
+        'C': ([12.5, 2.5], 1.5),
+        'D': ([12.5, 7.5], 1.5),
+        'E': ([7.5, 7.5], 1.5),
+        'F': ([2.5, 7.5], 1.5),
+        'G': ([2.5, 12.5], 1.5),
+        'H': ([7.5, 12.5], 1.5),
+        'I': ([12.5, 12.5], 1.5)
+    }
+
+    distribution_polygons = {'G': Polygon([(0, 10), (5, 10), (5, 15), (0, 15)])}
+
+    # Create the graph
+    G = nx.DiGraph()
+
+    # Nodos y sus niveles iniciales de riesgo (0 a 1)
+    nodes = {
+        "A": 0.0, "B": 0.6, "C": 0.0,
+        "D": 0.6, "E": 0.6, "F": 0.1,
+        "G": 0.0, "H": 0.0, "I": 0.0,
+    }
+
+    # Agregar nodos al grafo
+    for node, risk in nodes.items():
+        G.add_node(node, risk=risk, blocked=False, is_stairs=False, floor=0)
+
+    G.nodes["I"]["is_stairs"] = True
+
+    # Definir las conexiones entre nodos
+    edges = [
+        ("A", "B"), ("A", "F"), ("B", "A"), ("B", "E"), ("B", "C"),
+        ("C", "B"), ("C", "D"), ("D", "I"), ("D", "E"), ("D", "C"),
+        ("E", "D"), ("E", "F"), ("E", "B"), ("E", "H"), ("F", "A"),
+        ("F", "E"), ("F", "G"), ("G", "F"), ("G", "H"), ("H", "E"),
+        ("H", "G"), ("H", "I"),
+    ]
+
+    # Agregar las aristas con un costo fijo (se puede ajustar)
+    G.add_edges_from([(u, v, {"cost": 3}) for u, v in edges])
+
+    specific_areas = {
+        'A': Polygon([(0, 0), (5, 0), (5, 5), (0, 5)]),
+        'B': Polygon([(5, 0), (10, 0), (10, 5), (5, 5)]),
+        'C': Polygon([(10, 0), (15, 0), (15, 5), (10, 5)]),
+        'D': Polygon([(10, 5), (15, 5), (15, 10), (10, 10)]),
+        'E': Polygon([(5, 5), (10, 5), (10, 10), (5, 10)]),
+        'F': Polygon([(0, 5), (5, 5), (5, 10), (0, 10)]),
+        'G': Polygon([(0, 10), (5, 10), (5, 15), (0, 15)]),
+        'H': Polygon([(5, 10), (10, 10), (10, 15), (5, 15)]),
+        'I': Polygon([(10, 10), (15, 10), (15, 15), (10, 15)]),
+    }
+
+    # so that the walls are properly shown
+    specific_areas = remove_obstacles_from_areas(specific_areas, obstacles)
+
+    floor1 = Floor(
+        name="First floor",
+        graph=G,
+        complete_area=complete_area,
+        obstacles=obstacles,
+        exit_polygons=exit_polygons,
+        waypoints=waypoints,
+        distribution_polygons=distribution_polygons,
+        sources=["G"],
+        targets=["A"],
+        specific_areas=specific_areas
+    )
+
+    ## SECOND FLOOR
+
+    pref = "1"
+
+    mapping = {node: f"{pref}_{node}" for node in floor1.graph.nodes()}
+    G2 = nx.relabel_nodes(floor1.graph, mapping)
+    for node in G2.nodes():
+        G2.nodes[node]['floor'] = 1
+
+    exit_polygons_2 = {f'{pref}_I': [(12.5, 12.5), (15, 12.5), (15, 15), (12.5, 15)]}
+
+    waypoints_2 = {
+        f'{pref}_A': ([2.5, 2.5], 1.5),
+        f'{pref}_B': ([7.5, 2.5], 1.5),
+        f'{pref}_C': ([12.5, 2.5], 1.5),
+        f'{pref}_D': ([12.5, 7.5], 1.5),
+        f'{pref}_E': ([7.5, 7.5], 1.5),
+        f'{pref}_F': ([2.5, 7.5], 1.5),
+        f'{pref}_G': ([2.5, 12.5], 1.5),
+        f'{pref}_H': ([7.5, 12.5], 1.5),
+    }
+
+    specific_areas_2 = {mapping.get(key, key): area for key, area in floor1.specific_areas.items()}
+    distribution_polygons_2 = {f'{pref}_A': floor1.specific_areas['A']}
+
+    floor2 = Floor(
+        name="Second floor",
+        graph=G2,
+        complete_area=complete_area,
+        obstacles=obstacles,
+        exit_polygons=exit_polygons_2,
+        waypoints=waypoints_2,
+        distribution_polygons=distribution_polygons_2,
+        sources=[f"{pref}_A"],
+        targets=[f"{pref}_I"],
+        specific_areas=specific_areas_2
+    )
+
+    floors_dict = {0: floor1, 1: floor2}
+
+    GlobG = create_global_graph(floors_dict)
+
+    GlobG.add_edge(f"{pref}_I", "I", cost=0)
+
+    return Environment(
+        name="simple_3x3",
+        floors=floors_dict,
+        graph=GlobG
     )

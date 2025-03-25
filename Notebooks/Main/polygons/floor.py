@@ -18,9 +18,10 @@ class Floor:
         walkable_area: Walkable area computed as the difference between complete_area and obstacles.
     """
 
-    def __init__(self, name, complete_area, obstacles, exit_polygons, waypoints,
+    def __init__(self, name, graph, complete_area, obstacles, exit_polygons, waypoints,
                  distribution_polygons, sources, targets, specific_areas):
         self.name = name
+        self.graph = graph
         self.complete_area = complete_area
         self.obstacles = obstacles
         self.exit_polygons = exit_polygons
