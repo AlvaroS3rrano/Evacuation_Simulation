@@ -1,3 +1,5 @@
+from jupedsim.internal.notebook_utils import read_sqlite_file
+
 def compute_current_nodes(simulation_config, agent_group, frame) -> None:
     """
     Computes the current node for each agent in the agent_group based on their individual stage,
@@ -22,7 +24,7 @@ def compute_current_nodes(simulation_config, agent_group, frame) -> None:
     simulation = simulation_config.simulation
     waypoints_ids = simulation_config.waypoints_ids
     exit_ids = simulation_config.exit_ids
-    current_path = agent_group.path
+    current_path = agent_group.floor_path
     computed_current_nodes = {}
 
     for agent_id in agent_group.agents:
@@ -108,3 +110,72 @@ def update_agent_speed_on_stairs(G, simulation_config, agent_group):
         else:
             # If the current node is undefined, default to normal speed
             agent.model.v0 = simulation_config.normal_max_speed
+
+def get_stairs_agents(prev_floor_key, mode, floor_simulation_data, G):
+    """
+    Retrieve agents from the simulation on the previous floor (i.e., the lower floor)
+    who ended their trajectory at a stairs node, and determine the corresponding node
+    on the next (higher) floor that they will transition to.
+
+    Parameters:
+        prev_floor_key (numeric): The key of the previous (lower) floor.
+        mode (str): The simulation mode used to access trajectory data.
+        floor_simulation_data (dict): Global dictionary containing simulation data for each floor.
+        G (networkx.Graph): Graph containing nodes with attributes such as 'is_stairs' and 'floor'.
+
+    Returns:
+        dict: A dictionary mapping agent IDs to a dictionary with the following keys:
+              - 'position': A tuple (x, y) representing the agent's position when reaching the stairs.
+              - 'frame': The simulation frame at which the agent reached the stairs.
+              - 'current_node': The node on the higher floor connected to the stairs.
+              - 'source': The node the agent group started at.
+    """
+    stairs_agents = {}
+
+    # Retrieve the trajectory file for the previous floor and read its data.
+    prev_trajectory_file = floor_simulation_data[prev_floor_key]["trajectory_files"][mode]
+    trajectory_data, _ = read_sqlite_file(prev_trajectory_file)
+    df = trajectory_data.data
+
+    # Get the last frame for each agent.
+    last_frames = df.loc[df.groupby("id")["frame"].idxmax()].reset_index(drop=True)
+
+    # Get agent groups for the previous floor and simulation mode.
+    prev_agent_groups = floor_simulation_data[prev_floor_key]["agent_groups_per_mode"][mode]
+
+    for source, agent_group in prev_agent_groups.items():
+        # Determine the last node in the agent group's floor_path.
+        last_node = agent_group.floor_path[-1]
+        # If the last node is a stairs node, process the agents.
+        if G.nodes[last_node].get("is_stairs", False):
+            # Calculate the current (lower) floor based on the previous floor key.
+            current_floor = prev_floor_key - 1
+            node_in_new_floor = ""
+            # Identify the neighbor of the stairs node that belongs to the higher floor.
+            for neighbour in G.neighbors(last_node):
+                if G.nodes[neighbour]["floor"] == current_floor:
+                    node_in_new_floor = neighbour
+                    break
+
+            # Create the entry for this source if it doesn't exist.
+            if source not in stairs_agents:
+                stairs_agents[source] = {
+                    "current_node": node_in_new_floor,
+                    "agents": {}
+                }
+
+            # For each agent in the group, record their position and frame.
+            for agent in agent_group.agents:
+                agent_frame_row = last_frames[last_frames["id"] == agent]
+                if not agent_frame_row.empty:
+                    pos = (agent_frame_row.iloc[0]["x"], agent_frame_row.iloc[0]["y"])
+                    frame_reached = agent_frame_row.iloc[0]["frame"]
+                    stairs_agents[source]["agents"][agent] = {
+                        "position": pos,
+                        "frame": frame_reached
+                    }
+
+    return stairs_agents
+
+
+

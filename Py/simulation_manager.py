@@ -1,12 +1,11 @@
 import jupedsim as jps
-from jupedsim.internal.notebook_utils import read_sqlite_file
 
+from Py.classes.agentGroup import AgentGroup
+from Py.database.danger_sim_db_manager import get_risk_levels_by_frame
 from Py.pathFinding.settingPaths import *
 from Py.journey_configuration import set_journeys
 from Py.database.agent_area_db_manager import *
-from Py.simulation_logic import compute_current_nodes, update_agent_speed_on_stairs
-from Py.database.danger_sim_db_manager import *
-from Py.dangerSimulation.risk_simulation import update_risk
+from Py.simulation_logic import compute_current_nodes, update_agent_speed_on_stairs, get_stairs_agents
 from Notebooks.Main.polygons.environmnet import get_floor_segment
 def update_group_paths(simulation_config, risk_per_node, agent_group, G, risk_threshold=0.5):
     """
@@ -58,8 +57,10 @@ def update_group_paths(simulation_config, risk_per_node, agent_group, G, risk_th
     # If awareness_level is 1, only evaluate the first agent.
     if agent_group.awareness_level == 1:
         agents_to_check = [agents_ids[0]]
+        exits = simulation_config.environment.environment_exits
     else:
         agents_to_check = agents_ids
+        exits = simulation_config.get_exit_ids_keys()
 
     for agent_id in agents_to_check:
         # Verify that the agent exists in the simulation.
@@ -87,9 +88,10 @@ def update_group_paths(simulation_config, risk_per_node, agent_group, G, risk_th
         # The next node in the path is the one immediately after the current node.
         next_node = current_path[node_index + 1]
 
+
         # Calculate an alternative path from the current_node to the next_node.
         best_path = compute_alternative_path(
-            simulation_config.get_exit_ids_keys(),
+            exits,
             agent_group, G,
             current_node, next_node,
             risk_per_node, risk_threshold,
@@ -123,73 +125,26 @@ def update_group_paths(simulation_config, risk_per_node, agent_group, G, risk_th
     # If no update was made, return the original agent_group.
     return agent_group
 
-
-def simulate_risk(riskSimulationValues, every_nth_frame, G, exits, connection):
-    """
-    Simulates risk propagation in a graph over multiple frames and stores the results in a database.
-
-    Args:
-        riskSimulationValues: An object that includes the simulation parameters:
-            - iterations (int): Total number of frames to simulate.
-            - propagation_chance (float): Probability of risk spreading between connected nodes.
-            - increase_chance (float): Probability of individual nodes increasing their risk.
-        every_nth_frame (int): Interval of frames at which risk updates are performed.
-        G (networkx.Graph): Graph where each node has a "risk" attribute.
-        exits (list): List of nodes whose risk remains 0.
-        connection (sqlite3.Connection): Open SQLite database connection to store risk data.
-    """
-    # Validate the input arguments
-    if riskSimulationValues.iterations <= 0:
-        raise ValueError("iterations must be a positive integer.")
-    if every_nth_frame <= 0:
-        raise ValueError("every_nth_frame must be a positive integer.")
-
-    for frame in range(riskSimulationValues.iterations + 1):
-        if frame == 0:
-            # Ensure that exit nodes have risk 0
-            for exit_node in exits:
-                if exit_node in G.nodes:
-                    G.nodes[exit_node]["risk"] = 0
-            # Save the initial risk levels and floor for all nodes before any updates
-            try:
-                write_risk_levels(connection, 0, {node: {"risk": G.nodes[node]["risk"],
-                                                         "floor": G.nodes[node]["floor"]}
-                                                  for node in G.nodes})
-            except Exception as e:
-                print(f"Error writing initial risks: {e}")
-            continue
-
-        # Update risk only every nth frame
-        if frame % every_nth_frame == 0:
-            try:
-                # Update risks in the graph based on propagation and increase chances
-                update_risk(G, riskSimulationValues.increase_chance, riskSimulationValues.danger_threshold)
-
-                # Ensure that exit nodes retain a risk of 0 after the update
-                for exit_node in exits:
-                    if exit_node in G.nodes:
-                        G.nodes[exit_node]["risk"] = 0
-
-                # Save the updated risk levels and floor for the current frame
-                write_risk_levels(connection, frame, {node: {"risk": G.nodes[node]["risk"],
-                                                             "floor": G.nodes[node]["floor"]}
-                                                      for node in G.nodes})
-            except Exception as e:
-                print(f"Error updating risks at frame {frame}: {e}")
-
-def run_agent_simulation(simulation_config, agent_groups, G, connection, agent_area_connection, risk_threshold):
+def run_agent_simulation(simulation_config, agent_groups, G, connection, agent_area_connection, transition_data, risk_threshold):
     """
     Runs the agent simulation, updating agent paths based on current risk levels retrieved from the database.
 
     Args:
         simulation_config (SimulationConfig): An instance of SimulationConfig containing:
             - simulation: The simulation object managing agents and the environment.
-            - every_nth_frame (int): The interval at which agent paths are updated.
+            - every_nth_frame_simulation (int): The interval at which agent paths are updated.
+            - every_nth_frame_animation (int): The interval at which animations (or other updates) are applied.
             - waypoints_ids (dict): Mapping of graph node IDs to simulation waypoint IDs.
+            - stairs_max_speed (float): The maximum speed for agents on stairs.
         agent_groups (dict): Mapping of starting nodes to AgentGroups.
+        G (networkx.Graph): Global graph containing the nodes and edges of the environment.
+        connection (sqlite3.Connection): Active SQLite connection to retrieve risk levels.
+        agent_area_connection: Connection or handler to write agent area data.
+        transition_data (dict): A dictionary mapping frame numbers to transition information.
+            Expected structure: { frame: {"position": ..., "journey_id": ..., "first_waypoint_id": ..., ...}, ... }
         risk_threshold (float): The risk level threshold above which agents will attempt to avoid high-risk areas.
     """
-    while simulation_config.simulation.agent_count() > 0:
+    while simulation_config.simulation.agent_count() > 0 or transition_data is not None:
         # Advance the simulation by one frame
         simulation_config.simulation.iterate()
         iteration = simulation_config.simulation.iteration_count()
@@ -197,11 +152,31 @@ def run_agent_simulation(simulation_config, agent_groups, G, connection, agent_a
         every_nth_frame_simulation = simulation_config.every_nth_frame_simulation
         every_nth_frame_animation = simulation_config.every_nth_frame_animation
 
-        if iteration == 1:
-            print("hola")
-
         if iteration % every_nth_frame_simulation == 0:
             frame = iteration / every_nth_frame_simulation
+
+            if transition_data:
+                # We create a list of keys to remove to avoid modifying the dict during iteration.
+                frames_to_remove = []
+                for agent_frame, values in transition_data.items():
+                    if agent_frame == frame:
+                        # Use values from the corresponding transition data entry.
+                        agent = set_agent_in_simulation(
+                            simulation_config.simulation,
+                            values["position"],
+                            values["journey_id"],
+                            values["first_waypoint_id"],
+                            simulation_config.stairs_max_speed
+                        )
+                        # Optionally, you could add the new agent to its corresponding agent group if needed.
+                        frames_to_remove.append(agent_frame)
+                # Remove processed entries
+                for key in frames_to_remove:
+                    transition_data.pop(key)
+
+                if not transition_data:
+                    transition_data = None
+
 
             # Update agent paths only at specified intervals
             if frame % every_nth_frame_animation == 0:
@@ -224,59 +199,165 @@ def run_agent_simulation(simulation_config, agent_groups, G, connection, agent_a
                 except Exception as e:
                     print(f"Error updating paths at frame {frame}: {e}")
 
-def set_agents_in_simulation(simulation, positions, journey_id, first_waypoint_id, speed):
-    agents = []
-    for position in positions:  # Use the second half of the positions
-        # Add agents with specified parameters (e.g., position, journey, velocity)
-        agents.append(
-            simulation.add_agent(
-                jps.CollisionFreeSpeedModelAgentParameters(
-                    position=position,       # Initial position of the agent
-                    journey_id=journey_id,   # Journey ID for the agent
-                    stage_id=first_waypoint_id,  # Starting waypoint for the agent
-                    v0=speed, # Desired maximum speed of the agent
-                )
-            )
-        )
-    return agents
 
-def get_stairs_agents(prev_floor_key, mode, floor_simulation_data, G):
+def set_agent_in_simulation(simulation, position, journey_id, first_waypoint_id, speed):
     """
-    Check the simulation on the previous floor (higher floor) for agents
-    that ended at a node with is_stairs == True.
+    Add a single agent to the simulation with the specified parameters.
 
     Parameters:
-        prev_floor_key (numeric): The key of the previous (higher) floor.
-        mode (str): The simulation mode to use for reading trajectory data.
-        floor_simulation_data (dict): Global dictionary containing simulation data for each floor.
-        G (networkx.Graph): Graph that includes nodes with attribute is_stairs.
+        simulation: The simulation object with an 'add_agent' method.
+        position: The initial position of the agent.
+        journey_id: The journey ID for the agent.
+        first_waypoint_id: The starting waypoint (stage) for the agent.
+        speed: The desired maximum speed for the agent.
 
     Returns:
-        dict: Dictionary mapping agent IDs to a dictionary with 'position' and 'frame'
-              where the agent reached stairs.
+        The created agent.
     """
-    stairs_agents = {}
+    agent = simulation.add_agent(
+        jps.CollisionFreeSpeedModelAgentParameters(
+            position=position,        # Initial position of the agent.
+            journey_id=journey_id,      # Journey ID for the agent.
+            stage_id=first_waypoint_id, # Starting waypoint for the agent.
+            v0=speed                  # Desired maximum speed of the agent.
+        )
+    )
+    return agent
 
-    prev_trajectory_file = floor_simulation_data[prev_floor_key]["trajectory_files"][mode]
-    trajectory_data, _ = read_sqlite_file(prev_trajectory_file)
-    df = trajectory_data.data
+def set_agents_in_simulation(simulation, positions, journey_id, first_waypoint_id, speed):
+    """
+    Add multiple agents to the simulation.
 
-    # Get the last frame for each agent.
-    last_frames = df.loc[df.groupby("id")["frame"].idxmax()].reset_index(drop=True)
+    This function iterates over a list of positions, creates an agent for each
+    position using the set_agent_in_simulation() function, and returns a list of agents.
 
-    prev_agent_groups = floor_simulation_data[prev_floor_key]["agent_groups_per_mode"][mode]
+    Parameters:
+        simulation: The simulation object with an 'add_agent' method.
+        positions (list): A list of positions where agents should be added.
+        journey_id: The journey ID for each agent.
+        first_waypoint_id: The starting waypoint (stage) for each agent.
+        speed: The desired maximum speed for each agent.
 
-    for source, agent_group in prev_agent_groups.items():
-        last_node = agent_group.path[-1]
-        if G.nodes[last_node].get("is_stairs", False):
-            for agent in agent_group.agents:
-                agent_frame_row = last_frames[last_frames["id"] == agent]
-                if not agent_frame_row.empty:
-                    pos = (agent_frame_row.iloc[0]["x"], agent_frame_row.iloc[0]["y"])
-                    frame_reached = agent_frame_row.iloc[0]["frame"]
-                    stairs_agents[agent] = {
-                        "position": pos,
-                        "frame": frame_reached
-                    }
-                    # print(f"Agent {agent} reached stairs at node '{last_node}' on frame {frame_reached} with position {pos}")
-    return stairs_agents
+    Returns:
+        list: A list of created agents.
+    """
+    agents = []
+    for position in positions:
+        agent = set_agent_in_simulation(simulation, position, journey_id, first_waypoint_id, speed)
+        agents.append(agent)
+    return agents
+
+def get_transition_path(idx, sorted_floor_keys, mode, floor_simulation_data, simulation_config,
+                        awareness_levels_per_group, algorithm_per_group, connection):
+    """
+    Compute the transition information from the previous floor based on simulation data.
+
+    If the current floor key (derived from idx) is greater than 0, the function:
+      - Retrieves the previous floor key from the sorted list.
+      - Obtains the agents that reached a stairs node on the previous floor (grouped by source).
+      - For each source:
+          * If the awareness level for the given mode is 1, it retrieves the long path from the
+            corresponding agent group and extracts the relevant floor segment.
+          * Otherwise, it creates an auxiliary AgentGroup, finds the minimum frame among the agents,
+            rounds it to the nearest multiple defined by every_nth_frame_simulation, retrieves risk levels
+            for that frame, and computes an alternative path based on those risk levels.
+      - Sets up journey IDs and determines the first waypoint for the transition.
+      - Then, for each agent in the stairs_agents data, it creates an entry mapping the frame at which
+        the agent reached the stairs to a structure containing its position, the transition path,
+        journey IDs, first waypoint ID, and the agent group (represented by the common current_node).
+
+    Parameters:
+        idx (int): Current index in the sorted_floor_keys list.
+        sorted_floor_keys (list): Sorted list of floor keys.
+        mode (str): Simulation mode identifier.
+        floor_simulation_data (dict): Dictionary containing simulation data for each floor.
+        simulation_config (object): Configuration object containing simulation parameters and environment details,
+                                    including environment, gamma, every_nth_frame_simulation, simulation,
+                                    waypoints_ids, and exit_ids.
+        awareness_levels_per_group (dict): Mapping from simulation modes to awareness levels.
+        algorithm_per_group (dict): Mapping from simulation modes to algorithms for each group.
+        connection (sqlite3.Connection): Active SQLite connection to retrieve risk levels.
+
+    Returns:
+        dict: A dictionary mapping each agent's frame (when the agent reached the stairs) to a dictionary
+              with the following keys:
+                  - "position": Agent's position at the time of transition.
+                  - "path": The computed transition path.
+                  - "journey_ids": Journey IDs for the agent.
+                  - "first_waypoint_id": The starting waypoint for the agent.
+                  - "agent_group": The identifier (or data) of the agent group (common current_node).
+              Returns None if idx is 0.
+    """
+    environment = simulation_config.environment
+    current_floor_key = sorted_floor_keys[idx]
+    floor = environment.floors[current_floor_key]
+    gamma = simulation_config.gamma
+    n = simulation_config.every_nth_frame_animation
+    simulation = simulation_config.simulation
+
+    if idx > 0:
+        prev_floor_key = sorted_floor_keys[idx - 1]
+        stairs_agents = get_stairs_agents(prev_floor_key, mode, floor_simulation_data, environment.graph)
+        # This will hold the final transition data for each agent by frame.
+        transition_data = {}
+
+        if stairs_agents == {}:
+            print(f"There were no agents that reached a stairs node.")
+
+        # Process each source (agent group start) in the stairs agents data.
+        for source, stairs_agents_values in stairs_agents.items():
+            # Compute the transition path based on awareness level.
+            if awareness_levels_per_group[mode] == 1:
+                prev_floor_agent_groups_per_mode = floor_simulation_data[prev_floor_key]['agent_groups_per_mode']
+                long_path = prev_floor_agent_groups_per_mode[mode][source].path
+                path = get_floor_segment(long_path, environment, current_floor_key)
+            else:
+                # Create an auxiliary AgentGroup for further path computation.
+                agent_group_aux = AgentGroup(
+                    None, None, None, None,
+                    algorithm_per_group[mode],
+                    awareness_levels_per_group[mode],
+                    current_floor_key
+                )
+                # Compute the closest frame (rounded to the nearest multiple of n) among the agents.
+                min_frame = min(agent_info["frame"] for agent_info in stairs_agents_values["agents"].values())
+                closest_divisible = round(min_frame / n) * n
+                risk_earliest_frame = get_risk_levels_by_frame(connection, closest_divisible)
+                path = compute_alternative_path(
+                    floor.exit_polygons.keys(),
+                    agent_group_aux,
+                    floor.graph,
+                    stairs_agents_values["current_node"],
+                    risk_per_node=risk_earliest_frame,
+                    gamma=gamma
+                )
+
+            journeys_ids = set_journeys(
+                simulation,
+                stairs_agents_values["current_node"],
+                [path],
+                simulation_config.waypoints_ids,
+                simulation_config.exit_ids
+            )
+
+            journey_id, best_path_source = journeys_ids[stairs_agents_values["current_node"]][0]
+
+            next_node = best_path_source[1]
+            first_waypoint_id = simulation_config.waypoints_ids[next_node]
+
+            # For each agent in this group, add an entry to transition_data.
+            for agent, agent_info in stairs_agents_values["agents"].items():
+                frame = agent_info["frame"]
+                transition_data[frame] = {
+                    "position": agent_info["position"],
+                    "path": path,
+                    "journey_id": journey_id,
+                    "first_waypoint_id": first_waypoint_id,
+                    "agent_group": stairs_agents_values["current_node"]
+                }
+        return transition_data
+    else:
+        return None
+
+
+

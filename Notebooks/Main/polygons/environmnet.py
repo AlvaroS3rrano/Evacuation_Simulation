@@ -11,10 +11,12 @@ class Environment:
         graph: Graph (e.g., using networkx) that can connect the floors.
     """
 
-    def __init__(self, name, floors, graph):
+    def __init__(self, name, floors, environment_exits, graph):
         self.name = name
         self.floors = floors  # List of Floor objects
+        self.environment_exits = environment_exits
         self.graph = graph
+
 
 def create_global_graph(floors):
     global_graph = nx.DiGraph()
@@ -29,46 +31,42 @@ def create_global_graph(floors):
         mapping[floor.name] = list(floor.graph.nodes)
     return global_graph
 
-def get_floor_segment(path, env):
+def get_floor_segment(path, env, floor_key):
     """
     Given a path from the global graph, returns the contiguous segment of the path
-    that belongs to the floor of the starting node.
+    that belongs to the specified floor.
+
+    Once the agent leave a floor it is asumed it can´t go back to the same floor
 
     Parameters:
         path (list): A list of node names representing the path in the global graph.
         env (Environment): An Environment object that has a 'floors' attribute, a dictionary
-                           where each value is a Floor object containing its own graph.
+                           where each key corresponds to a Floor object.
+        floor_key: The key (or identifier) of the current floor.
 
     Returns:
-        list: The sublist of the path that belongs to the same floor as the starting node.
+        list: The sublist of the path that belongs to the specified floor.
 
     Raises:
-        ValueError: If the starting node is not found in any floor.
+        ValueError: If the provided floor_key does not exist in the environment.
     """
     if not path:
         return []
 
-    first_node = path[0]
-    starting_floor = None
+    # Get the specified floor.
+    if floor_key not in env.floors:
+        raise ValueError("The provided floor_key was not found in the environment.")
 
-    # Find the floor that contains the starting node.
-    for floor in env.floors.values():
-        if first_node in floor.graph:
-            starting_floor = floor
-            break
+    current_floor = env.floors[floor_key]
 
-    if starting_floor is None:
-        raise ValueError("The starting node was not found in any floor graph.")
-
-    # Build the segment containing nodes only from the starting floor.
+    # Build the segment containing nodes only from the specified floor.
     segment = []
     for node in path:
-        if node in starting_floor.graph:
+        if node in current_floor.graph:
             segment.append(node)
-        else:
-            break
 
     return segment
+
 
 def remove_obstacles_from_areas(specific_areas, obstacles):
     """
@@ -460,6 +458,7 @@ def get_comparing_algorithms_pol():
     return Environment(
         name="comparing_algorithms",
         floors=floors_dict,
+        environment_exits=floor.exit_polygons.keys(),
         graph=create_global_graph(floors_dict)
     )
 
@@ -531,7 +530,7 @@ def get_simple_3x3():
         ("C", "B"), ("C", "D"), ("D", "I"), ("D", "E"), ("D", "C"),
         ("E", "D"), ("E", "F"), ("E", "B"), ("E", "H"), ("F", "A"),
         ("F", "E"), ("F", "G"), ("G", "F"), ("G", "H"), ("H", "E"),
-        ("H", "G"), ("H", "I"),
+        ("H", "G"), ("H", "I"), ("I", "D"), ("I", "H")
     ]
 
     # Agregar las aristas con un costo fijo (se puede ajustar)
@@ -568,6 +567,7 @@ def get_simple_3x3():
     return Environment(
         name="simple_3x3",
         floors=floors_dict,
+        environment_exits=floor.exit_polygons.keys(),
         graph=create_global_graph(floors_dict)
     )
 
@@ -640,7 +640,7 @@ def get_multi_floor_3x3():
         ("C", "B"), ("C", "D"), ("D", "I"), ("D", "E"), ("D", "C"),
         ("E", "D"), ("E", "F"), ("E", "B"), ("E", "H"), ("F", "A"),
         ("F", "E"), ("F", "G"), ("G", "F"), ("G", "H"), ("H", "E"),
-        ("H", "G"), ("H", "I"),
+        ("H", "G"), ("H", "I"), ("I", "D"), ("I", "H")
     ]
 
     # Agregar las aristas con un costo fijo (se puede ajustar)
@@ -719,7 +719,8 @@ def get_multi_floor_3x3():
     GlobG.add_edge(f"{pref}_I", "I", cost=0)
 
     return Environment(
-        name="simple_3x3",
+        name="multi_floor_3x3",
         floors=floors_dict,
+        environment_exits= floor1.exit_polygons.keys(),
         graph=GlobG
     )

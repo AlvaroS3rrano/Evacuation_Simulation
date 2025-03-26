@@ -1,5 +1,8 @@
 import networkx as nx
 import random
+
+from Py.database.danger_sim_db_manager import *
+
 def update_risk(G: nx.DiGraph, increase_chance=0.2, danger_threshold=0.5):
     """
     Updates the risk levels of nodes in the graph.
@@ -50,3 +53,56 @@ def update_risk(G: nx.DiGraph, increase_chance=0.2, danger_threshold=0.5):
     # Apply the new risk values to the graph.
     for node, risk in new_risks.items():
         G.nodes[node]["risk"] = risk
+
+def simulate_risk(riskSimulationValues, every_nth_frame, G, exits, connection):
+    """
+    Simulates risk propagation in a graph over multiple frames and stores the results in a database.
+
+    Args:
+        riskSimulationValues: An object that includes the simulation parameters:
+            - iterations (int): Total number of frames to simulate.
+            - propagation_chance (float): Probability of risk spreading between connected nodes.
+            - increase_chance (float): Probability of individual nodes increasing their risk.
+        every_nth_frame (int): Interval of frames at which risk updates are performed.
+        G (networkx.Graph): Graph where each node has a "risk" attribute.
+        exits (list): List of nodes whose risk remains 0.
+        connection (sqlite3.Connection): Open SQLite database connection to store risk data.
+    """
+    # Validate the input arguments
+    if riskSimulationValues.iterations <= 0:
+        raise ValueError("iterations must be a positive integer.")
+    if every_nth_frame <= 0:
+        raise ValueError("every_nth_frame must be a positive integer.")
+
+    for frame in range(riskSimulationValues.iterations + 1):
+        if frame == 0:
+            # Ensure that exit nodes have risk 0
+            for exit_node in exits:
+                if exit_node in G.nodes:
+                    G.nodes[exit_node]["risk"] = 0
+            # Save the initial risk levels and floor for all nodes before any updates
+            try:
+                write_risk_levels(connection, 0, {node: {"risk": G.nodes[node]["risk"],
+                                                         "floor": G.nodes[node]["floor"]}
+                                                  for node in G.nodes})
+            except Exception as e:
+                print(f"Error writing initial risks: {e}")
+            continue
+
+        # Update risk only every nth frame
+        if frame % every_nth_frame == 0:
+            try:
+                # Update risks in the graph based on propagation and increase chances
+                update_risk(G, riskSimulationValues.increase_chance, riskSimulationValues.danger_threshold)
+
+                # Ensure that exit nodes retain a risk of 0 after the update
+                for exit_node in exits:
+                    if exit_node in G.nodes:
+                        G.nodes[exit_node]["risk"] = 0
+
+                # Save the updated risk levels and floor for the current frame
+                write_risk_levels(connection, frame, {node: {"risk": G.nodes[node]["risk"],
+                                                             "floor": G.nodes[node]["floor"]}
+                                                      for node in G.nodes})
+            except Exception as e:
+                print(f"Error updating risks at frame {frame}: {e}")
