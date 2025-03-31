@@ -1,91 +1,137 @@
 import gurobipy as gp
 from gurobipy import GRB
-from pathAlgorithms import compute_efficient_paths
+from pathAlgorithms import collect_unblocked_paths, compute_efficient_paths
 import math
 import networkx as nx
 
 
-def evacuationCentralityAlgorithm(G, source, targets, gamma):
+def evacuationCentralityAlgorithm(G, source, targets, gamma, lambda_penalty=1.0):
     """
     Computes efficient evacuation paths from the source to targets (using the cost tolerance factor gamma)
     and then computes the evacuation centrality (i.e. the maximum number of arc-disjoint paths) via gurobipy.
 
-    Returns a tuple:
-       - efficient_paths: list of efficient paths (each path is a list of nodes)
-       - evacuation_centrality: optimal integer value of the maximum number of arc-disjoint paths
-       - best_paths: subset of efficient_paths selected by the model (those with x[p]=1)
-       - agile_scores: a dictionary mapping each efficient path to its agility value (geometric mean of intermediate nodes' centrality)
-    """
-    # Step 1: Obtain efficient paths (using your compute_efficient_paths function)
-    efficient_paths = compute_efficient_paths(G, source, targets, gamma, sort_paths=False)
+    Parameters:
+      G: A NetworkX directed graph.
+      source: The source node.
+      targets: A list of safe target nodes.
+      gamma: Tolerance factor (assumed that the collected paths are already efficient).
+      lambda_penalty: Penalty parameter for using an arc more than once.
 
-    if not efficient_paths:
+    Returns a tuple:
+      - efficient_paths: The list of original efficient paths (each as a list of nodes).
+      - evac_centrality: The optimal value of K (penalized evacuation centrality).
+      - best_paths: The subset of efficient_paths selected by the model (those with x[p] > 0.5).
+      - agile_scores: A dictionary mapping each efficient path to its agility score.
+    """
+    # Step 1: Collect efficient paths from source to targets.
+    # possible_paths = compute_efficient_paths(G, source, targets, gamma, sort_paths=False)
+    possible_paths = collect_unblocked_paths(G, source, targets)
+    if not possible_paths:
         return [], 0, [], {}
 
-    # Step 2: Build the set of arcs used in the efficient paths and map each path to its arc list.
+    # Append a dummy node to each path ending at a target.
+    # The dummy node is used as a unique sink in the flow conservation constraints.
+    dummy = "dummy"
+    possible_paths = [path + [dummy] for path in possible_paths if path[-1] in targets]
+
+    # Build list of arcs (tuples) for each path and set of "real" arcs (excluding dummy arcs).
     path_arcs = []
     arcs_set = set()
-    for path in efficient_paths:
+    for path in possible_paths:
         arc_list = []
         for u, v in zip(path, path[1:]):
             arc = (u, v)
             arc_list.append(arc)
-            arcs_set.add(arc)
+            # Only consider arcs that do not end at the dummy node as real arcs.
+            if v != dummy:
+                arcs_set.add(arc)
         path_arcs.append(arc_list)
 
-    # Step 3: Define and solve the model in gurobipy.
-    model = gp.Model("EvacuationCentrality")
+    # Gather all nodes that appear in the paths (including the dummy node).
+    nodes_in_paths = set()
+    for path in possible_paths:
+        for node in path:
+            nodes_in_paths.add(node)
+
+    # Create the model.
+    model = gp.Model("EvacuationCentralityPenalized")
     model.Params.OutputFlag = 0  # Suppress solver output
 
-    # Binary decision variable x[p] for each path p.
-    x = model.addVars(range(len(efficient_paths)), vtype=GRB.BINARY, name="x")
+    num_paths = len(possible_paths)
+    # Continuous decision variables x[p] for each path, relaxed between 0 and 1.
+    x = model.addVars(range(num_paths), vtype=GRB.CONTINUOUS, lb=0, ub=1, name="x")
 
-    # Constraint: For each arc a in arcs_set, sum of x[p] for paths that use that arc must be <= 1.
+    # Variable K representing the total flow out of the source (i.e. the evacuation centrality).
+    K = model.addVar(vtype=GRB.CONTINUOUS, name="K")
+
+    # Penalty variables y for each real arc.
+    y = model.addVars(list(arcs_set), vtype=GRB.CONTINUOUS, lb=0, name="y")
+
+    model.update()
+
+    # Flow conservation constraints for each node in the set of nodes in the paths.
+    # For each node, compute: (sum of x[p] for paths where the node appears as tail)
+    # minus (sum of x[p] for paths where the node appears as head) equals:
+    #    K if node == source,
+    #   -K if node == dummy,
+    #    0 otherwise.
+    for node in nodes_in_paths:
+        flow_expr = gp.LinExpr()
+        for p_idx, path in enumerate(possible_paths):
+            for (u, v) in zip(path, path[1:]):
+                if u == node:
+                    flow_expr.addTerms(1.0, x[p_idx])
+                if v == node:
+                    flow_expr.addTerms(-1.0, x[p_idx])
+        if node == source:
+            model.addConstr(flow_expr == K, name=f"flow_{node}")
+        elif node == dummy:
+            model.addConstr(flow_expr == -K, name=f"flow_{node}")
+        else:
+            model.addConstr(flow_expr == 0, name=f"flow_{node}")
+
+    # Constraint to penalize multiple use of an arc:
+    # For each real arc, the sum of x[p] for the paths using that arc must be <= 1 + y[arc].
     for arc in arcs_set:
         paths_using_arc = [p_idx for p_idx, arcs in enumerate(path_arcs) if arc in arcs]
         if paths_using_arc:
-            model.addConstr(gp.quicksum(x[p_idx] for p_idx in paths_using_arc) <= 1, name=f"arc_{arc}")
+            model.addConstr(gp.quicksum(x[p_idx] for p_idx in paths_using_arc) <= 1 + y[arc],
+                            name=f"arc_{arc}")
 
-    # Objective: maximize the sum of x[p] (i.e., maximize the number of arc-disjoint paths).
-    model.setObjective(gp.quicksum(x[p_idx] for p_idx in range(len(efficient_paths))), GRB.MAXIMIZE)
+    # Objective: Maximize K minus the penalty term (lambda_penalty * sum(y)).
+    model.setObjective(K - lambda_penalty * gp.quicksum(y[arc] for arc in y.keys()), GRB.MAXIMIZE)
+
     model.optimize()
 
+    # If the model is not optimal, return default values.
     if model.status != GRB.OPTIMAL:
-        return efficient_paths, 0, [], {}
+        return possible_paths, 0, [], {}
 
-    evacuation_centrality = int(model.objVal)
-    best_paths = [efficient_paths[p_idx] for p_idx in range(len(efficient_paths)) if x[p_idx].X > 0.5]
+    evac_centrality = K.X
+    # Retrieve best paths (those with x[p] > 0.5) and remove the dummy node.
+    best_paths_full = [possible_paths[p_idx] for p_idx in range(num_paths) if x[p_idx].X > 0.5]
+    best_paths = [path[:-1] for path in best_paths_full]  # Remove dummy (last element)
 
-    # Step 4: Compute a new "agility" score for each efficient path.
-    # Instead of using the sum of centrality values, we use the geometric mean of the intermediate nodes' centralities.
-    # Here, we use the evacuation betweenness centrality computed as before:
-    evacuation_betweenness = {node: 0.0 for node in G.nodes()}
-    total_paths = len(efficient_paths)
-    if total_paths > 0:
-        for path in efficient_paths:
-            # Only consider intermediate nodes (exclude first and last)
-            for node in path[1:-1]:
-                evacuation_betweenness[node] += 1 / total_paths
+    # Also remove dummy from the complete list of efficient paths.
+    efficient_paths = [path[:-1] for path in possible_paths]
 
-    agile_scores = {}
-    for path in efficient_paths:
-        intermediates = path[1:-1]
-        if intermediates:
-            # Compute product of centrality values for intermediate nodes.
-            prod = 1.0
-            for node in intermediates:
-                prod *= evacuation_betweenness[node]
-            # Calculate geometric mean: (product)^(1/number of nodes)
-            gm = prod ** (1 / len(intermediates))
-        else:
-            gm = 0
-        agile_scores[tuple(path)] = gm
+    # For this example, agile_scores are not computed and are set to 0.
+    agile_scores = {tuple(path): 0 for path in efficient_paths}
 
-    scored_paths = [(path, agile_scores[tuple(path)]) for path in efficient_paths]
-    scored_paths.sort(key=lambda x: x[1], reverse=True)
-    best_agile_paths = [path for path, score in scored_paths]
+    # Helper function to compute the cost of a path (sum of edge costs).
+    def compute_path_cost(path, graph):
+        total_cost = 0
+        for u, v in zip(path, path[1:]):
+            total_cost += graph[u][v]['cost']
+        return total_cost
 
-    return efficient_paths, evacuation_centrality, best_agile_paths, agile_scores
+    print("Best agile (penalized) paths with their costs:")
+    for path in best_paths:
+        cost = compute_path_cost(path, G)
+        print(f"Path: {path} | Cost: {cost}")
+    print("Evacuation centrality (penalized K):", evac_centrality)
+
+    return efficient_paths, evac_centrality, best_paths, agile_scores
 
 
 # Example usage:
@@ -133,7 +179,7 @@ if __name__ == "__main__":
 
     print("\nEvacuation Centrality (max number of arc-disjoint paths):", evac_centrality)
 
-    print("\nBest Paths Selected by the ILP model:")
+    print("\nBest Paths Selected by the model:")
     for path in best_paths:
         print(path)
 
