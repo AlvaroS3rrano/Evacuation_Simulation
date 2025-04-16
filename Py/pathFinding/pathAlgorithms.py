@@ -83,7 +83,7 @@ def collect_unblocked_paths(G: nx.DiGraph, source, targets):
             paths.append(path)
     return paths
 
-def compute_efficient_paths(G, source, targets, gamma, sort_paths=False):
+def compute_efficient_paths(G, source, targets, gamma):
     """
     Computes all efficient paths from a single source to a set of target nodes based on a cost tolerance factor,
     and optionally sorts them by their cost from lowest to highest.
@@ -102,8 +102,10 @@ def compute_efficient_paths(G, source, targets, gamma, sort_paths=False):
                                      If False, returns the paths in the order they were found. Default is True.
 
     Returns:
-        list: A list of efficient paths (each path is a list of nodes) that satisfy the cost tolerance across all
-              targets. If sort_paths is True, the paths are sorted by cost from lowest to highest.
+        tuple: A tuple containing:
+            - all_paths (list): A list of all paths from the source to the targets, regardless of cost tolerance.
+            - efficient_paths (list): A list of paths that satisfy the cost tolerance, each path with its associated cost.
+
     """
     # Gather all simple paths from source to each target in one list.
     all_paths = collect_unblocked_paths(G, source, targets)
@@ -134,12 +136,8 @@ def compute_efficient_paths(G, source, targets, gamma, sort_paths=False):
         if cost <= max_allowed_cost
     ]
 
-    # Optionally sort the efficient paths by cost (ascending order).
-    if sort_paths:
-        efficient_paths = sorted(efficient_paths, key=lambda x: x[1])
-
     # Return only the paths (excluding their cost values).
-    return [path for path, cost in efficient_paths]
+    return all_paths, efficient_paths
 
 def centralityMeasuresAlgorithm(G, source, targets, gamma):
     """
@@ -156,7 +154,7 @@ def centralityMeasuresAlgorithm(G, source, targets, gamma):
         gamma (float): Tolerance factor for path cost. Only paths with a total cost less than or equal to
             (1 + gamma) * min_cost (minimum cost among all paths) are considered efficient.
 
-    Returns:
+        Returns:
         tuple: A tuple containing:
             - efficient_paths (list): A list of efficient paths (each path is a list of nodes) that satisfy the cost tolerance.
             - evacuation_betweenness (dict): A dictionary where keys are nodes and values are their
@@ -166,29 +164,24 @@ def centralityMeasuresAlgorithm(G, source, targets, gamma):
     """
     # Step 1: Compute efficient paths from the source to all targets.
     # The updated compute_efficient_paths returns a single list of paths.
-    efficient_paths = compute_efficient_paths(G, source, targets, gamma)
+    all_paths, efficient_paths = compute_efficient_paths(G, source, targets, gamma)
 
     # Step 2: Calculate Evacuation Betweenness Centrality for all nodes.
     # Only intermediate nodes (excluding the source and target nodes in each path) contribute.
     evacuation_betweenness = {node: 0.0 for node in G.nodes()}
-    total_paths = len(efficient_paths)
+    total_paths = len(all_paths)
 
     if total_paths > 0:
-        for path in efficient_paths:
+        for path in all_paths:
             # Contribute only from intermediate nodes (skip first and last node)
             for node in path[1:-1]:
                 evacuation_betweenness[node] += 1 / total_paths
 
     # Step 3: Identify the best paths based on the sum of node centrality scores along each path.
     scored_paths = []
-    for path in efficient_paths:
+    for path, _ in efficient_paths:
         total_centrality_score = sum(evacuation_betweenness[node] for node in path)
         scored_paths.append((path, total_centrality_score))
 
-    # Sort the paths in descending order by their centrality scores.
-    scored_paths.sort(key=lambda x: x[1], reverse=True)
 
-    # Return only the paths (without the centrality scores), maintaining the order.
-    best_paths = [path for path, score in scored_paths]
-
-    return efficient_paths, evacuation_betweenness, best_paths
+    return efficient_paths, evacuation_betweenness, scored_paths

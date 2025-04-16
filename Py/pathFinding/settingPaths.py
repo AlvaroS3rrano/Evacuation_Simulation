@@ -107,7 +107,88 @@ def select_best_alternative_path(alternative_paths, neighbors_sorted, min_risk_n
     handle_blocked_node_in_path(best_path, agent_group)
 
     return best_path
-def compute_low_awareness_alternative_path(exits, risk_per_node, next_node, current_node, agent_group, G, gamma, risk_threshold):
+def getAlternativePathsForNode(EnvInf, current_node, targets, gamma, algo, currentG):
+    """ Get alternative paths for a given node based on the specified algorithm """
+    if algo == 1:
+        # Get alternative paths using the centralityMeasuresAlgorithm
+        _, _, alternative_paths = centralityMeasuresAlgorithm(currentG, current_node, targets, gamma)
+    elif algo == 0:
+        # Get efficient paths using the compute_efficient_paths algorithm
+        _, alternative_paths = compute_efficient_paths(currentG, current_node, targets, gamma)
+    return alternative_paths
+
+
+def updateFloorPaths(EnvInf, current_floor, algo, sources, targets, gamma):
+    """ Update floor paths for a given floor with the calculated paths """
+    all_next_floor_paths = {}
+    for source in sources:
+        nextG = EnvInf.floors[current_floor]
+        alternative_paths = getAlternativePathsForNode(EnvInf, source, targets, gamma, algo, nextG)
+        all_next_floor_paths[source] = alternative_paths
+    EnvInf.floor_paths[(current_floor, algo)] = all_next_floor_paths
+
+
+def getTargetsForCurrentNode(EnvInf, current_node, current_floor, exits):
+    """ Determine the targets for the current node based on the floor and configuration """
+    targets = exits
+    if EnvInf.floor_number > 1:
+        if current_floor != 0:
+            next_floor = current_floor - 1
+            if current_node not in EnvInf.floor_connecting_nodes[(current_floor, next_floor)]:
+                targets = EnvInf.floor_connecting_nodes[(current_floor, next_floor)]
+            else:
+                targets = EnvInf.floor_connecting_nodes[(next_floor, next_floor - 1)]
+    return targets
+
+
+def getPosiblePaths(EnvInf, current_node, exits, gamma, algo):
+    alternative_paths = []
+    current_floor = EnvInf.graph.nodes[current_node]["floor"]
+
+    # Update paths for previous floors
+    for i in range(current_floor):
+        if (i, algo) not in EnvInf.floor_paths:
+            next_floor_paths = []
+            nextG = EnvInf.floors[i]
+            sources = EnvInf.floor_connecting_nodes[(i+1, i)]
+            targets = exits if i == 0 else EnvInf.floor_connecting_nodes[(i, i-1)]
+            updateFloorPaths(EnvInf, i, algo, sources, targets, gamma)
+
+    # Get the paths for the current floor if not available
+    if (current_floor, algo) not in EnvInf.floor_paths:
+        EnvInf.floor_paths[(current_floor, algo)] = {}
+    if current_node not in EnvInf.floor_paths[(current_floor, algo)]:
+        targets = getTargetsForCurrentNode(EnvInf, current_node, current_floor, exits)
+        currentG = EnvInf.graph if current_floor == 0 else EnvInf.floors[current_floor]
+        alternative_paths = getAlternativePathsForNode(EnvInf, current_node, targets, gamma, algo, currentG)
+        EnvInf.floor_paths[(current_floor, algo)][current_node] = alternative_paths
+    else:
+        alternative_paths = EnvInf.floor_paths[(current_floor, algo)][current_node]
+
+    # Combine previous floor paths with the current floor paths
+    alternative_paths_aux = []
+    for i in range(current_floor):
+        for first_segment, first_cost in alternative_paths:
+            for node, segments in EnvInf.floor_paths[(i, algo)].items():
+                if first_segment[-1] == node:
+                    for second_segment, second_cost in segments:
+                        complete_path = first_segment + second_segment[1:]
+                        complete_path_cost = first_cost + second_cost
+                        alternative_paths_aux.append((complete_path, complete_path_cost))
+        alternative_paths = alternative_paths_aux
+
+    # Sort paths based on the algorithm
+    if algo == 0:
+        alternative_paths.sort(key=lambda x: x[1])
+    elif algo == 1:
+        alternative_paths.sort(key=lambda x: x[1], reverse=True)
+
+    # Return only the paths, without the costs
+    paths = [path for path, _ in alternative_paths]
+    return paths
+
+
+def compute_low_awareness_alternative_path(exits, risk_per_node, next_node, current_node, agent_group, EnvInf, gamma, risk_threshold):
     """
     Computes an alternative path based on node risk values and the selected algorithm.
     If the risk of the next node is below the threshold, no update is needed and None is returned.
@@ -125,7 +206,8 @@ def compute_low_awareness_alternative_path(exits, risk_per_node, next_node, curr
             - awareness_level (int): The awareness level of the agents (0 or 1).
             - blocked_nodes (list, optional): List of nodes initially marked as blocked.
             - wait_until_node (str, optional): Node identifier where execution is paused until current_node matches it.
-        G: The graph representing the environment.
+        EnvInf (Environment_info): An instance of the Environment_info class, which includes the graph and environment details.
+                                   It provides access to the environment's graph and floor-specific data.
         gamma (float): Tolerance factor for path cost. Only paths with a total cost less than or equal to
                        (1 + gamma) * global_min_cost are considered efficient.
         risk_threshold (float): Threshold above which a node is considered unsafe.
@@ -136,6 +218,7 @@ def compute_low_awareness_alternative_path(exits, risk_per_node, next_node, curr
 
     algo = agent_group.algorithm
     current_path = getattr(agent_group, 'path', None)
+    G = EnvInf.graph
 
     if current_path is not None:
         # If the risk of the next node is below the threshold, no update is needed.
@@ -162,20 +245,11 @@ def compute_low_awareness_alternative_path(exits, risk_per_node, next_node, curr
     # Filter neighbors that have the same (lowest) risk or have a safe risk value.
     min_risk_neighbors = [n for n in neighbors_sorted if G.nodes[n].get('risk', float('inf')) == min_risk or G.nodes[n].get('risk', float('inf')) < risk_threshold]
 
-    if algo == 1:
-
-        # Get alternative paths using the centralityMeasuresAlgorithm.
-        _, _, alternative_paths = centralityMeasuresAlgorithm(
-            G, current_node, exits, gamma
-        )
-        return select_best_alternative_path(alternative_paths, neighbors_sorted, min_risk_neighbors, agent_group)
-    elif algo == 0:
-        #not get_shortest_path because the blocked nodes need to be taken into account
-        alternative_paths = compute_efficient_paths(G, current_node, exits, gamma, True)
-        return select_best_alternative_path(alternative_paths, neighbors_sorted, min_risk_neighbors, agent_group)
+    alternative_paths = getPosiblePaths(EnvInf, current_node, exits, gamma, algo)
+    return select_best_alternative_path(alternative_paths, neighbors_sorted, min_risk_neighbors, agent_group)
 
 
-def compute_high_awareness_alternative_path(exits, risk_per_node, current_node, agent_group, G, gamma, risk_threshold):
+def compute_high_awareness_alternative_path(exits, risk_per_node, current_node, agent_group, EnvInf, gamma, risk_threshold):
     """
     Computes an alternative path for a high-awareness agent group when the current path contains nodes
     with risk values at or above a given threshold. It evaluates the risk of the current path and, if necessary,
@@ -189,7 +263,8 @@ def compute_high_awareness_alternative_path(exits, risk_per_node, current_node, 
         agent_group (AgentGroup): An AgentGroup instance containing:
             - algorithm (int): Identifier for the algorithm (e.g., 0 for efficient paths, 1 for centrality measures).
             - path (list): The current path (list of nodes) followed by the agent group.
-        G (networkx.Graph): The graph representing the simulation environment.
+        EnvInf (Environment_info): An instance of the Environment_info class, which includes the graph and environment details.
+                                   It provides access to the environment's graph and floor-specific data.
         gamma (float): Tolerance factor for path cost. Only paths with a total cost less than or equal to
                        (1 + gamma) * global_min_cost are considered efficient.
         risk_threshold (float): The risk threshold above which a node is considered dangerous.
@@ -201,6 +276,7 @@ def compute_high_awareness_alternative_path(exits, risk_per_node, current_node, 
     # Retrieve the algorithm identifier and current path from the agent group.
     algo = agent_group.algorithm
     current_path = agent_group.path
+    G = EnvInf.graph
     dangerous_path = False  # Flag to indicate if any node in the current path is dangerous.
     if current_path is not None:
         # Iterate over the nodes in the current path.
@@ -221,17 +297,7 @@ def compute_high_awareness_alternative_path(exits, risk_per_node, current_node, 
         update_graph_risks(G, risk_per_node)
 
 
-        # Depending on the algorithm specified in the agent group, compute alternative paths.
-        if algo == 1:
-            # Use centralityMeasuresAlgorithm to compute alternative paths based on node centrality.
-            _, _, alternative_paths = centralityMeasuresAlgorithm(
-                G, current_node, exits, gamma,
-            )
-        elif algo == 0:
-            # Use compute_efficient_paths to compute alternative efficient paths.
-            alternative_paths = compute_efficient_paths(
-                G, current_node, exits, gamma, True
-            )
+        alternative_paths = getPosiblePaths(EnvInf, current_node, exits, gamma, algo)
 
         best_risk = float('inf')  # Initialize the best (lowest) risk value.
 
@@ -251,7 +317,7 @@ def compute_high_awareness_alternative_path(exits, risk_per_node, current_node, 
     return best_path
 
 
-def compute_alternative_path(exits, agent_group, G, current_node=None, next_node=None, risk_per_node=None,
+def compute_alternative_path(exits, agent_group, EnvInf, current_node=None, next_node=None, risk_per_node=None,
                              risk_threshold=0.5, gamma=0.4):
     """
     Computes an alternative evacuation path for the agent group based on its awareness level and risk assessment.
@@ -264,7 +330,8 @@ def compute_alternative_path(exits, agent_group, G, current_node=None, next_node
     Parameters:
         exits: The list of exit nodes.
         agent_group: The agent group object containing properties such as blocked_nodes, wait_until_node, and awareness_level.
-        G (networkx.Graph or nx.DiGraph): The graph representing the environment.
+        EnvInf (Environment_info): An instance of the Environment_info class, which includes the graph and environment details.
+                                   It provides access to the environment's graph and floor-specific data.
         current_node: The current node where the agent group is located.
         next_node: The next planned node (used in low-awareness alternative path computation).
         risk_per_node: The risk value associated with each node.
@@ -275,6 +342,7 @@ def compute_alternative_path(exits, agent_group, G, current_node=None, next_node
     Returns:
         best_path: The computed best alternative path as a list of nodes, or None if no alternative path is computed.
     """
+    G = EnvInf.graph
     # Temporarily mark nodes in agent_group.blocked_nodes as blocked in the graph G.
     for node in agent_group.blocked_nodes:
         G.nodes[node]['blocked'] = True
@@ -296,7 +364,7 @@ def compute_alternative_path(exits, agent_group, G, current_node=None, next_node
                     next_node,
                     current_node,
                     agent_group,
-                    G,
+                    EnvInf,
                     gamma,
                     risk_threshold,
                 )
@@ -306,7 +374,7 @@ def compute_alternative_path(exits, agent_group, G, current_node=None, next_node
                     risk_per_node,
                     current_node,
                     agent_group,
-                    G,
+                    EnvInf,
                     gamma,
                     risk_threshold,
                 )
