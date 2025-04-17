@@ -1,5 +1,5 @@
-
 from Py.pathFinding.pathAlgorithms import *
+from Py.database.paths_db_manager import *
 def update_graph_risks(G, risk_per_node):
     """
     Updates the risk values for each node in the graph based on the provided risk mapping.
@@ -107,25 +107,51 @@ def select_best_alternative_path(alternative_paths, neighbors_sorted, min_risk_n
     handle_blocked_node_in_path(best_path, agent_group)
 
     return best_path
-def getAlternativePathsForNode(EnvInf, current_node, targets, gamma, algo, currentG):
-    """ Get alternative paths for a given node based on the specified algorithm """
-    if algo == 1:
-        # Get alternative paths using the centralityMeasuresAlgorithm
-        _, _, alternative_paths = centralityMeasuresAlgorithm(currentG, current_node, targets, gamma)
-    elif algo == 0:
-        # Get efficient paths using the compute_efficient_paths algorithm
-        _, alternative_paths = compute_efficient_paths(currentG, current_node, targets, gamma)
-    return alternative_paths
+def getAlternativePathsForNode(current_node, targets, gamma, currentG, paths_connection):
+    """ Get alternative paths for a given node based on the specified algorithm and fetch from DB """
+
+    # Convert dict_keys to a list if targets is a dict_keys object (do this only once before looping)
+    if isinstance(targets, type({}.keys())):
+        targets = list(targets)
+
+    all_paths = []
+
+    # Process each target individually
+    for target in targets:
+        # Construct query to check if the path exists in the DB
+        query = """
+        SELECT * FROM paths
+        WHERE source = ? AND target = ?
+        """
+        params = [current_node, target]
+
+        # Fetch the paths from the database
+        paths_df = pd.read_sql_query(query, paths_connection, params=params)
+
+        # If paths are found in the database, add them to the result
+        if not paths_df.empty:
+            all_paths.extend([(json.loads(path), cost, betweenness) for path, cost, betweenness in zip(paths_df['path'], paths_df['cost'], paths_df['betweenness'])])
+        else:
+            # If paths are not found in the DB, compute them using centralityMeasuresAlgorithm
+            _, _, alternative_paths = centralityMeasuresAlgorithm(currentG, current_node, [target], gamma)
+
+            # Insert the newly computed paths into the DB
+            for path, cost, betweenness in alternative_paths:
+                insert_path(paths_connection, current_node, target, cost, path, betweenness)
+
+            all_paths.extend(alternative_paths)  # Add the newly computed paths to the list
+
+    return all_paths
 
 
-def updateFloorPaths(EnvInf, current_floor, algo, sources, targets, gamma):
+def updateFloorPaths(EnvInf, current_floor, sources, targets, gamma):
     """ Update floor paths for a given floor with the calculated paths """
     all_next_floor_paths = {}
+    nextG = EnvInf.floors[current_floor]
     for source in sources:
-        nextG = EnvInf.floors[current_floor]
-        alternative_paths = getAlternativePathsForNode(EnvInf, source, targets, gamma, algo, nextG)
+        alternative_paths = getAlternativePathsForNode(source, targets, gamma, nextG, EnvInf.paths_connection)
         all_next_floor_paths[source] = alternative_paths
-    EnvInf.floor_paths[(current_floor, algo)] = all_next_floor_paths
+    EnvInf.floor_paths[current_floor] = all_next_floor_paths
 
 
 def getTargetsForCurrentNode(EnvInf, current_node, current_floor, exits):
@@ -147,44 +173,43 @@ def getPosiblePaths(EnvInf, current_node, exits, gamma, algo):
 
     # Update paths for previous floors
     for i in range(current_floor):
-        if (i, algo) not in EnvInf.floor_paths:
-            next_floor_paths = []
-            nextG = EnvInf.floors[i]
+        if i not in EnvInf.floor_paths:
             sources = EnvInf.floor_connecting_nodes[(i+1, i)]
             targets = exits if i == 0 else EnvInf.floor_connecting_nodes[(i, i-1)]
-            updateFloorPaths(EnvInf, i, algo, sources, targets, gamma)
+            updateFloorPaths(EnvInf, i, sources, targets, gamma)
 
     # Get the paths for the current floor if not available
-    if (current_floor, algo) not in EnvInf.floor_paths:
-        EnvInf.floor_paths[(current_floor, algo)] = {}
-    if current_node not in EnvInf.floor_paths[(current_floor, algo)]:
+    if current_floor not in EnvInf.floor_paths:
+        EnvInf.floor_paths[current_floor] = {}
+    if current_node not in EnvInf.floor_paths[current_floor]:
         targets = getTargetsForCurrentNode(EnvInf, current_node, current_floor, exits)
         currentG = EnvInf.graph if current_floor == 0 else EnvInf.floors[current_floor]
-        alternative_paths = getAlternativePathsForNode(EnvInf, current_node, targets, gamma, algo, currentG)
-        EnvInf.floor_paths[(current_floor, algo)][current_node] = alternative_paths
+        alternative_paths = getAlternativePathsForNode(current_node, targets, gamma, currentG, EnvInf.paths_connection)
+        EnvInf.floor_paths[current_floor][current_node] = alternative_paths
     else:
-        alternative_paths = EnvInf.floor_paths[(current_floor, algo)][current_node]
+        alternative_paths = EnvInf.floor_paths[current_floor][current_node]
 
     # Combine previous floor paths with the current floor paths
     alternative_paths_aux = []
     for i in range(current_floor):
-        for first_segment, first_cost in alternative_paths:
-            for node, segments in EnvInf.floor_paths[(i, algo)].items():
+        for first_segment, first_cost, first_betweeness in alternative_paths:
+            for node, segments in EnvInf.floor_paths[i].items():
                 if first_segment[-1] == node:
-                    for second_segment, second_cost in segments:
+                    for second_segment, second_cost, second_betweeness in segments:
                         complete_path = first_segment + second_segment[1:]
                         complete_path_cost = first_cost + second_cost
-                        alternative_paths_aux.append((complete_path, complete_path_cost))
+                        complete_path_betweeness = first_betweeness + second_betweeness
+                        alternative_paths_aux.append((complete_path, complete_path_cost, complete_path_betweeness))
         alternative_paths = alternative_paths_aux
 
     # Sort paths based on the algorithm
     if algo == 0:
         alternative_paths.sort(key=lambda x: x[1])
     elif algo == 1:
-        alternative_paths.sort(key=lambda x: x[1], reverse=True)
+        alternative_paths.sort(key=lambda x: x[2], reverse=True)
 
     # Return only the paths, without the costs
-    paths = [path for path, _ in alternative_paths]
+    paths = [path for path, _, _ in alternative_paths]
     return paths
 
 

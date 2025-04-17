@@ -179,9 +179,10 @@ def centralityMeasuresAlgorithm(G, source, targets, gamma):
 
     # Step 3: Identify the best paths based on the sum of node centrality scores along each path.
     scored_paths = []
-    for path, _ in efficient_paths:
+    for path, cost in efficient_paths:
         total_centrality_score = sum(evacuation_betweenness[node] for node in path)
-        scored_paths.append((path, total_centrality_score))
+        scored_paths.append((path, cost, total_centrality_score))
 
 
     return efficient_paths, evacuation_betweenness, scored_paths
+

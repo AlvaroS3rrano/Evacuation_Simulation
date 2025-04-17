@@ -23,6 +23,7 @@ def create_paths_table(connection: sqlite3.Connection):
                     target INTEGER NOT NULL,  -- Nodo de destino
                     cost INTEGER NOT NULL,    -- Costo del camino
                     path TEXT NOT NULL,       -- Camino como cadena JSON
+                    betweenness REAL NOT NULL, -- Betweenness centrality score
                     PRIMARY KEY (source, target)
                 )
                 """
@@ -30,9 +31,9 @@ def create_paths_table(connection: sqlite3.Connection):
     except sqlite3.Error as e:
         raise RuntimeError(f"Error creating paths table: {e}")
 
-def insert_path(connection: sqlite3.Connection, source: int, target: int, cost: int, path: List[int]):
+def insert_path(connection: sqlite3.Connection, source: int, target: int, cost: int, path: List[int], betweenness: float):
     """
-    Insert or update a path between two nodes in the database.
+    Insert or update a path between two nodes in the database, along with its betweenness centrality.
 
     Args:
         connection (sqlite3.Connection): An open SQLite database connection.
@@ -40,14 +41,15 @@ def insert_path(connection: sqlite3.Connection, source: int, target: int, cost: 
         target (int): The target node.
         cost (int): The cost of the path.
         path (List[int]): A list of nodes representing the path between source and target.
+        betweenness (float): The betweenness centrality score for the path.
     """
     try:
         with connection:
             # Convert the path list to a JSON string
             path_str = json.dumps(path)
             connection.execute(
-                "INSERT OR REPLACE INTO paths (source, target, cost, path) VALUES (?, ?, ?, ?)",
-                (source, target, cost, path_str)
+                "INSERT OR REPLACE INTO paths (source, target, cost, path, betweenness) VALUES (?, ?, ?, ?, ?)",
+                (source, target, cost, path_str, betweenness)
             )
     except sqlite3.Error as e:
         raise RuntimeError(f"Error inserting the path between {source} and {target}: {e}")
