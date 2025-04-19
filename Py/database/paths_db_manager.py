@@ -19,13 +19,13 @@ def create_paths_table(connection: sqlite3.Connection):
             connection.execute(
                 """
                 CREATE TABLE paths (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,  -- ID único para cada fila
                     source INTEGER NOT NULL,  -- Nodo de origen
                     target INTEGER NOT NULL,  -- Nodo de destino
                     cost INTEGER NOT NULL,    -- Costo del camino
                     path TEXT NOT NULL,       -- Camino como cadena JSON
-                    betweenness REAL NOT NULL, -- Betweenness centrality score
-                    PRIMARY KEY (source, target)
-                )
+                    betweenness REAL NOT NULL -- Betweenness centrality score
+)
                 """
             )
     except sqlite3.Error as e:
