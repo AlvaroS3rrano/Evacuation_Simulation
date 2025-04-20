@@ -305,13 +305,15 @@ def compute_high_awareness_alternative_path(exits, risk_per_node, current_node, 
     dangerous_path = False  # Flag to indicate if any node in the current path is dangerous.
     if current_path is not None:
         # Iterate over the nodes in the current path.
-        for i, node in enumerate(current_path):
-            # Check if the node's risk meets or exceeds the threshold.
-            if risk_per_node.get(node, 0) >= risk_threshold:
-                # If the node is the first node, skip it as there's no previous node to update from.
-                if i == 0:
-                    continue
-                dangerous_path = True
+        try:
+            index = current_path.index(current_node)
+            for node in current_path[index+1:]:
+                # Check if the node's risk meets or exceeds the threshold.
+                if risk_per_node.get(node, 0) >= risk_threshold:
+                    dangerous_path = True
+                    break
+        except ValueError:
+            print(f"Error checking the risk of the paths in compute_high_awareness_alternative_path")
     else:
         # A path is needed
         dangerous_path = True

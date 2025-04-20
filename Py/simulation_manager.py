@@ -6,7 +6,7 @@ from Py.pathFinding.settingPaths import *
 from Py.journey_configuration import set_journeys
 from Py.database.agent_area_db_manager import *
 from Py.simulation_logic import compute_current_nodes, update_agent_speed_on_stairs
-def update_group_paths(simulation_config, risk_per_node, agent_group, G, risk_threshold=0.5):
+def update_group_paths(simulation_config, risk_per_node, agent_group, EnvInf, risk_threshold=0.5):
     """
     Updates the group's path based on the current status of each agent using the provided current_nodes mapping.
 
@@ -33,7 +33,8 @@ def update_group_paths(simulation_config, risk_per_node, agent_group, G, risk_th
             - algorithm (int): Identifier for the algorithm used.
             - awareness_level (int): The awareness level of the agents.
             - current_node: The current node (to be updated if changed).
-        G: Graph or structure used for computing alternative paths.
+         EnvInf (Environment_info): An instance of the Environment_info class, which includes the graph and environment details.
+                                   It provides access to the environment's graph and floor-specific data.
         current_nodes (dict): A dictionary where keys are agent IDs and values are the agent's current node.
         risk_threshold (float): Threshold above which a path segment is considered unsafe.
 
@@ -88,7 +89,7 @@ def update_group_paths(simulation_config, risk_per_node, agent_group, G, risk_th
         # Calculate an alternative path from the current_node to the next_node.
         best_path = compute_alternative_path(
             simulation_config.get_exit_ids_keys(),
-            agent_group, G,
+            agent_group, EnvInf,
             current_node, next_node,
             risk_per_node, risk_threshold,
             simulation_config.gamma
@@ -119,7 +120,7 @@ def update_group_paths(simulation_config, risk_per_node, agent_group, G, risk_th
     return agent_group
 
 
-def run_agent_simulation(simulation_config, agent_groups, G, connection, agent_area_connection, risk_threshold):
+def run_agent_simulation(simulation_config, agent_groups, EnvInf, connection, agent_area_connection, risk_threshold):
     """
     Runs the agent simulation, updating agent paths based on current risk levels retrieved from the database.
 
@@ -154,11 +155,11 @@ def run_agent_simulation(simulation_config, agent_groups, G, connection, agent_a
                         # Write in which area the agents are in this frame
                         write_agent_area(agent_area_connection, frame, agent_group.agents, agent_group.current_nodes, risks_this_frame)
 
-                        update_agent_speed_on_stairs(G, simulation_config, agent_group)
+                        update_agent_speed_on_stairs(EnvInf.graph, simulation_config, agent_group)
 
                         # Update paths for the agents based on current risks and threshold
                         agent_groups[key] = update_group_paths(
-                            simulation_config, risks_this_frame, agent_group, G, risk_threshold=risk_threshold
+                            simulation_config, risks_this_frame, agent_group, EnvInf, risk_threshold=risk_threshold
                         )
                 except Exception as e:
                     print(f"Error updating paths at frame {frame}: {e}")
