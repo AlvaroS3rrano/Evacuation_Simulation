@@ -107,10 +107,12 @@ def select_best_alternative_path(alternative_paths, neighbors_sorted, min_risk_n
     handle_blocked_node_in_path(best_path, agent_group)
 
     return best_path
-def getAlternativePathsForNode(current_node, targets, gamma, currentG, paths_connection):
+def getAlternativePathsForNode(current_node, targets, gamma, currentG, paths_connection, *, blocked_nodes=None):
     """ Get alternative paths for a given node based on the specified algorithm and fetch from DB """
 
     # Convert dict_keys to a list if targets is a dict_keys object (do this only once before looping)
+    if blocked_nodes is None:
+        blocked_nodes = []
     if isinstance(targets, type({}.keys())):
         targets = list(targets)
 
@@ -132,8 +134,8 @@ def getAlternativePathsForNode(current_node, targets, gamma, currentG, paths_con
         if not paths_df.empty:
             all_paths.extend([(json.loads(path), cost, betweenness) for path, cost, betweenness in zip(paths_df['path'], paths_df['cost'], paths_df['betweenness'])])
         else:
-            # If paths are not found in the DB, compute them using centralityMeasuresAlgorithm
-            _, _, alternative_paths = centralityMeasuresAlgorithm(currentG, current_node, [target], gamma)
+            # If paths are not found in the DB, compute them using collect_all_paths
+            alternative_paths = collect_all_paths(currentG, current_node, [target])
 
             # Insert the newly computed paths into the DB
             for path, cost, betweenness in alternative_paths:
@@ -141,15 +143,25 @@ def getAlternativePathsForNode(current_node, targets, gamma, currentG, paths_con
 
             all_paths.extend(alternative_paths)  # Add the newly computed paths to the list
 
-    return all_paths
+    # Filter out paths with blocked nodes
+    paths_aux = collect_unblocked_paths(all_paths, blocked_nodes)
+    if paths_aux:
+      all_paths = paths_aux
+    # Compute efficient paths based on cost and centrality
+    efficient_paths = compute_efficient_paths(all_paths, gamma)
+
+    return efficient_paths
 
 
-def updateFloorPaths(EnvInf, current_floor, sources, targets, gamma):
+
+def updateFloorPaths(EnvInf, current_floor, sources, targets, gamma, *, blocked_nodes=None):
     """ Update floor paths for a given floor with the calculated paths """
+    if blocked_nodes is None:
+        blocked_nodes = []
     all_next_floor_paths = {}
     nextG = EnvInf.floors[current_floor]
     for source in sources:
-        alternative_paths = getAlternativePathsForNode(source, targets, gamma, nextG, EnvInf.paths_connection)
+        alternative_paths = getAlternativePathsForNode(source, targets, gamma, nextG, EnvInf.paths_connection, blocked_nodes=blocked_nodes)
         all_next_floor_paths[source] = alternative_paths
     EnvInf.floor_paths[current_floor] = all_next_floor_paths
 
@@ -167,7 +179,9 @@ def getTargetsForCurrentNode(EnvInf, current_node, current_floor, exits):
     return targets
 
 
-def getPosiblePaths(EnvInf, current_node, exits, gamma, algo):
+def getPosiblePaths(EnvInf, current_node, exits, gamma, algo, *, blocked_nodes=None):
+    if blocked_nodes is None:
+        blocked_nodes = []
     alternative_paths = []
     current_floor = EnvInf.graph.nodes[current_node]["floor"]
 
@@ -176,7 +190,7 @@ def getPosiblePaths(EnvInf, current_node, exits, gamma, algo):
         if i not in EnvInf.floor_paths:
             sources = EnvInf.floor_connecting_nodes[(i+1, i)]
             targets = exits if i == 0 else EnvInf.floor_connecting_nodes[(i, i-1)]
-            updateFloorPaths(EnvInf, i, sources, targets, gamma)
+            updateFloorPaths(EnvInf, i, sources, targets, gamma, blocked_nodes=blocked_nodes)
 
     # Get the paths for the current floor if not available
     if current_floor not in EnvInf.floor_paths:
@@ -184,7 +198,7 @@ def getPosiblePaths(EnvInf, current_node, exits, gamma, algo):
     if current_node not in EnvInf.floor_paths[current_floor]:
         targets = getTargetsForCurrentNode(EnvInf, current_node, current_floor, exits)
         currentG = EnvInf.graph if current_floor == 0 else EnvInf.floors[current_floor]
-        alternative_paths = getAlternativePathsForNode(current_node, targets, gamma, currentG, EnvInf.paths_connection)
+        alternative_paths = getAlternativePathsForNode(current_node, targets, gamma, currentG, EnvInf.paths_connection, blocked_nodes=blocked_nodes)
         EnvInf.floor_paths[current_floor][current_node] = alternative_paths
     else:
         alternative_paths = EnvInf.floor_paths[current_floor][current_node]
@@ -263,14 +277,13 @@ def compute_low_awareness_alternative_path(exits, risk_per_node, next_node, curr
     for neighbour in neighbors_sorted:
         if risk_per_node[neighbour] >= risk_threshold and neighbour not in agent_group.blocked_nodes:
             agent_group.blocked_nodes.append(neighbour)
-            G.nodes[neighbour]['blocked'] = True
 
     # Determine the minimum risk among the neighbors.
     min_risk = G.nodes[neighbors_sorted[0]].get('risk', float('inf'))
     # Filter neighbors that have the same (lowest) risk or have a safe risk value.
     min_risk_neighbors = [n for n in neighbors_sorted if G.nodes[n].get('risk', float('inf')) == min_risk or G.nodes[n].get('risk', float('inf')) < risk_threshold]
 
-    alternative_paths = getPosiblePaths(EnvInf, current_node, exits, gamma, algo)
+    alternative_paths = getPosiblePaths(EnvInf, current_node, exits, gamma, algo, blocked_nodes=agent_group.blocked_nodes)
     return select_best_alternative_path(alternative_paths, neighbors_sorted, min_risk_neighbors, agent_group)
 
 
@@ -370,49 +383,42 @@ def compute_alternative_path(exits, agent_group, EnvInf, current_node=None, next
         best_path: The computed best alternative path as a list of nodes, or None if no alternative path is computed.
     """
     G = EnvInf.graph
-    # Temporarily mark nodes in agent_group.blocked_nodes as blocked in the graph G.
-    for node in agent_group.blocked_nodes:
-        G.nodes[node]['blocked'] = True
 
     best_path = None
-    try:
-        # Use a local variable for clarity.
-        wait_node = agent_group.wait_until_node
 
-        # If there is no wait condition, or if any agent is at the wait node, clear the condition.
-        if wait_node is None or (agent_group.current_nodes and wait_node in agent_group.current_nodes.values()):
-            agent_group.wait_until_node = None
+    # Use a local variable for clarity.
+    wait_node = agent_group.wait_until_node
 
-            # Compute the alternative path based on the agent group's awareness level.
-            if agent_group.awareness_level == 0:
-                best_path = compute_low_awareness_alternative_path(
-                    exits,
-                    risk_per_node,
-                    next_node,
-                    current_node,
-                    agent_group,
-                    EnvInf,
-                    gamma,
-                    risk_threshold,
-                )
-            elif agent_group.awareness_level == 1:
-                best_path = compute_high_awareness_alternative_path(
-                    exits,
-                    risk_per_node,
-                    current_node,
-                    agent_group,
-                    EnvInf,
-                    gamma,
-                    risk_threshold,
-                )
-            else:
-                best_path = None
+    # If there is no wait condition, or if any agent is at the wait node, clear the condition.
+    if wait_node is None or (agent_group.current_nodes and wait_node in agent_group.current_nodes.values()):
+        agent_group.wait_until_node = None
+
+        # Compute the alternative path based on the agent group's awareness level.
+        if agent_group.awareness_level == 0:
+            best_path = compute_low_awareness_alternative_path(
+                exits,
+                risk_per_node,
+                next_node,
+                current_node,
+                agent_group,
+                EnvInf,
+                gamma,
+                risk_threshold,
+            )
+        elif agent_group.awareness_level == 1:
+            best_path = compute_high_awareness_alternative_path(
+                exits,
+                risk_per_node,
+                current_node,
+                agent_group,
+                EnvInf,
+                gamma,
+                risk_threshold,
+            )
         else:
             best_path = None
-    finally:
-        # Unblock all blocked nodes in the graph regardless of the outcome.
-        for node in agent_group.blocked_nodes:
-            G.nodes[node]['blocked'] = False
+    else:
+        best_path = None
 
     return best_path
 
