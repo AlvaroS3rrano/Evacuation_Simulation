@@ -147,7 +147,7 @@ def getAlternativePathsForNode(current_node, targets, gamma, currentG, paths_con
     paths_aux = collect_unblocked_paths(all_paths, blocked_nodes)
     if paths_aux:
       all_paths = paths_aux
-    # Compute efficient paths based on cost and centrality
+    # Compute efficient paths based on cost
     efficient_paths = compute_efficient_paths(all_paths, gamma)
 
     return efficient_paths
@@ -217,9 +217,9 @@ def getPosiblePaths(EnvInf, current_node, exits, gamma, algo, *, blocked_nodes=N
         alternative_paths = alternative_paths_aux
 
     # Sort paths based on the algorithm
-    if algo == 0:
+    if algo == 0: # based on cost
         alternative_paths.sort(key=lambda x: x[1])
-    elif algo == 1:
+    elif algo == 1: # based on betweenness
         alternative_paths.sort(key=lambda x: x[2], reverse=True)
 
     # Return only the paths, without the costs
@@ -322,7 +322,7 @@ def compute_high_awareness_alternative_path(exits, risk_per_node, current_node, 
             index = current_path.index(current_node)
             for node in current_path[index+1:]:
                 # Check if the node's risk meets or exceeds the threshold.
-                if risk_per_node.get(node, 0) >= risk_threshold:
+                if risk_per_node.get(node, 0) > 0.0:
                     dangerous_path = True
                     break
         except ValueError:

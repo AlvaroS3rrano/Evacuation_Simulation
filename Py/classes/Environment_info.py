@@ -7,4 +7,4 @@ class Environment_info:
         self.floor_number = floor_number
         self.floor_connecting_nodes = floor_connecting_nodes
         self.floor_paths = {}
-        self.paths_connection = paths_connection
+        self.paths_connection = paths_connection # database conection

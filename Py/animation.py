@@ -3,9 +3,9 @@
 
 """This code is used in examples on jupedsim.org.
 
-We make no promises about the functions from this file w.r.t. API stability. We
-reservere us the right to change the code here w.o. warning. Do not use the
-code here. Use it at your own peril.
+We make no promises about the functions from this file with respect to API stability. We
+reserve the right to change the code here without warning. Do not use the
+code here. Use it at your own risk.
 """
 
 import sqlite3
@@ -22,7 +22,13 @@ DUMMY_SPEED = -1000
 def read_sqlite_file(
     trajectory_file: str,
 ) -> tuple[pedpy.TrajectoryData, pedpy.WalkableArea]:
-    """ """
+    """Read trajectory and walkable area data from a SQLite file.
+
+    Returns:
+        A tuple containing:
+          - pedpy.TrajectoryData with columns: frame, id, x, y, ox, oy
+          - pedpy.WalkableArea representing the walkable polygon.
+    """
     with sqlite3.connect(trajectory_file) as con:
         data = pd.read_sql_query(
             "select frame, id, pos_x as x, pos_y as y, ori_x as ox, ori_y as oy from trajectory_data",
@@ -50,12 +56,14 @@ def _speed_to_color(speed, min_speed, max_speed):
 
 
 def _get_line_color(disk_color):
+    """Choose black or white text based on disk_color brightness."""
     r, g, b, _ = [int(float(val)) for val in disk_color[5:-2].split(",")]
     brightness = (r * 299 + g * 587 + b * 114) / 1000
     return "black" if brightness > 127 else "white"
 
 
 def _create_orientation_line(row, line_length=0.2, color="black"):
+    """Create a Plotly shape for the agent's orientation line."""
     end_x = row["x"] + line_length * row["ox"]
     end_y = row["y"] + line_length * row["oy"]
 
@@ -69,9 +77,11 @@ def _create_orientation_line(row, line_length=0.2, color="black"):
     )
     return orientation_line
 
+
 #######################################################
 
 def _get_waypoint_traces(waypoint_coords):
+    """Generate Scatter traces for waypoints (markers + labels)."""
     waypoint_traces = []
     for i, (x, y) in enumerate(waypoint_coords):
         waypoint_traces.append(
@@ -80,7 +90,7 @@ def _get_waypoint_traces(waypoint_coords):
                 y=[y],
                 mode="markers+text",
                 marker=dict(size=10, color="red", symbol="cross"),
-                text=[f"W{i+1}"], # waypoints label
+                text=[f"W{i+1}"],  # waypoint label
                 textposition="top center",
                 showlegend=False,
                 hoverinfo="skip",
@@ -88,39 +98,37 @@ def _get_waypoint_traces(waypoint_coords):
         )
     return waypoint_traces
 
+
 #######################################################
 
 def _get_geometry_traces(area):
     """
-    Genera trazados geométricos para representar los límites exteriores e interiores
-    (como obstáculos) de un área en la visualización, con la opción de asignar
-    un color específico al interior.
+    Generate geometry traces for plotting the exterior and interior boundaries
+    (e.g., obstacles) of an area. Interior can be filled differently if needed.
 
-    Parámetros:
-        area: Un objeto geométrico que representa el área transitada. Contiene
-              una frontera exterior (`exterior`) y posibles interiores (`interiors`).
+    Parameters:
+        area: A polygon object representing the walkable area, with .exterior and .interiors.
 
-    Retorna:
-        geometry_traces: Una lista de trazados (`Scatter`) de Plotly que representan
-                         los límites geométricos del área.
+    Returns:
+        geometry_traces: A list of Plotly Scatter traces for the polygon boundaries.
     """
-    geometry_traces = []  # Lista para almacenar los trazados geométricos
+    geometry_traces = []
 
-    # Obtener las coordenadas de la frontera exterior del área
+    # Exterior boundary of the area
     x, y = area.exterior.xy
     geometry_traces.append(
         go.Scatter(
             x=np.array(x),
             y=np.array(y),
             mode="lines",
-            line={"color": "white"},
+            line={"color": "black"},  # draw exterior in black
             showlegend=False,
             name="Exterior",
             hoverinfo="name",
         )
     )
 
-    # Iterar sobre las fronteras interiores del área
+    # Interior boundaries (obstacles)
     for inner in area.interiors:
         xi, yi = zip(*inner.coords[:])
         geometry_traces.append(
@@ -128,7 +136,7 @@ def _get_geometry_traces(area):
                 x=np.array(xi),
                 y=np.array(yi),
                 mode="lines",
-                line={"color": "white"},
+                line={"color": "black"},  # draw obstacles in black
                 showlegend=False,
                 name="Obstacle",
                 hoverinfo="name",
@@ -140,15 +148,15 @@ def _get_geometry_traces(area):
 
 def _change_geometry_traces(geometry_traces, specific_area, color):
     """
-    Actualiza los trazados geométricos para colorear un área específica.
+    Update geometry traces to fill a specific area with a given color.
 
-    Parámetros:
-        geometry_traces: Lista de trazados existentes.
-        specific_area: Área específica a colorear.
-        color: Color del área específica.
+    Parameters:
+        geometry_traces: Existing list of geometry traces.
+        specific_area: A polygon to fill with the given color.
+        color: Fill color for the specific area.
 
-    Retorna:
-        Lista actualizada de trazados.
+    Returns:
+        Updated list of geometry traces including the filled area.
     """
     x, y = specific_area.exterior.xy
     geometry_traces.append(
@@ -156,7 +164,7 @@ def _change_geometry_traces(geometry_traces, specific_area, color):
             x=np.array(x),
             y=np.array(y),
             mode="lines",
-            line={"width": 0},
+            line={"width": 0},  # no outline, only fill
             fill="toself",
             fillcolor=color,
             showlegend=False,
@@ -166,11 +174,9 @@ def _change_geometry_traces(geometry_traces, specific_area, color):
     )
     return geometry_traces
 
-def _get_colormap(frame_data, max_speed):
-    """Utilize scatter plots with varying colors for each agent instead of individual shapes.
 
-    This trace is only to incorporate a colorbar in the plot.
-    """
+def _get_colormap(frame_data, max_speed):
+    """Generate a scatter plot trace only to include a colorbar for speeds."""
     scatter_trace = go.Scatter(
         x=frame_data["x"],
         y=frame_data["y"],
@@ -192,6 +198,7 @@ def _get_colormap(frame_data, max_speed):
 
 
 def _get_shapes_for_frame(frame_data, min_speed, max_speed):
+    """Create Plotly shapes, hover traces, and orientation arrows for each agent in one frame."""
     def create_shape(row):
         hover_trace = go.Scatter(
             x=[row["x"]],
@@ -203,6 +210,7 @@ def _get_shapes_for_frame(frame_data, min_speed, max_speed):
             showlegend=False,
         )
         if row["speed"] == DUMMY_SPEED:
+            # Dummy agent: draw transparent circle, no hover
             dummy_trace = go.Scatter(
                 x=[row["x"]],
                 y=[row["y"]],
@@ -264,19 +272,17 @@ def _create_fig(
     height=800,
     title_note: str = "",
 ):
-    """Creates a Plotly figure with animation capabilities.
+    """Create a Plotly Figure with animation controls for the simulation.
 
     Returns:
-        go.Figure: A Plotly figure with animation capabilities.
+        A go.Figure object with animation frames and layout configured.
     """
-
     minx, miny, maxx, maxy = area_bounds
     title = f"<b>{title_note + '  |  ' if title_note else ''}Number of Agents: {initial_agent_count}</b>"
 
     fig = go.Figure(
         data=geometry_traces
         + initial_scatter_trace
-        # + hover_traces
         + initial_hover_trace,
         frames=frames,
         layout=go.Layout(
@@ -299,7 +305,7 @@ def _create_fig(
 
 
 def _get_animation_controls():
-    """Returns the animation control buttons for the figure."""
+    """Return the Play button controls for the animation."""
     return {
         "buttons": [
             {
@@ -326,7 +332,7 @@ def _get_animation_controls():
 
 
 def _get_slider_controls(steps):
-    """Returns the slider controls for the figure."""
+    """Return the slider configuration for the animation frames."""
     return {
         "active": 0,
         "yanchor": "top",
@@ -347,7 +353,7 @@ def _get_slider_controls(steps):
 
 
 def _get_processed_frame_data(data_df, frame_num, max_agents):
-    """Process frame data and ensure it matches the maximum agent count."""
+    """Ensure each frame has exactly max_agents rows by adding dummy agents if needed."""
     frame_data = data_df[data_df["frame"] == frame_num]
     agent_count = len(frame_data)
     dummy_agent_data = {"x": 0, "y": 0, "radius": 0, "speed": DUMMY_SPEED}
@@ -359,32 +365,26 @@ def _get_processed_frame_data(data_df, frame_num, max_agents):
 
 def generate_risk_colors(risk_threshold=0.5):
     """
-    Generates a list of color strings for risk levels from 0 to 10 using two distinct gradients:
-      - For normalized risk values below the risk_threshold, a gradient from transparent blue to opaque blue.
-      - For normalized risk values equal to or above the risk_threshold, a gradient from light purple to dark purple.
-
-    Parameters:
-        risk_threshold (float): The normalized risk threshold (between 0 and 1) that separates low risk from high risk.
-
-    Returns:
-        list: A list of color strings formatted as "rgba(r, g, b, a)" for risk levels 0 through 10.
+    Generate a list of RGBA color strings for risk levels 0 to 10.
+    - Below risk_threshold: transparent pink to opaque pink.
+    - Above risk_threshold: gradient from light purple to dark purple.
     """
     colors = []
-    # Define constant blue for the low risk gradient.
-    firt_color = (255, 192, 203); # pink
-    # Define the start (light purple) and end (dark purple) colors for the high risk gradient.
+    # Base color for low risk (pink)
+    first_color = (255, 192, 203)
+    # Light and dark purple for high risk gradient
     light_purple = (221, 160, 221)
     dark_purple = (128, 0, 128)
 
-    for i in range(11):  # Risk levels from 0 to 10.
+    for i in range(11):  # Risk levels 0 to 10
         normalized_risk = i / 10.0
         if normalized_risk < risk_threshold:
-            # For low risk: compute the alpha (transparency) value from 0 (transparent) to 1 (opaque)
+            # Low risk: alpha from 0 to 1
             fraction = normalized_risk / risk_threshold if risk_threshold != 0 else 0
-            alpha = fraction  # Alpha increases as risk approaches the threshold.
-            color = f"rgba({firt_color[0]}, {firt_color[1]}, {firt_color[2]}, {alpha:.2f})"
+            alpha = fraction
+            color = f"rgba({first_color[0]}, {first_color[1]}, {first_color[2]}, {alpha:.2f})"
         else:
-            # For high risk: compute a gradient from light purple to dark purple.
+            # High risk: interpolate between light purple and dark purple
             fraction = (normalized_risk - risk_threshold) / (1 - risk_threshold) if risk_threshold != 1 else 0
             r = int(light_purple[0] + fraction * (dark_purple[0] - light_purple[0]))
             g = int(light_purple[1] + fraction * (dark_purple[1] - light_purple[1]))
@@ -393,182 +393,192 @@ def generate_risk_colors(risk_threshold=0.5):
         colors.append(color)
     return colors
 
+
 def add_static_risk_colorbar():
     """
-    Creates a Scatter trace for a static risk level colorbar with colors from black to intense red.
+    Create a Scatter trace representing a static risk level colorbar from black to red.
 
     Returns:
-        go.Scatter: Scatter trace with a fixed risk colorbar.
+        A go.Scatter trace with the risk colorbar.
     """
-    # Generate the fixed color scale from black to red
-    risk_colors = generate_risk_colors()  # e.g., ['rgb(0,0,0)', ..., 'rgb(255,0,0)']
+    # Generate the color scale from black to red
+    risk_colors = generate_risk_colors()  # e.g., ['rgba(255,192,203,0.0)', ..., 'rgba(128,0,128,1)']
 
-    # Convert the risk colors into a Plotly-compatible colorscale
+    # Convert risk_colors into Plotly-compatible colorscale tuples
     colorscale = [
-        (i / (len(risk_colors) - 1), color)  # Normalize positions (0 to 1)
+        (i / (len(risk_colors) - 1), color)  # Normalize positions 0 to 1
         for i, color in enumerate(risk_colors)
     ]
 
-    # Dummy data to create the colorbar (not visible in the plot)
+    # Dummy data to attach the colorbar
     dummy_x = [0]
     dummy_y = [0]
 
-    # Create the scatter trace for the static risk colorbar
     risk_trace = go.Scatter(
-        x=dummy_x,  # Dummy data
-        y=dummy_y,  # Dummy data
+        x=dummy_x,
+        y=dummy_y,
         mode="markers",
         marker=dict(
-            size=10,  # Small dummy size
-            color=[0],  # Single dummy value
-            colorscale=colorscale,  # Fixed black-to-red colorscale
+            size=10,  # small dummy marker
+            color=[0],  # only one dummy value
+            colorscale=colorscale,  # custom black-to-red scale
             colorbar=dict(
-                title="Risk Level",  # Title of the colorbar
-                x=1.25,  # Positioning to the right
+                title="Risk Level",  # label for the colorbar
+                x=1.25,  # position to the right of the plot
             ),
-            cmin=0,  # Fixed minimum risk (black)
-            cmax=1,  # Fixed maximum risk (red)
+            cmin=0,  # minimum = black
+            cmax=1,  # maximum = red
         ),
         showlegend=False,
-        hoverinfo="none",  # Disable hover info for dummy trace
+        hoverinfo="none",  # no hover for dummy
     )
     return risk_trace
 
+
 def animate(
-        data: pedpy.TrajectoryData,  # Datos de trayectorias (posiciones y tiempos de los agentes)
-        area: pedpy.WalkableArea,  # Área transitable, definida como un polígono
-        *,  # Obliga a que los parámetros siguientes sean pasados por nombre
-        every_nth_frame: int = 50,  # Frecuencia de frames a incluir en la animación
-        width: int = 800,  # Ancho de la visualización en píxeles
-        height: int = 800,  # Alto de la visualización en píxeles
-        radius: float = 0.2,  # Radio visual de los agentes en la animación
-        title_note: str = "",  # Nota adicional para el título
-        waypoint_coords=None,  # Coordenadas opcionales de puntos de referencia
-        risk_per_frame: dict = None,  # Riesgos por frame
-        specific_areas: dict = None,  # Coordenadas de áreas específicas
+    data: pedpy.TrajectoryData,  # TrajectoryData with positions and frame info
+    area: pedpy.WalkableArea,    # WalkableArea polygon
+    *,
+    every_nth_frame: int = 50,   # Subsample frequency for frames
+    width: int = 800,            # Figure width in pixels
+    height: int = 800,           # Figure height in pixels
+    radius: float = 0.2,         # Visual radius for agents
+    title_note: str = "",        # Optional title annotation
+    waypoint_coords=None,        # Optional waypoint coordinates
+    risk_per_frame: dict = None, # Risk levels per frame
+    specific_areas: dict = None, # Polygons to highlight for risk
 ):
-    # Calcular velocidades individuales de los agentes
+    """
+    Create an animated Plotly Figure showing trajectories, walkable area, agent speeds, and risk zones.
+
+    Returns:
+        A Plotly go.Figure object configured with frames and animation controls.
+    """
+    # Compute individual speeds for each agent
     data_df = pedpy.compute_individual_speed(
-        traj_data=data,  # Datos de trayectorias
-        frame_step=5,  # Paso entre frames para calcular velocidad
-        speed_calculation=pedpy.SpeedCalculation.BORDER_SINGLE_SIDED,  # Método de cálculo
+        traj_data=data,  # trajectory data
+        frame_step=5,  # frame interval to compute speeds
+        speed_calculation=pedpy.SpeedCalculation.BORDER_SINGLE_SIDED,
     )
 
-    # Combinar las velocidades calculadas con los datos originales
+    # Merge computed speeds back into original data
     data_df = data_df.merge(data.data, on=["id", "frame"], how="left")
 
-    # Agregar el radio de los agentes a los datos
+    # Add radius column for marker size
     data_df["radius"] = radius
 
-    # Determinar los valores mínimo y máximo de velocidad para el mapeo de colores
+    # Determine min and max speeds for color mapping
     min_speed = data_df["speed"].min()
     max_speed = data_df["speed"].max()
 
-    # Calcular el número máximo de agentes presentes en un solo frame
+    # Find maximum number of agents in any single frame
     max_agents = data_df.groupby("frame").size().max()
 
-    # Inicializar listas para frames y pasos (steps) de la animación
+    # Prepare lists for frames and slider steps
     frames = []
     steps = []
 
-    # Obtener los frames únicos y seleccionar un subconjunto con la frecuencia especificada
+    # Get list of unique frame indices and select every nth frame
     unique_frames = data_df["frame"].unique()
     selected_frames = unique_frames[::every_nth_frame]
 
-    # Obtener los trazados geométricos del área (límites y restricciones)
+    # Create geometry traces (exterior and interior boundaries)
     geometry_traces = _get_geometry_traces(area.polygon)
 
-    # Si se especifican puntos de referencia, añadirlos a los trazados geométricos
+    # If waypoints are provided, add them
     if waypoint_coords:
         waypoint_traces = _get_waypoint_traces(waypoint_coords)
         geometry_traces.extend(waypoint_traces)
 
-    # Datos del primer frame para inicializar la animación
+    # Data for the first frame (initial state)
     initial_frame_data = data_df[data_df["frame"] == data_df["frame"].min()]
     initial_agent_count = len(initial_frame_data)
 
-    # Obtener las formas, trazados de información y flechas iniciales
+    # Generate initial agent shapes, hover traces, and orientation arrows
     (
         initial_shapes,
         initial_hover_trace,
         initial_arrows,
     ) = _get_shapes_for_frame(initial_frame_data, min_speed, max_speed)
 
-    # Generar el mapa de colores para representar velocidades
+    # Generate a colorbar trace for speeds
     color_map_trace = _get_colormap(initial_frame_data, max_speed)
+    # Generate a static risk colorbar
     risk_trace = add_static_risk_colorbar()
 
+    # Combine traces for the initial layout
     traces = color_map_trace + [risk_trace]
 
+    # Precompute risk color gradient
     risk_colors = generate_risk_colors()
 
-    # Procesar cada frame seleccionado para la animación
+    # Process each selected frame
     for frame_num in selected_frames:
-        # Obtener los datos procesados del frame actual
+        # Get processed data for this frame (ensuring max_agents rows)
         frame_data, agent_count = _get_processed_frame_data(
             data_df, frame_num, max_agents
         )
-        # Actualizar los trazados de áreas específicas según el riesgo
+        # Recompute geometry traces each frame in case risk zones change
         geometry_traces = _get_geometry_traces(area.polygon)
 
+        # If specific risk areas and risk_per_frame are provided, color them
         if specific_areas and risk_per_frame:
-            current_risks = risk_per_frame.get(frame_num, {})  # Fetch risks for the given frame
+            current_risks = risk_per_frame.get(frame_num, {})  # risk levels for this frame
             for area_name, risk_level in current_risks.items():
-                color = risk_colors[int(risk_level * 10)]  # Normalize risk to a range of 0-10
-                specific_area = specific_areas[area_name]  # Get the polygon of the area
+                color = risk_colors[int(risk_level * 10)]  # map risk level to 0-10 index
+                specific_area = specific_areas[area_name]
                 geometry_traces = _change_geometry_traces(geometry_traces, specific_area, color)
 
-        # Generar formas, trazados de información y flechas para este frame
+        # Generate shapes, hover traces, and orientation arrows for this frame
         shapes, hover_traces, arrows = _get_shapes_for_frame(
             frame_data, min_speed, max_speed
         )
 
-        # Crear el título del frame, mostrando información dinámica
+        # Construct dynamic title for this frame
         title = f"<b>{title_note + '  |  ' if title_note else ''}Number of Agents: {agent_count}</b>"
 
-        # Convertir el número del frame a string para usar como nombre
+        # Frame name as string
         frame_name = str(int(frame_num))
 
-        # Crear el objeto `Frame` para la animación con los datos y el diseño del frame actual
+        # Create a go.Frame object with data and layout for this frame
         frame = go.Frame(
-            data=geometry_traces + hover_traces,  # Datos del frame
-            name=frame_name,  # Nombre del frame
+            data=geometry_traces + hover_traces,
+            name=frame_name,
             layout=go.Layout(
-                shapes=shapes + arrows,  # Formas y flechas
-                title=title,  # Título dinámico
-                title_x=0.5,  # Centrar el título
+                shapes=shapes + arrows,
+                title=title,
+                title_x=0.5,
             ),
         )
         frames.append(frame)
 
-        # Crear un paso (step) para los controles interactivos de la animación
+        # Create slider step entry
         step = {
             "args": [
-                [frame_name],  # Nombre del frame al que se moverá el control
+                [frame_name],
                 {
-                    "frame": {"duration": 100, "redraw": True},  # Duración de cada frame
-                    "mode": "immediate",  # Modo de transición
-                    "transition": {"duration": 500},  # Duración de la transición
+                    "frame": {"duration": 100, "redraw": True},
+                    "mode": "immediate",
+                    "transition": {"duration": 500},
                 },
             ],
-            "label": frame_name,  # Etiqueta del paso (número del frame)
-            "method": "animate",  # Método a ejecutar (animar)
+            "label": frame_name,
+            "method": "animate",
         }
         steps.append(step)
 
-    # Crear y retornar la figura final con todos los elementos de la animación
+    # Build and return the final animated figure
     return _create_fig(
-        initial_agent_count,  # Número inicial de agentes
-        initial_shapes,  # Formas iniciales
-        initial_arrows,  # Flechas iniciales
-        initial_hover_trace,  # Trazados de información iniciales
-        traces,  # Includes both the speed and risk colorbars
-        geometry_traces,  # Trazados geométricos del área
-        frames,  # Frames generados
-        steps,  # Pasos para el deslizador
-        area.bounds,  # Límites del área
-        width=width,  # Ancho de la figura
-        height=height,  # Alto de la figura
-        title_note=title_note,  # Nota adicional para el título
+        initial_agent_count,
+        initial_shapes,
+        initial_arrows,
+        initial_hover_trace,
+        traces,
+        geometry_traces,
+        frames,
+        steps,
+        area.bounds,
+        width=width,
+        height=height,
+        title_note=title_note,
     )
-
