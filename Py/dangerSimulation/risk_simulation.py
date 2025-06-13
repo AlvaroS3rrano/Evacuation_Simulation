@@ -54,25 +54,30 @@ def update_risk(G: nx.DiGraph, increase_chance=0.2, danger_threshold=0.5):
     for node, risk in new_risks.items():
         G.nodes[node]["risk"] = risk
 
-def simulate_risk(riskSimulationValues, every_nth_frame, G, exits, connection):
+def simulate_risk(riskSimulationValues, every_nth_frame, G, exits, connection, seed=None):
     """
     Simulates risk propagation in a graph over multiple frames and stores the results in a database.
 
     Args:
-        riskSimulationValues: An object that includes the simulation parameters:
-            - iterations (int): Total number of frames to simulate.
-            - propagation_chance (float): Probability of risk spreading between connected nodes.
-            - increase_chance (float): Probability of individual nodes increasing their risk.
-        every_nth_frame (int): Interval of frames at which risk updates are performed.
-        G (networkx.Graph): Graph where each node has a "risk" attribute.
-        exits (list): List of nodes whose risk remains 0.
-        connection (sqlite3.Connection): Open SQLite database connection to store risk data.
+        riskSimulationValues: Un objeto con:
+            - iterations (int): Total de frames a simular.
+            - start_frame (int): Frame inicial.
+            - max_risk_increment (float): Riesgo máximo que puede añadirse en cada paso.
+            - ... (otros parámetros que uses en tu simulación)
+        every_nth_frame (int): Frecuencia con la que guardar resultados.
+        G: Grafo de NetworkX sobre el que se simula.
+        exits: Lista de nodos de salida.
+        connection: Conexión a la base de datos.
+        seed (int, optional): Semilla para el generador aleatorio, para resultados reproducibles.
     """
     # Validate the input arguments
     if riskSimulationValues.iterations <= 0:
         raise ValueError("iterations must be a positive integer.")
     if every_nth_frame <= 0:
         raise ValueError("every_nth_frame must be a positive integer.")
+
+    if seed is not None:
+        random.seed(seed)
 
     for frame in range(riskSimulationValues.iterations + 1):
         if frame == 0:

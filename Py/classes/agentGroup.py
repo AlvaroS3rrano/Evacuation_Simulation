@@ -24,7 +24,7 @@ class AgentGroup:
             path (list): The designated path for the group.
             current_nodes (dict): Dictionary mapping each agent's ID to its current node.
             algorithm (int): Algorithm identifier (e.g., 0 for shortest path, 1 for centrality measures).
-            awareness_level (int): The awareness level of the agents (e.g., 0 or 1).
+            awareness_level (int): The awareness level of the agents (e.g., 0 for low awareness or 1 for high awareness).
             blocked_nodes (list, optional): List of nodes to mark as blocked initially.
                                             Defaults to an empty list if not provided.
             wait_until_node (str, optional): Node identifier to wait at before executing certain operations.

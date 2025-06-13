@@ -842,7 +842,7 @@ def get_cruise_ship():
 
     distribution_polygons = {
         '82': Polygon([(10.0, 43.0), (15.0, 43.0), (15.0, 48.0), (10.0, 48.0)]),
-
+        '83': Polygon([(15.0, 43.0), (20.0, 43.0), (20.0, 48.0), (15.0, 48.0)]),
     }
 
     G = nx.DiGraph()
@@ -904,19 +904,19 @@ def get_cruise_ship():
         "54": 0.0,
         "55": 0.0,
         "56": 0.0,
-        "57": 1.0,
+        "57": 0.0,
         "58": 0.0,
         "59": 0.0,
         "60": 0.0,
         "61": 0.0,
         "62": 0.0,
-        "63": 1.0,
-        "64": 1.0,
+        "63": 0.0,
+        "64": 0.0,
         "65": 0.0,
         "66": 0.0,
         "67": 0.0,
         "68": 0.0,
-        "69": 1.0,
+        "69": 0.0,
         "70": 0.0,
         "71": 0.0,
         "72": 0.0,
@@ -1884,7 +1884,7 @@ def get_cruise_ship():
         exit_polygons=exit_polygons,
         waypoints=waypoints,
         distribution_polygons=distribution_polygons,
-        sources=["82"],
+        sources=["82", "83"],
         targets=["163", "164"],
         specific_areas=specific_areas
     )
