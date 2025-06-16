@@ -197,7 +197,7 @@ def getPosiblePaths(EnvInf, current_node, exits, gamma, algo, *, blocked_nodes=N
         EnvInf.floor_paths[current_floor] = {}
     if current_node not in EnvInf.floor_paths[current_floor]:
         targets = getTargetsForCurrentNode(EnvInf, current_node, current_floor, exits)
-        currentG = EnvInf.graph if current_floor == 0 else EnvInf.floors[current_floor]
+        currentG = EnvInf.graph if EnvInf.floors == None else EnvInf.floors[current_floor]
         alternative_paths = getAlternativePathsForNode(current_node, targets, gamma, currentG, EnvInf.paths_connection, blocked_nodes=blocked_nodes)
         EnvInf.floor_paths[current_floor][current_node] = alternative_paths
     else:
@@ -320,11 +320,12 @@ def compute_high_awareness_alternative_path(exits, risk_per_node, current_node, 
         # Iterate over the nodes in the current path.
         try:
             index = current_path.index(current_node)
-            for node in current_path[index+1:]:
-                # Check if the node's risk meets or exceeds the threshold.
-                if risk_per_node.get(node, 0) > 0.0:
+            for node in current_path[index + 1:]:
+                risk = risk_per_node.get(node, 0.0)
+                if risk >= risk_threshold:
+                    if node not in agent_group.blocked_nodes:
+                        agent_group.blocked_nodes.append(node)
                     dangerous_path = True
-                    break
         except ValueError:
             print(f"Error checking the risk of the paths in compute_high_awareness_alternative_path")
     else:
@@ -382,10 +383,6 @@ def compute_alternative_path(exits, agent_group, EnvInf, current_node=None, next
     Returns:
         best_path: The computed best alternative path as a list of nodes, or None if no alternative path is computed.
     """
-    G = EnvInf.graph
-
-    best_path = None
-
     # Use a local variable for clarity.
     wait_node = agent_group.wait_until_node
 

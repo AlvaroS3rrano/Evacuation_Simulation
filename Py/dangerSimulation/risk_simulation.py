@@ -92,6 +92,12 @@ def simulate_risk(riskSimulationValues, every_nth_frame, G, exits, connection, s
                 print(f"Error writing initial risks: {e}")
             continue
 
+        if frame == 2400:                   # uncoment for case 3
+            G.nodes["153"]["risk"] = 0.6
+            G.nodes["225"]["risk"] = 1.0
+            G.nodes["224"]["risk"] = 1.0
+            G.nodes["201"]["risk"] = 0.6
+
         # directly use the iteration as frames
         if frame % every_nth_frame == 0:
             try:

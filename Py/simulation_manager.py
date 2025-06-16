@@ -47,8 +47,8 @@ def update_group_paths(sim_cfg, risk_map: dict, group: AgentGroup,
     simulation = sim_cfg.simulation
     waypoints = sim_cfg.waypoints_ids
 
-    # Choose agents based on awareness level
-    to_check = [agent_ids[0]] if group.awareness_level == 1 else agent_ids
+    # Choose the agent in the front of the group
+    to_check = [max(agent_ids, key=lambda aid: current_path.index(current_nodes[aid]))]
 
     for aid in to_check:
         if not validate_agent(aid, simulation, current_nodes):

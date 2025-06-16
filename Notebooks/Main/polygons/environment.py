@@ -25,8 +25,8 @@ class Environment:
     """
 
 
-    def __init__(self, name, graph, complete_area, obstacles, exit_polygons, waypoints,
-                 distribution_polygons, sources, targets, specific_areas, *,floors=None, floor_number=1, floor_connecting_nodes=None):
+    def __init__(self, name, graph, complete_area, obstacles, waypoints,
+                  sources, targets, specific_areas, *,floors=None, floor_number=1, floor_connecting_nodes=None):
         self.name = name
         self.graph = graph
         self.floors = floors
@@ -34,9 +34,7 @@ class Environment:
         self.floor_connecting_nodes = floor_connecting_nodes
         self.complete_area = complete_area
         self.obstacles = obstacles
-        self.exit_polygons = exit_polygons
         self.waypoints = waypoints
-        self.distribution_polygons = distribution_polygons
         self.sources = sources
         self.targets = targets
         self.specific_areas = specific_areas
@@ -73,10 +71,6 @@ def remove_obstacles_from_areas(specific_areas, obstacles):
     return cleaned_areas
 
 def get_comparing_algorithms_pol():
-    # Parameters for path calculation
-    sources = ["C", "F"]  # Starting node for pathfinding
-    targets = ["EA", "EB", "EC", "ED"]  # Target nodes for pathfinding
-
     complete_area = Polygon(
         [
             (0, -1),
@@ -103,11 +97,6 @@ def get_comparing_algorithms_pol():
         Polygon([(30, 5), (32, 5), (32, 11), (30, 11)]),
         Polygon([(30, 13), (32, 13), (32, 17), (30, 17)]),
     ]
-
-    exit_polygons = {'EA': [(14, 1), (14, -1), (16, -1), (16, 1)],
-                     'EB': [(14, 15), (14, 17), (16, 17), (16, 15)],
-                     'EC': [(30, 3), (32, 3), (32, 5), (30, 5)],
-                     'ED': [(30, 11), (32, 11), (32, 13), (30, 13)]}
 
     waypoints = {
         # left (8)
@@ -173,11 +162,6 @@ def get_comparing_algorithms_pol():
         '3E': ([15, 8], 0.75),
         '3G': ([15, 6], 0.75),
         '3H': ([15, 4], 0.75)
-    }
-
-    distribution_polygons = {
-        'C': Polygon([(0, 9), (2, 9), (2, 11), (0, 11)]),
-        'F': Polygon([(0, 5), (2, 5), (2, 7), (0, 7)]),
     }
 
     G = nx.DiGraph()
@@ -427,21 +411,22 @@ def get_comparing_algorithms_pol():
         '3E': Polygon([(14, 7), (16, 7), (16, 9), (14, 9)]),
         '3G': Polygon([(14, 5), (16, 5), (16, 7), (14, 7)]),
         '3H': Polygon([(14, 3), (16, 3), (16, 5), (14, 5)]),
+
+        # Exits
+        'EA': [(14, 1), (14, -1), (16, -1), (16, 1)],
+        'EB': [(14, 15), (14, 17), (16, 17), (16, 15)],
+        'EC': [(30, 3), (32, 3), (32, 5), (30, 5)],
+        'ED': [(30, 11), (32, 11), (32, 13), (30, 13)]
     }
-    # Add the exits to de dict
-    for key, value in exit_polygons.items():
-        specific_areas[key] = Polygon(value)
 
     return Environment(
         name="comparing_algorithms",
         graph= G,
         complete_area=complete_area,
         obstacles=obstacles,
-        exit_polygons=exit_polygons,
         waypoints=waypoints,
-        distribution_polygons=distribution_polygons,
-        sources=sources,
-        targets=targets,
+        sources=["C", "F"],
+        targets=["EA", "EB", "EC", "ED"],
         specific_areas=specific_areas
     )
 
@@ -483,12 +468,9 @@ def get_simple_3x3():
                  (10.1, 11.5), (9.9, 11.5), (9.9, 10.1), (8.6, 10.1)]),
 
     ]
-    exit_polygons = {'I': [(12.5, 12.5), (15, 12.5), (15, 15), (12.5, 15)]}
 
     waypoints = {'A': ([2.5, 2.5], 1.5), 'B': ([7.5, 2.5], 1.5), 'C': ([12.5, 2.5], 1.5), 'D': ([12.5, 7.5], 1.5), 'E': ([7.5, 7.5], 1.5),
                  'F': ([2.5, 7.5], 1.5), 'G': ([2.5, 12.5], 1.5), 'H': ([7.5, 12.5], 1.5)}
-
-    distribution_polygons = {'A': Polygon([[0, 0], [5, 0], [5, 5], [0, 5]])}
 
     # Create the graph
     G = nx.DiGraph()
@@ -539,9 +521,7 @@ def get_simple_3x3():
         graph=G,
         complete_area=complete_area,
         obstacles=obstacles,
-        exit_polygons=exit_polygons,
         waypoints=waypoints,
-        distribution_polygons=distribution_polygons,
         sources=["A"],
         targets=["I"],
         specific_areas=specific_areas
@@ -606,11 +586,6 @@ def get_cruise_ship():
 
         Polygon([(23, -34), (28, -34), (28, -39), (23, -39), (23, -37.5), (25, -37.5), (25, -35.5), (23, -35.5)]),
     ]
-
-    exit_polygons = {
-        '163': Polygon([(5.0, -37.5), (7.0, -37.5), (7.0, -35.5), (5.0, -35.5)]),
-        '164': Polygon([(23.0, -37.5), (25.0, -37.5), (25.0, -35.5), (23.0, -35.5)]),
-    }
 
     waypoints = {
         '1': ([3.0, 1.0], 0.5),
@@ -840,11 +815,6 @@ def get_cruise_ship():
 
     }
 
-    distribution_polygons = {
-        '82': Polygon([(10.0, 43.0), (15.0, 43.0), (15.0, 48.0), (10.0, 48.0)]),
-        '83': Polygon([(15.0, 43.0), (20.0, 43.0), (20.0, 48.0), (15.0, 48.0)]),
-    }
-
     G = nx.DiGraph()
 
     nodes = {
@@ -855,7 +825,7 @@ def get_cruise_ship():
         "5": 0.0,
         "6": 0.0,
         "7": 0.0,
-        "8": 1.0,
+        "8": 0.0,
         "9": 0.0,
         "10": 0.0,
         "11": 0.0,
@@ -1079,6 +1049,8 @@ def get_cruise_ship():
 
     for i in range(100, 226):
         G.nodes[f"{i}"] ["floor"]= 0
+
+    G.nodes["8"]["risk"] = 1
 
     G.nodes["1"]["is_stairs"] = True
     G.nodes["2"]["is_stairs"] = True
@@ -1881,9 +1853,7 @@ def get_cruise_ship():
         floor_connecting_nodes={(1,0): ['1', '55'], (0,1): ['1', '55']},
         complete_area=complete_area,
         obstacles=obstacles,
-        exit_polygons=exit_polygons,
         waypoints=waypoints,
-        distribution_polygons=distribution_polygons,
         sources=["82", "83"],
         targets=["163", "164"],
         specific_areas=specific_areas
@@ -1908,11 +1878,6 @@ def get_mall():
         Polygon([(15, 26), (15, 28), (18, 28), (18, 26)]),
         Polygon([(4, 27), (4, 28), (7, 28), (7, 27)]),
     ]
-
-    exit_polygons = {
-        '1': Polygon([(3.0, 0.0), (1.5, 0.0), (1.5, 1.0), (3.0, 1.0)]),
-        '12': Polygon([(17.0, 0.0), (18.5, 0.0), (18.5, 1.0), (17.0, 1.0)]),
-    }
 
     waypoints = {
         #'1': ([2.25, 0.5], 0.5),
@@ -1975,12 +1940,6 @@ def get_mall():
         '58': ([12.25, 15.5], 0.5),
         '59': ([14.75, 15.5], 0.5),
 
-    }
-
-    distribution_polygons = {
-        '46': Polygon([(4.0, 28.0), (7.0, 28.0), (7.0, 30.0), (4.0, 30.0)]),
-        '45': Polygon([(7.0, 26.0), (10.0, 26.0), (10.0, 28.0), (7.0, 28.0)]),
-        '56': Polygon([(13.0, 26.0), (15.0, 26.0), (15.0, 28.0), (13.0, 28.0)]),
     }
 
     # Create the graph
@@ -2266,9 +2225,7 @@ def get_mall():
         graph=G,
         complete_area=complete_area,
         obstacles=obstacles,
-        exit_polygons=exit_polygons,
         waypoints=waypoints,
-        distribution_polygons=distribution_polygons,
         sources=["46", "45", "56"],
         targets=["1", "12"],
         specific_areas=specific_areas
