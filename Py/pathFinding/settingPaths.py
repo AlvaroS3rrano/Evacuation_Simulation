@@ -338,7 +338,7 @@ def compute_high_awareness_alternative_path(exits, risk_per_node, current_node, 
         update_graph_risks(G, risk_per_node)
 
 
-        alternative_paths = getPosiblePaths(EnvInf, current_node, exits, gamma, algo)
+        alternative_paths = getPosiblePaths(EnvInf, current_node, exits, gamma, algo, blocked_nodes=agent_group.blocked_nodes)
 
         best_risk = float('inf')  # Initialize the best (lowest) risk value.
 
