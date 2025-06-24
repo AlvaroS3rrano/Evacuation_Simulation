@@ -54,24 +54,27 @@ def update_risk(G: nx.DiGraph, increase_chance=0.2, danger_threshold=0.5):
     for node, risk in new_risks.items():
         G.nodes[node]["risk"] = risk
 
-def simulate_risk(riskSimulationValues, every_nth_frame, G, exits, connection, seed=None):
+def simulate_risk(risk_sim_values, every_nth_frame, G, exits, connection, seed=None):
     """
-    Simulates risk propagation in a graph over multiple frames and stores the results in a database.
+        Simulates risk propagation in a graph over multiple frames and stores the results in a database.
 
-    Args:
-        riskSimulationValues: Un objeto con:
-            - iterations (int): Total de frames a simular.
-            - start_frame (int): Frame inicial.
-            - max_risk_increment (float): Riesgo máximo que puede añadirse en cada paso.
-            - ... (otros parámetros que uses en tu simulación)
-        every_nth_frame (int): Frecuencia con la que guardar resultados.
-        G: Grafo de NetworkX sobre el que se simula.
-        exits: Lista de nodos de salida.
-        connection: Conexión a la base de datos.
-        seed (int, optional): Semilla para el generador aleatorio, para resultados reproducibles.
+        Args:
+            risk_sim_values: An object with attributes:
+                - iterations (int): Total number of frames to simulate.
+                - start_frame (int): Initial frame (if used).
+                - max_risk_increment (float): Maximum risk increment per step (if used).
+                - increase_chance (float): Probability of risk increase per propagation.
+                - danger_threshold (float): Risk level considered dangerous.
+                - risk_overrides (list of (int, str, float) tuples, optional):
+                    Overrides to forcibly set node risk at specific frames.
+            every_nth_frame (int): How often (in frames) to save results.
+            G: NetworkX graph on which the simulation runs.
+            exits (list of str): List of exit-node identifiers.
+            connection: Database connection for writing results.
+            seed (int, optional): Seed for random number generator for reproducibility.
     """
     # Validate the input arguments
-    if riskSimulationValues.iterations <= 0:
+    if risk_sim_values.iterations <= 0:
         raise ValueError("iterations must be a positive integer.")
     if every_nth_frame <= 0:
         raise ValueError("every_nth_frame must be a positive integer.")
@@ -79,7 +82,12 @@ def simulate_risk(riskSimulationValues, every_nth_frame, G, exits, connection, s
     if seed is not None:
         random.seed(seed)
 
-    for frame in range(riskSimulationValues.iterations + 1):
+    for frame in range(risk_sim_values.iterations + 1):
+
+        for f, node_id, risk_val in risk_sim_values.risk_overrides:
+            if frame == f and node_id in G.nodes:
+                G.nodes[node_id]["risk"] = risk_val
+
         if frame == 0:
             # Ensure that exit nodes have risk 0
             for exit_node in exits:
@@ -92,17 +100,11 @@ def simulate_risk(riskSimulationValues, every_nth_frame, G, exits, connection, s
                 print(f"Error writing initial risks: {e}")
             continue
 
-        if frame == 2400:                   # uncoment for case 3
-            G.nodes["153"]["risk"] = 0.6
-            G.nodes["225"]["risk"] = 1.0
-            G.nodes["224"]["risk"] = 1.0
-            G.nodes["201"]["risk"] = 0.6
-
         # directly use the iteration as frames
         if frame % every_nth_frame == 0:
             try:
                 # Update risks in the graph based on propagation and increase chances
-                update_risk(G,riskSimulationValues.increase_chance, riskSimulationValues.danger_threshold)
+                update_risk(G,risk_sim_values.increase_chance, risk_sim_values.danger_threshold)
 
                 # Ensure that exit nodes retain a risk of 0 after the update
                 for exit_node in exits:
