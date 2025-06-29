@@ -70,6 +70,17 @@ def remove_obstacles_from_areas(specific_areas, obstacles):
 
     return cleaned_areas
 
+def set_targets(target_ids, env):
+    """
+    Remove those target waypoints from env.waypoints.
+
+    Args:
+        target_ids (list of str): List of waypoint keys to mark as targets.
+        env (Environment): The environment instance to modify.
+    """
+    for tid in target_ids:
+        env.waypoints.pop(tid, None)
+
 def get_comparing_algorithms_pol():
     complete_area = Polygon(
         [
@@ -498,10 +509,6 @@ def get_simple_3x3():
     # Agregar las aristas con un costo fijo (se puede ajustar)
     G.add_edges_from([(u, v, {"cost": 3}) for u, v in edges])
 
-    # Parameters for calculation
-    sources = "A"  # Source nodes
-    targets = ["I"]  # Target nodes
-
     specific_areas = dict()
     specific_areas['A'] = Polygon([(0, 0), (5, 0), (5, 5), (0, 5)])
     specific_areas['B'] = Polygon([(5, 0), (10, 0), (10, 5), (5, 5)])
@@ -749,8 +756,8 @@ def get_cruise_ship():
         '160': ([29.0, -1.0], 0.75),
         '161': ([8.75, -36.5], 1.5),
         '162': ([21.25, -36.5], 1.5),
-        #'163': ([6.0, -36.5], 0.5),
-        #'164': ([24.0, -36.5], 0.5),
+        '163': ([6.0, -36.5], 0.5),
+        '164': ([24.0, -36.5], 0.5),
         '165': ([3.0, -33.0], 0.75),
         '166': ([5.5, -33.0], 0.75),
         '167': ([9.0, -33.0], 0.75),
@@ -1049,8 +1056,6 @@ def get_cruise_ship():
 
     for i in range(100, 226):
         G.nodes[f"{i}"] ["floor"]= 0
-
-    G.nodes["8"]["risk"] = 1
 
     G.nodes["1"]["is_stairs"] = True
     G.nodes["2"]["is_stairs"] = True
@@ -1880,7 +1885,7 @@ def get_mall():
     ]
 
     waypoints = {
-        #'1': ([2.25, 0.5], 0.5),
+        '1': ([2.25, 0.5], 0.5),
         '2': ([0.75, 0.5], 0.5),
         '3': ([0.75, 1.5], 0.5),
         '4': ([2.25, 1.5], 0.5),
@@ -1891,7 +1896,7 @@ def get_mall():
         '9': ([13.0, 2.5], 0.5),
         '10': ([15.5, 1.5], 1.75),
         '11': ([16.0, 4.0], 1.0),
-        #'12': ([17.75, 0.5], 0.5),
+        '12': ([17.75, 0.5], 0.5),
         '13': ([19.25, 0.5], 0.5),
         '14': ([19.25, 1.5], 0.5),
         '15': ([17.75, 1.5], 0.5),

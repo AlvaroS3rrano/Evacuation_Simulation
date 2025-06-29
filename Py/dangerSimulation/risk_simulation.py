@@ -89,6 +89,11 @@ def simulate_risk(risk_sim_values, every_nth_frame, G, exits, connection, seed=N
                 G.nodes[node_id]["risk"] = risk_val
 
         if frame == 0:
+            # Apply starting risks
+            for node_id, risk_val in risk_sim_values.starting_risks:
+                if node_id in G.nodes:
+                    G.nodes[node_id]["risk"] = risk_val
+
             # Ensure that exit nodes have risk 0
             for exit_node in exits:
                 if exit_node in G.nodes:
