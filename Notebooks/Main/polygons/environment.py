@@ -252,7 +252,7 @@ def get_comparing_algorithms_pol():
 
     # Add nodes to the graph with their attributes
     for node, risk in nodes.items():
-        G.add_node(node, risk=risk, blocked=False, is_stairs=False)
+        G.add_node(node, risk=risk, blocked=False, is_stairs=False, floor=0)
 
     G.nodes["2R"]["is_stairs"] = True
     G.nodes["2S"]["is_stairs"] = True
@@ -489,13 +489,13 @@ def get_simple_3x3():
     # Nodos y sus niveles iniciales de riesgo (0 a 1)
     nodes = {
         "A": 0.0, "B": 0.6, "C": 0.0,
-        "D": 0.6, "E": 0.6, "F": 0.1,
+        "D": 0.0, "E": 0.6, "F": 0.1,
         "G": 0.0, "H": 0.0, "I": 0.0,
     }
 
     # Agregar nodos al grafo
     for node, risk in nodes.items():
-        G.add_node(node, risk=risk, blocked=False, is_stairs=False)
+        G.add_node(node, risk=risk, blocked=False, is_stairs=False, floor=0)
 
     # Definir las conexiones entre nodos
     edges = [
@@ -521,7 +521,7 @@ def get_simple_3x3():
     specific_areas['I'] = Polygon([(10, 10), (15, 10), (15, 15), (10, 15)])
 
     # so that the walls are properly shown
-    specific_areas = remove_obstacles_from_areas(specific_areas, obstacles)
+    #specific_areas = remove_obstacles_from_areas(specific_areas, obstacles)
 
     return Environment(
         name="simple_3x3",

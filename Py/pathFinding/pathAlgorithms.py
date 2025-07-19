@@ -1,36 +1,36 @@
 import networkx as nx
 
-def centralityMeasuresAlgorithm(G: nx.DiGraph, all_paths):
+def centrality_measures(G, all_paths):
     """
-    Computes the evacuation betweenness centrality for nodes in the graph based on the given paths
-    and assigns a centrality score to each path.
+    Compute global betweenness centrality (weighted by 'cost') for every node,
+    then score each path by multiplying the centralities of its interior nodes.
 
     Args:
-        G (networkx.DiGraph): The directed graph where nodes represent locations and edges have a 'cost' attribute.
-        all_paths (list): A list of tuples, where each tuple contains a path (list of nodes) and its associated cost.
+        G (nx.DiGraph): Directed graph with a 'cost' attribute on each edge.
+        all_paths (list of (path, cost)): Tuples where `path` is a list of nodes
+                                          and `cost` is the path’s total cost.
 
     Returns:
-        tuple: A tuple containing:
-            - evacuation_betweenness (dict): A dictionary of nodes with their betweenness centrality values.
-            - scored_paths (list): A list of paths with their associated cost and centrality score.
+        tuple:
+            evacuation_betweenness (dict): Mapping node → betweenness value.
+            scored_paths (list): Tuples (path, cost, score) where `score` is
+                                 the product of interior-node centralities.
     """
-    # Initialize the evacuation betweenness for all nodes
-    evacuation_betweenness = {node: 0.0 for node in G.nodes()}
-    total_paths = len(all_paths)
+    # 1) Compute global betweenness centrality over all node pairs
+    evacuation_betweenness = nx.betweenness_centrality(
+        G,
+        weight="cost",
+        normalized=True
+    )
 
-    # Calculate betweenness centrality for each node (ignoring source and target nodes)
-    if total_paths > 0:
-        for path, _ in all_paths:
-            for node in path[1:-1]:  # Exclude source and target nodes
-                evacuation_betweenness[node] += 1 / total_paths
-
-    # Score the paths based on the centrality of the nodes in each path
+    # 2) Score each path by multiplying the centralities of interior nodes
     scored_paths = []
     for path, cost in all_paths:
-        centrality_score_product = 1
-        for node in path[1:-1]:  # Exclude source and target nodes
-            centrality_score_product *= evacuation_betweenness[node]
-        scored_paths.append((path, cost, centrality_score_product))
+        score = 1.0
+        # skip the first and last node (source and target)
+        for node in path[1:-1]:
+            score *= evacuation_betweenness.get(node, 0.0)
+        scored_paths.append((path, cost, score))
 
     return evacuation_betweenness, scored_paths
 
@@ -56,7 +56,7 @@ def collect_all_paths(G: nx.DiGraph, source, targets):
             paths.append((path, path_cost))
 
     # Calculate centrality measures and score the paths
-    _, paths = centralityMeasuresAlgorithm(G, paths)
+    _, paths = centrality_measures(G, paths)
     return paths
 
 def collect_unblocked_paths(paths, blocked_nodes):
