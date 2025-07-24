@@ -146,3 +146,19 @@ def fetch_all_risks(connection: sqlite3.Connection) -> list:
         return cursor.fetchall()
     except sqlite3.Error as e:
         raise RuntimeError(f"Error fetching all risk data: {e}")
+
+def get_high_risk_data(connection: sqlite3.Connection) -> pd.DataFrame:
+    """
+    Retrieves all risk data entries with risk_level >= 1.
+
+    Args:
+        connection (sqlite3.Connection): Open SQLite database connection.
+
+    Returns:
+        pd.DataFrame: DataFrame containing entries with high risk.
+    """
+    try:
+        query = "SELECT * FROM risk_data WHERE risk_level >= 1"
+        return pd.read_sql_query(query, connection)
+    except Exception as e:
+        raise RuntimeError(f"Error retrieving high risk data: {e}")

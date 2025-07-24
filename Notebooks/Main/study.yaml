@@ -1,0 +1,220 @@
+representative_case:
+  sources: ["82", "83"]
+  targets: ["163", "164"]
+  mode_type: 1
+  risk_seed: 233
+  risk_iterations: 7000
+  risk_increase_chance: 0.05
+  starting_risks:
+    - ["8", 1.0]
+  risk_overrides:
+    - [2400, "153", 0.6]
+    - [2400, "225", 1.0]
+    - [2400, "224", 1.0]
+    - [2400, "201", 0.6]
+  risk_threshold: 0.5
+  gamma: 0.2
+  stairs_max_speed: 0.6
+  normal_max_speed: 1.2
+  every_nth_frame_simulation: 3
+  every_nth_frame_animation: 50
+
+case_1:
+  sources: ["82", "83"]
+  targets: ["163", "164"]
+  mode_type: 1
+  risk_seed: 1001
+  risk_iterations: 7000
+  risk_increase_chance: 0.05
+  starting_risks:
+    - ["32", 1.0]
+    - ["112", 1.0]
+    - ["222", 1.0]
+    - ["223", 1.0]
+  risk_overrides:
+    - [2400, "170", 0.7]
+  risk_threshold: 0.5
+  gamma: 0.2
+  stairs_max_speed: 0.6
+  normal_max_speed: 1.2
+  every_nth_frame_simulation: 3
+  every_nth_frame_animation: 50
+
+case_2:
+  sources: ["82", "83"]
+  targets: ["163", "164"]
+  mode_type: 1
+  risk_seed: 1002
+  risk_iterations: 7000
+  risk_increase_chance: 0.05
+  starting_risks:
+    - ["8", 1.0]
+    - ["7", 1.0]
+  risk_overrides: []
+  risk_threshold: 0.5
+  gamma: 0.2
+  stairs_max_speed: 0.6
+  normal_max_speed: 1.2
+  every_nth_frame_simulation: 3
+  every_nth_frame_animation: 50
+
+case_3:
+  sources: ["82", "83"]
+  targets: ["163", "164"]
+  mode_type: 1
+  risk_seed: 1003
+  risk_iterations: 7000
+  risk_increase_chance: 0.05
+  starting_risks:
+    - ["112", 1.0]
+    - ["222", 1.0]
+  risk_overrides: []
+  risk_threshold: 0.5
+  gamma: 0.2
+  stairs_max_speed: 0.6
+  normal_max_speed: 1.2
+  every_nth_frame_simulation: 3
+  every_nth_frame_animation: 50
+
+case_4:
+  sources: ["82", "83"]
+  targets: ["163", "164"]
+  mode_type: 1
+  risk_seed: 1004
+  risk_iterations: 7000
+  risk_increase_chance: 0.05
+  starting_risks:
+    - ["8", 1.0]
+    - ["56", 1.0]
+  risk_overrides: []
+  risk_threshold: 0.5
+  gamma: 0.2
+  stairs_max_speed: 0.6
+  normal_max_speed: 1.2
+  every_nth_frame_simulation: 3
+  every_nth_frame_animation: 50
+
+case_5:
+  sources: ["82", "83"]
+  targets: ["163", "164"]
+  mode_type: 1
+  risk_seed: 1005
+  risk_iterations: 7000
+  risk_increase_chance: 0.05
+  starting_risks:
+    - ["40", 1.0]
+    - ["41", 1.0]
+    - ["42", 1.0]
+    - ["43", 1.0]
+  risk_overrides:
+    - [2400, "201", 1.0]
+  risk_threshold: 0.5
+  gamma: 0.2
+  stairs_max_speed: 0.6
+  normal_max_speed: 1.2
+  every_nth_frame_simulation: 3
+  every_nth_frame_animation: 50
+
+case_6:
+  sources: ["82", "83"]
+  targets: ["163", "164"]
+  mode_type: 1
+  risk_seed: 1006
+  risk_iterations: 7000
+  risk_increase_chance: 0.05
+  starting_risks:
+    - ["60", 1.0]
+    - ["61", 1.0]
+    - ["62", 1.0]
+  risk_overrides: []
+  risk_threshold: 0.5
+  gamma: 0.2
+  stairs_max_speed: 0.6
+  normal_max_speed: 1.2
+  every_nth_frame_simulation: 3
+  every_nth_frame_animation: 50
+
+case_7:
+  sources: ["82", "83"]
+  targets: ["163", "164"]
+  mode_type: 1
+  risk_seed: 1007
+  risk_iterations: 7500
+  risk_increase_chance: 0.05
+  starting_risks:
+    - ["6", 1.0]
+    - ["70", 1.0]
+    - ["71", 1.0]
+    - ["72", 1.0]
+    - ["173", 1.0]
+    - ["144", 1.0]
+  risk_overrides: []
+  risk_threshold: 0.5
+  gamma: 0.2
+  stairs_max_speed: 0.6
+  normal_max_speed: 1.2
+  every_nth_frame_simulation: 3
+  every_nth_frame_animation: 50
+
+case_8:
+  sources: ["82", "83"]
+  targets: ["163", "164"]
+  mode_type: 1
+  risk_seed: 1008
+  risk_iterations: 7000
+  risk_increase_chance: 0.05
+  starting_risks:
+    - ["6", 1.0]
+    - ["7", 1.0]
+  risk_overrides:
+    - [3000, "172", 0.8]
+  risk_threshold: 0.5
+  gamma: 0.2
+  stairs_max_speed: 0.6
+  normal_max_speed: 1.2
+  every_nth_frame_simulation: 3
+  every_nth_frame_animation: 50
+
+case_9:
+  sources: ["82", "83"]
+  targets: ["163", "164"]
+  mode_type: 1
+  risk_seed: 1009
+  risk_iterations: 7000
+  risk_increase_chance: 0.05
+  starting_risks:
+    - ["14", 1.0]
+    - ["30", 1.0]
+    - ["31", 1.0]
+    - ["75", 1.0]
+  risk_overrides: []
+  risk_threshold: 0.5
+  gamma: 0.2
+  stairs_max_speed: 0.6
+  normal_max_speed: 1.2
+  every_nth_frame_simulation: 3
+  every_nth_frame_animation: 50
+
+case_10:
+  sources: ["82", "83"]
+  targets: ["163", "164"]
+  mode_type: 1
+  risk_seed: 1010
+  risk_iterations: 7500
+  risk_increase_chance: 0.05
+  starting_risks:
+    - ["11", 1.0]
+    - ["10", 1.0]
+    - ["60", 1.0]
+    - ["55", 1.0]
+    - ["139", 1.0]
+  risk_overrides:
+    - [3000, "165", 1.0]
+    - [3000, "103", 1.0]
+  risk_threshold: 0.5
+  gamma: 0.2
+  stairs_max_speed: 0.6
+  normal_max_speed: 1.2
+  every_nth_frame_simulation: 3
+  every_nth_frame_animation: 50
+
