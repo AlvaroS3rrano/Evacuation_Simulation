@@ -35,8 +35,9 @@ def try_get_node_index(node, path: list) -> int:
 def update_group_paths(sim_cfg, risk_map: dict, group: AgentGroup,
                        env_info, threshold: float = 0.5) -> AgentGroup:
     """
-    Evaluate each agent (or first agent if awareness is low) and reroute the group's path
-    if a safer alternative is found.
+    Evaluates whether the group's path should be rerouted.
+    If a better path is found, all agents follow the new path,
+    and each is switched to the appropriate stage based on their current position.
     """
     agent_ids = group.agents
     if not agent_ids:
@@ -47,7 +48,7 @@ def update_group_paths(sim_cfg, risk_map: dict, group: AgentGroup,
     simulation = sim_cfg.simulation
     waypoints = sim_cfg.waypoints_ids
 
-    # Choose the agent in the front of the group
+    # Select the leading agent in the group
     to_check = [max(agent_ids, key=lambda aid: current_path.index(current_nodes[aid]))]
 
     for aid in to_check:
@@ -56,10 +57,12 @@ def update_group_paths(sim_cfg, risk_map: dict, group: AgentGroup,
 
         curr_node = current_nodes[aid]
         idx = try_get_node_index(curr_node, current_path)
-        if idx < 0 or idx == len(current_path) - 1:
+        if idx < 0 or idx >= len(current_path) - 1:
             continue
 
         next_node = current_path[idx + 1]
+
+        # Compute an alternative path from the current node
         alt_path = compute_alternative_path(
             sim_cfg.get_exit_ids_keys(), group, env_info,
             curr_node, next_node,
@@ -67,23 +70,36 @@ def update_group_paths(sim_cfg, risk_map: dict, group: AgentGroup,
         )
 
         if alt_path and not is_sublist(alt_path, current_path):
-            # Build and assign new journey for all agents
+            # Combine the current path up to curr_node with the new alt_path
+            try:
+                current_idx = current_path.index(curr_node)
+                full_path = current_path[:current_idx + 1] + alt_path[1:]  # avoid repeating curr_node
+            except ValueError:
+                full_path = alt_path  # fallback if something goes wrong
+
+            # Create a new journey using the full_path
             journeys = set_journeys(
                 simulation, curr_node,
-                [alt_path], waypoints, sim_cfg.exit_ids
+                [full_path], waypoints, sim_cfg.exit_ids
             )
-            new_node = alt_path[1]
-            stage_id = waypoints[new_node]
             new_jid, _ = journeys[curr_node][0]
 
+            # Assign each agent to the correct stage along the new path
             for aid in agent_ids:
+                node = current_nodes[aid]
+                try:
+                    node_idx = full_path.index(node)
+                    next_node = full_path[min(node_idx + 1, len(full_path) - 1)]
+                except ValueError:
+                    next_node = full_path[1] if len(full_path) > 1 else full_path[0]
+
+                stage_id = waypoints[next_node]
                 simulation.switch_agent_journey(aid, new_jid, stage_id)
 
-            group.path = alt_path
+            group.path = full_path
             return group
 
     return group
-
 
 def record_group_path_data(gr_pth_conn, frame: int, group_id: int,
                             group: AgentGroup, risks: dict):
@@ -91,7 +107,7 @@ def record_group_path_data(gr_pth_conn, frame: int, group_id: int,
     Compute risk estimates and record dynamic path-choice data for a group at a given frame.
     """
     # Map numeric level to string
-    algorithm = 'Centtrality' if group.algorithm == 1 else 'Efficient'
+    algorithm = 'Centrality' if group.algorithm == 1 else 'Efficient'
     awareness = 'High' if group.awareness_level == 1 else 'Low'
     # Current area
     max_idx = -1

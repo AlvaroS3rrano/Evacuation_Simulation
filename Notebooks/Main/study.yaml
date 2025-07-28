@@ -1,17 +1,39 @@
 representative_case:
-  sources: ["82", "83"]
+  environment: "cruise_ship"
+  sources: ["82", "83", "73", "77", "92"]
+  agents: [5, 5, 6, 6, 10]
   targets: ["163", "164"]
-  mode_type: 1
+  mode_type: 2
   risk_seed: 233
   risk_iterations: 7000
   risk_increase_chance: 0.05
   starting_risks:
     - ["8", 1.0]
   risk_overrides:
-    - [2400, "153", 0.6]
-    - [2400, "225", 1.0]
-    - [2400, "224", 1.0]
-    - [2400, "201", 0.6]
+    - [2200, "153", 0.6]
+    - [2200, "225", 1.0]
+    - [2200, "224", 1.0]
+    - [2200, "201", 0.6]
+  risk_threshold: 0.5
+  gamma: 0.3
+  stairs_max_speed: 0.6
+  normal_max_speed: 1.2
+  every_nth_frame_simulation: 3
+  every_nth_frame_animation: 50
+
+representative_case_theme_park:
+  environment: "theme_park"
+  sources: ["2", "10", "32", "23", "39"]
+  agents: [14, 7, 9, 11, 20]
+  targets: ["19"]
+  mode_type: 3
+  risk_seed: 2334
+  risk_iterations: 7000
+  risk_increase_chance: 0.01
+  starting_risks:
+    - ["8", 1.0]
+    - ["21", 0.6]
+  risk_overrides:
   risk_threshold: 0.5
   gamma: 0.2
   stairs_max_speed: 0.6
@@ -20,7 +42,9 @@ representative_case:
   every_nth_frame_animation: 50
 
 case_1:
+  environment: "cruise_ship"
   sources: ["82", "83"]
+  agents: [5, 5]
   targets: ["163", "164"]
   mode_type: 1
   risk_seed: 1001
@@ -41,7 +65,9 @@ case_1:
   every_nth_frame_animation: 50
 
 case_2:
+  environment: "cruise_ship"
   sources: ["82", "83"]
+  agents: [5, 5]
   targets: ["163", "164"]
   mode_type: 1
   risk_seed: 1002
@@ -59,7 +85,9 @@ case_2:
   every_nth_frame_animation: 50
 
 case_3:
+  environment: "cruise_ship"
   sources: ["82", "83"]
+  agents: [5, 5]
   targets: ["163", "164"]
   mode_type: 1
   risk_seed: 1003
@@ -77,7 +105,9 @@ case_3:
   every_nth_frame_animation: 50
 
 case_4:
+  environment: "cruise_ship"
   sources: ["82", "83"]
+  agents: [5, 5]
   targets: ["163", "164"]
   mode_type: 1
   risk_seed: 1004
@@ -95,7 +125,9 @@ case_4:
   every_nth_frame_animation: 50
 
 case_5:
+  environment: "cruise_ship"
   sources: ["82", "83"]
+  agents: [5, 5]
   targets: ["163", "164"]
   mode_type: 1
   risk_seed: 1005
@@ -116,7 +148,9 @@ case_5:
   every_nth_frame_animation: 50
 
 case_6:
+  environment: "cruise_ship"
   sources: ["82", "83"]
+  agents: [5, 5]
   targets: ["163", "164"]
   mode_type: 1
   risk_seed: 1006
@@ -135,7 +169,9 @@ case_6:
   every_nth_frame_animation: 50
 
 case_7:
+  environment: "cruise_ship"
   sources: ["82", "83"]
+  agents: [5, 5]
   targets: ["163", "164"]
   mode_type: 1
   risk_seed: 1007
@@ -157,7 +193,9 @@ case_7:
   every_nth_frame_animation: 50
 
 case_8:
+  environment: "cruise_ship"
   sources: ["82", "83"]
+  agents: [5, 5]
   targets: ["163", "164"]
   mode_type: 1
   risk_seed: 1008
@@ -176,7 +214,9 @@ case_8:
   every_nth_frame_animation: 50
 
 case_9:
+  environment: "cruise_ship"
   sources: ["82", "83"]
+  agents: [5, 5]
   targets: ["163", "164"]
   mode_type: 1
   risk_seed: 1009
@@ -196,7 +236,9 @@ case_9:
   every_nth_frame_animation: 50
 
 case_10:
+  environment: "cruise_ship"
   sources: ["82", "83"]
+  agents: [5, 5]
   targets: ["163", "164"]
   mode_type: 1
   risk_seed: 1010

@@ -1,5 +1,7 @@
 case_1:
+  environment: "cruise_ship"
   sources: ["82"]
+  agents: [5]
   targets: ["163", "164"]
   mode_type: 0
   risk_seed: 1234
@@ -16,7 +18,9 @@ case_1:
   every_nth_frame_animation: 50
 
 case_2:
+  environment: "cruise_ship"
   sources: ["82"]
+  agents: [5]
   targets: ["163", "164"]
   mode_type: 0
   risk_seed: 4321
@@ -37,7 +41,9 @@ case_2:
   every_nth_frame_animation: 50
 
 case_3:
+  environment: "cruise_ship"
   sources: ["82", "83"]
+  agents: [5, 5]
   targets: ["163", "164"]
   mode_type: 1
   risk_seed: 233

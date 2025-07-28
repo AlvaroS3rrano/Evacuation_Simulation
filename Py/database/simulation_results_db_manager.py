@@ -5,31 +5,20 @@ import pandas as pd
 
 
 def create_tables(connection: sqlite3.Connection):
-    """
-    Creates two tables:
-      - experiments: stores unique simulation parameter sets (algorithm, awareness, risk_nodes, source_nodes, agents_per_source, random_seed)
-      - experiment_metrics: stores result metrics linked to experiments
-    """
     try:
         with connection:
-            # Drop existing tables
             connection.execute("DROP TABLE IF EXISTS experiment_metrics")
             connection.execute("DROP TABLE IF EXISTS experiments")
 
-            # Experiments table: global parameters
             connection.execute(
                 """
                 CREATE TABLE experiments (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    algorithm TEXT NOT NULL,
-                    awareness REAL NOT NULL,
                     risk_nodes TEXT NOT NULL,
                     source_nodes TEXT NOT NULL,
                     agents_per_source TEXT NOT NULL,
                     random_seed INTEGER NOT NULL,
                     UNIQUE(
-                        algorithm,
-                        awareness,
                         risk_nodes,
                         source_nodes,
                         agents_per_source,
@@ -39,16 +28,20 @@ def create_tables(connection: sqlite3.Connection):
                 """
             )
 
-            # Metrics table: per experiment
             connection.execute(
                 """
                 CREATE TABLE experiment_metrics (
-                    experiment_id INTEGER PRIMARY KEY,
+                    experiment_id INTEGER NOT NULL,
+                    agent_group_id TEXT NOT NULL,
+                    algorithm TEXT NOT NULL,
+                    awareness REAL NOT NULL,
                     n_records INTEGER,
                     mean_risk REAL,
                     mean_risk_var REAL,
                     avg_path_length REAL,
+                    avg_time REAL,
                     max_time REAL,
+                    PRIMARY KEY (experiment_id, agent_group_id, algorithm, awareness)
                     FOREIGN KEY(experiment_id) REFERENCES experiments(id) ON DELETE CASCADE
                 )
                 """
@@ -57,30 +50,28 @@ def create_tables(connection: sqlite3.Connection):
         raise RuntimeError(f"Error creating tables: {e}")
 
 
+
 def write_experiment(
     connection: sqlite3.Connection,
-    algorithm: str,
-    awareness: float,
     risk_nodes: List[Any],
     source_nodes: List[Any],
     agents_per_source: Dict[Any, int],
     random_seed: int
 ) -> int:
     """
-    Inserts or ignores an experiment parameter set, returning its id.
+    Inserts or ignores a global experiment setup, returning its id.
     """
     try:
         with connection:
             connection.execute(
                 """
                 INSERT OR IGNORE INTO experiments (
-                    algorithm, awareness, risk_nodes,
-                    source_nodes, agents_per_source,
+                    risk_nodes,
+                    source_nodes,
+                    agents_per_source,
                     random_seed
-                ) VALUES (?, ?, ?, ?, ?, ?)""" ,
+                ) VALUES (?, ?, ?, ?)""",
                 (
-                    algorithm,
-                    awareness,
                     json.dumps(risk_nodes),
                     json.dumps(source_nodes),
                     json.dumps(agents_per_source),
@@ -88,12 +79,9 @@ def write_experiment(
                 )
             )
         cursor = connection.execute(
-            "SELECT id FROM experiments WHERE algorithm = ? AND awareness = ? "
-            "AND risk_nodes = ? AND source_nodes = ? "
+            "SELECT id FROM experiments WHERE risk_nodes = ? AND source_nodes = ? "
             "AND agents_per_source = ? AND random_seed = ?",
             (
-                algorithm,
-                awareness,
                 json.dumps(risk_nodes),
                 json.dumps(source_nodes),
                 json.dumps(agents_per_source),
@@ -109,12 +97,16 @@ def write_experiment(
 def write_experiment_metrics(
     connection: sqlite3.Connection,
     experiment_id: int,
+    agent_group_id: str,
+    algorithm: str,
+    awareness: float,
     n_records: int,
     mean_risk: float,
     mean_risk_var: float,
     avg_path_length: float,
+    avg_time: float,
     max_time: float
-):
+) :
     """
     Inserts or replaces metrics for a given experiment.
     """
@@ -123,20 +115,25 @@ def write_experiment_metrics(
             connection.execute(
                 """
                 INSERT OR REPLACE INTO experiment_metrics (
-                    experiment_id, n_records,
-                    mean_risk, mean_risk_var,
-                    avg_path_length, max_time
-                ) VALUES (?, ?, ?, ?, ?, ?)
+                    experiment_id, agent_group_id, algorithm, awareness,
+                    n_records, mean_risk, mean_risk_var,
+                    avg_path_length, avg_time, max_time
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     experiment_id,
+                    agent_group_id,
+                    algorithm,
+                    awareness,
                     n_records,
                     mean_risk,
                     mean_risk_var,
                     avg_path_length,
+                    avg_time,
                     max_time
                 )
             )
+
     except sqlite3.Error as e:
         raise RuntimeError(f"Error writing experiment metrics: {e}")
 
@@ -161,10 +158,7 @@ def read_all_metrics(connection: sqlite3.Connection) -> pd.DataFrame:
     """
     try:
         query = (
-            "SELECT m.experiment_id, e.algorithm, e.awareness, e.risk_nodes, "
-            "e.source_nodes, e.agents_per_source, e.random_seed, "
-            "m.n_records, m.mean_risk, m.mean_risk_var, "
-            "m.avg_path_length, m.max_time "
+            "SELECT m.*, e.risk_nodes, e.source_nodes, e.agents_per_source, e.random_seed "
             "FROM experiment_metrics m "
             "JOIN experiments e ON m.experiment_id = e.id"
         )
@@ -204,3 +198,19 @@ def read_metrics_by_experiment(
         return df
     except Exception as e:
         raise RuntimeError(f"Error reading metrics for experiment: {e}")
+
+def read_all_experiment_metrics(db_path: str) -> pd.DataFrame:
+    """
+    Lee todos los registros de experiment_metrics desde la base de datos.
+    """
+    conn = sqlite3.connect(db_path)
+
+    try:
+        df = pd.read_sql_query("SELECT * FROM experiment_metrics", conn)
+        print("Métricas cargadas correctamente.")
+        return df
+
+    except Exception as e:
+        raise RuntimeError(f"Error al leer experiment_metrics: {e}")
+    finally:
+        conn.close()
