@@ -17,11 +17,17 @@ def centrality_measures(G, all_paths):
                                  the product of interior-node centralities.
     """
     # 1) Compute global betweenness centrality over all node pairs
-    evacuation_betweenness = nx.betweenness_centrality(
-        G,
-        weight="cost",
-        normalized=True
-    )
+    node_route_frequency = {node: 0.0 for node in G.nodes()}
+    total_paths = len(all_paths)
+
+    # Calculate betweenness centrality for each node (ignoring source and target nodes)
+    if total_paths > 0:
+        for path, _ in all_paths:
+            for node in path[1:-1]:  # Exclude source and target nodes
+                node_route_frequency[node] += 1 / total_paths
+
+    # other option could be
+    # evacuation_betweenness = nx.betweenness_centrality(G, weight='cost', normalized=True)
 
     # 2) Score each path by multiplying the centralities of interior nodes
     scored_paths = []
@@ -29,10 +35,10 @@ def centrality_measures(G, all_paths):
         score = 1.0
         # skip the first and last node (source and target)
         for node in path[1:-1]:
-            score *= evacuation_betweenness.get(node, 0.0)
+            score *= node_route_frequency.get(node, 0.0)
         scored_paths.append((path, cost, score))
 
-    return evacuation_betweenness, scored_paths
+    return node_route_frequency, scored_paths
 
 def collect_all_paths(G: nx.DiGraph, source, targets):
     """
