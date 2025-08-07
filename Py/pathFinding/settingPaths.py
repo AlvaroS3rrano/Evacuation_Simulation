@@ -100,9 +100,9 @@ def select_best_alternative_path(alternative_paths, neighbors_sorted, min_risk_n
                 for path in alternative_paths:
                     if len(path) > 1 and path[1] == neighbor:
                         best_path = path
-                        break  # Found a valid alternative path.
+                        break
                 if best_path:
-                    break  # Exit once a valid path is found.
+                    break
 
     handle_blocked_node_in_path(best_path, agent_group)
 
