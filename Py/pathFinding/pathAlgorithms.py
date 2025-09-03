@@ -1,4 +1,6 @@
+import itertools
 import networkx as nx
+from networkx.algorithms.simple_paths import shortest_simple_paths
 
 def centrality_measures(G, all_paths):
     """
@@ -40,30 +42,38 @@ def centrality_measures(G, all_paths):
 
     return node_route_frequency, scored_paths
 
-def collect_all_paths(G: nx.DiGraph, source, targets):
+def collect_k_shortest_paths(G: nx.DiGraph, source, targets, k=50):
     """
-    Collects all simple paths from the source node to the target nodes, calculates the cost of each path,
-    and applies centrality measures to score them.
+    Collects up to k simple paths of minimum cost from the source node to each target node,
+    calculates the cost of each path, and applies centrality measures to score them.
 
     Args:
-        G (networkx.DiGraph): The directed graph where nodes represent locations and edges have a 'cost' attribute.
-        source (node): The source node from which paths start.
+        G (networkx.DiGraph): Directed graph where edges have a 'cost' attribute.
+        source: The source node from which paths start.
         targets (list): A list of target nodes to which paths are calculated.
+        k (int): Maximum number of shortest simple paths to collect per target.
 
     Returns:
-        list: A list of paths with their associated costs and centrality scores.
+        list: A list of (path, cost, centrality_score) tuples for all targets.
     """
-    paths = []
-    # Collect all simple paths from source to each target node
-    for target in targets:
-        for path in nx.all_simple_paths(G, source=source, target=target):
-            # Calculate the cost of each path
-            path_cost = sum(G[u][v]["cost"] for u, v in zip(path, path[1:]))
-            paths.append((path, path_cost))
+    all_paths = []
 
-    # Calculate centrality measures and score the paths
-    _, paths = centrality_measures(G, paths)
-    return paths
+    for target in targets:
+        try:
+            # Generator over simple paths sorted by total 'cost'
+            paths_gen = shortest_simple_paths(G, source, target, weight="cost")
+            # Take only the first k paths
+            for path in itertools.islice(paths_gen, k):
+                # Compute total cost of this path
+                cost = sum(G[u][v]["cost"] for u, v in zip(path, path[1:]))
+                all_paths.append((path, cost))
+        except nx.NetworkXNoPath:
+            # No path exists for this target; skip
+            continue
+
+    # Apply your centrality measures function to score and rank
+    _, scored_paths = centrality_measures(G, all_paths)
+    return scored_paths
 
 def collect_unblocked_paths(paths, blocked_nodes):
     """

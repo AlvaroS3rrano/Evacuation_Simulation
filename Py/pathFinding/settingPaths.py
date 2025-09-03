@@ -135,7 +135,7 @@ def getAlternativePathsForNode(current_node, targets, gamma, currentG, paths_con
             all_paths.extend([(json.loads(path), cost, betweenness) for path, cost, betweenness in zip(paths_df['path'], paths_df['cost'], paths_df['betweenness'])])
         else:
             # If paths are not found in the DB, compute them using collect_all_paths
-            alternative_paths = collect_all_paths(currentG, current_node, [target])
+            alternative_paths = collect_k_shortest_paths(currentG, current_node, [target])
 
             # Insert the newly computed paths into the DB
             for path, cost, betweenness in alternative_paths:

@@ -1,9 +1,32 @@
+example_case:
+  environment: "cruise_ship"
+  sources: ["82", "83"]
+  agents: [5, 5]
+  targets: ["163", "164"]
+  mode_type: 1
+  risk_seed: 233
+  risk_iterations: 7000
+  risk_increase_chance: 0.05
+  starting_risks:
+    - ["8", 1.0]
+  risk_overrides:
+    - [2400, "153", 0.6]
+    - [2400, "225", 1.0]
+    - [2400, "224", 1.0]
+    - [2400, "201", 0.6]
+  risk_threshold: 0.5
+  gamma: 0.2
+  stairs_max_speed: 0.6
+  normal_max_speed: 1.2
+  every_nth_frame_simulation: 3
+  every_nth_frame_animation: 50
+
 representative_case:
   environment: "cruise_ship"
   sources: ["82", "83", "73", "77", "92"]
   agents: [5, 5, 6, 6, 10]
   targets: ["163", "164"]
-  mode_type: 2
+  mode_type: 3
   risk_seed: 233
   risk_iterations: 7000
   risk_increase_chance: 0.05
@@ -23,40 +46,19 @@ representative_case:
 
 representative_case_theme_park:
   environment: "theme_park"
-  sources: ["2", "10", "32", "23", "39"]
-  agents: [14, 7, 9, 11, 20]
-  targets: ["19"]
-  mode_type: 3
-  risk_seed: 2334
-  risk_iterations: 7000
-  risk_increase_chance: 0.01
-  starting_risks:
-    - ["8", 1.0]
-    - ["21", 0.6]
-  risk_overrides:
-  risk_threshold: 0.5
-  gamma: 0.2
-  stairs_max_speed: 0.6
-  normal_max_speed: 1.2
-  every_nth_frame_simulation: 3
-  every_nth_frame_animation: 50
-
-case_1_theme_park:
-  environment: "theme_park"
-  sources: [ "8", "9", "18", "27", "28", "29" ]
-  agents: [ 4, 3, 5, 3, 2, 3 ]
-  targets: [ "23", "3" ]
+  sources: [ "1", "4", "35", "50" ]
+  agents: [ 13, 7, 6, 4 ]
+  targets: [ "65", "23" ]
   mode_type: 2
   risk_seed: 2468
   risk_iterations: 7000
   risk_increase_chance: 0.01
   starting_risks:
-    - [ "1", 1.0 ]
-    - [ "40", 1.0 ]
-    - [ "42", 1.0 ]
-    - [ "31", 1.0 ]
-    - [ "10", 1.0 ]
-    - [ "19", 1.0 ]
+    - [ "67", 1.0 ]
+    - [ "54", 1.0 ]
+    - [ "28", 1.0 ]
+    - [ "17", 1.0 ]
+    - [ "11", 1.0 ]
   risk_overrides:
   risk_threshold: 0.5
   gamma: 0.2

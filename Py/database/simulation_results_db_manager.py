@@ -14,11 +14,13 @@ def create_tables(connection: sqlite3.Connection):
                 """
                 CREATE TABLE experiments (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name TEXT NOT NULL,
                     risk_nodes TEXT NOT NULL,
                     source_nodes TEXT NOT NULL,
                     agents_per_source TEXT NOT NULL,
                     random_seed INTEGER NOT NULL,
                     UNIQUE(
+                        name,
                         risk_nodes,
                         source_nodes,
                         agents_per_source,
@@ -53,6 +55,7 @@ def create_tables(connection: sqlite3.Connection):
 
 def write_experiment(
     connection: sqlite3.Connection,
+    name: str,
     risk_nodes: List[Any],
     source_nodes: List[Any],
     agents_per_source: Dict[Any, int],
@@ -66,12 +69,14 @@ def write_experiment(
             connection.execute(
                 """
                 INSERT OR IGNORE INTO experiments (
+                    name,
                     risk_nodes,
                     source_nodes,
                     agents_per_source,
                     random_seed
-                ) VALUES (?, ?, ?, ?)""",
+                ) VALUES (?, ?, ?, ?, ?)""",
                 (
+                    name,
                     json.dumps(risk_nodes),
                     json.dumps(source_nodes),
                     json.dumps(agents_per_source),
@@ -79,9 +84,10 @@ def write_experiment(
                 )
             )
         cursor = connection.execute(
-            "SELECT id FROM experiments WHERE risk_nodes = ? AND source_nodes = ? "
+            "SELECT id FROM experiments WHERE name = ? AND risk_nodes = ? AND source_nodes = ? "
             "AND agents_per_source = ? AND random_seed = ?",
             (
+                name,
                 json.dumps(risk_nodes),
                 json.dumps(source_nodes),
                 json.dumps(agents_per_source),
@@ -158,7 +164,7 @@ def read_all_metrics(connection: sqlite3.Connection) -> pd.DataFrame:
     """
     try:
         query = (
-            "SELECT m.*, e.risk_nodes, e.source_nodes, e.agents_per_source, e.random_seed "
+            "SELECT m.*, e.name, e.risk_nodes, e.source_nodes, e.agents_per_source, e.random_seed "
             "FROM experiment_metrics m "
             "JOIN experiments e ON m.experiment_id = e.id"
         )
@@ -212,5 +218,69 @@ def read_all_experiment_metrics(db_path: str) -> pd.DataFrame:
 
     except Exception as e:
         raise RuntimeError(f"Error al leer experiment_metrics: {e}")
+    finally:
+        conn.close()
+
+def export_experiments_to_csv(
+        db_path: str,
+        csv_path: str = "experiments.csv",
+) -> str:
+    """
+    Exporta la tabla 'experiments' a un CSV.
+    Devuelve la ruta del CSV generado.
+    """
+    conn = sqlite3.connect(db_path)
+    try:
+        df = pd.read_sql_query("SELECT * FROM experiments", conn)
+        # Opcional: si prefieres legibilidad, puedes dejar los JSON como están (strings).
+        # Si quisieras expandirlos, podrías hacer json.loads() y luego normalizar.
+        df.to_csv(csv_path, index=False)
+        return csv_path
+    except Exception as e:
+        raise RuntimeError(f"Error exportando experiments a CSV: {e}")
+    finally:
+        conn.close()
+
+def export_experiment_metrics_to_csv(
+        db_path: str,
+        csv_path: str = "experiment_metrics.csv",
+        include_experiment_context: bool = True,
+        convert_agent_group_id_bytes: bool = True,
+) -> str:
+    """
+    Exporta 'experiment_metrics' a CSV.
+    - include_experiment_context=True añade columnas de 'experiments' (name, risk_nodes, etc.) mediante JOIN.
+    - convert_agent_group_id_bytes=True convierte agent_group_id de bytes a entero si viniera en binario.
+    Devuelve la ruta del CSV generado.
+    """
+    conn = sqlite3.connect(db_path)
+    try:
+        if include_experiment_context:
+            query = (
+                "SELECT m.*, e.name, e.risk_nodes, e.source_nodes, e.agents_per_source, e.random_seed "
+                "FROM experiment_metrics m "
+                "JOIN experiments e ON m.experiment_id = e.id"
+            )
+        else:
+            query = "SELECT * FROM experiment_metrics"
+
+        df = pd.read_sql_query(query, conn)
+
+        # Conversión opcional de agent_group_id binario -> entero legible
+        if convert_agent_group_id_bytes and "agent_group_id" in df.columns:
+            def _conv(v):
+                if isinstance(v, (bytes, bytearray)):
+                    return int.from_bytes(v, byteorder="little")
+                return v
+
+            df["agent_group_id"] = df["agent_group_id"].apply(_conv)
+
+        # Nota: dejamos risk/source/agents_per_source como JSON strings para mantener estructura en CSV.
+        # Si quisieras, podríamos json.loads() y normalizar, pero se perdería estructura en columnas planas.
+
+        df.to_csv(csv_path, index=False)
+        return csv_path
+    except Exception as e:
+        raise RuntimeError(f"Error exportando experiment_metrics a CSV: {e}")
     finally:
         conn.close()
