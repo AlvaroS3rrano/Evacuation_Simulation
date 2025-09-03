@@ -286,3 +286,81 @@ case_10:
   every_nth_frame_simulation: 3
   every_nth_frame_animation: 50
 
+case_11:
+  environment: "theme_park"
+  sources: [ "69", "14"]
+  agents: [ 13, 7]
+  targets: [ "50"]
+  mode_type: 3
+  risk_seed: 2465
+  risk_iterations: 7000
+  risk_increase_chance: 0.02
+  starting_risks:
+    - [ "41", 0.5 ]
+    - [ "48", 0.5 ]
+    - [ "46", 0.5 ]
+    - [ "3", 1.0 ]
+  risk_overrides:
+  risk_threshold: 0.5
+  gamma: 0.5
+  stairs_max_speed: 0.6
+  normal_max_speed: 1.2
+  every_nth_frame_simulation: 3
+  every_nth_frame_animation: 50
+
+case_12:
+  environment: "theme_park"
+  sources: [ "65", "14" ]
+  agents: [ 13, 7 ]
+  targets: [ "35" ]
+  mode_type: 3
+  risk_seed: 246
+  risk_iterations: 7000
+  risk_increase_chance: 0.02
+  starting_risks:
+    - [ "48", 0.5 ]
+  risk_overrides:
+  risk_threshold: 0.5
+  gamma: 0.2
+  stairs_max_speed: 0.6
+  normal_max_speed: 1.2
+  every_nth_frame_simulation: 3
+  every_nth_frame_animation: 50
+
+case_13:
+  environment: "theme_park"
+  sources: [ "5", "14" ]
+  agents: [ 5, 7 ]
+  targets: [ "65" ]
+  mode_type: 2
+  risk_seed: 246
+  risk_iterations: 7000
+  risk_increase_chance: 0.05
+  starting_risks:
+    - [ "69", 1.0 ]
+  risk_overrides:
+  risk_threshold: 0.5
+  gamma: 0.2
+  stairs_max_speed: 0.6
+  normal_max_speed: 1.2
+  every_nth_frame_simulation: 3
+  every_nth_frame_animation: 50
+
+case_14:
+  environment: "theme_park"
+  sources: [ "5", "14" ]
+  agents: [ 5, 7 ]
+  targets: [ "65" ]
+  mode_type: 2
+  risk_seed: 2469
+  risk_iterations: 7000
+  risk_increase_chance: 0.02
+  starting_risks:
+    - [ "67", 1.0 ]
+  risk_overrides:
+  risk_threshold: 0.5
+  gamma: 0.2
+  stairs_max_speed: 0.6
+  normal_max_speed: 1.2
+  every_nth_frame_simulation: 3
+  every_nth_frame_animation: 50
