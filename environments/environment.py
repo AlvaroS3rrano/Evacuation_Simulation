@@ -1,7 +1,8 @@
-from shapely.geometry import Polygon
-import shapely  # Used for union_all and difference
-import pedpy  # Ensure this module is installed
 import networkx as nx
+import pedpy  # Ensure this module is installed
+import shapely  # Used for union_all and difference
+from shapely.geometry import Polygon
+
 
 class Environment:
     """
