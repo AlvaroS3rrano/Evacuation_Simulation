@@ -39,8 +39,9 @@ def create_tables(connection: sqlite3.Connection):
                     algorithm TEXT NOT NULL,
                     awareness REAL NOT NULL,
                     n_records INTEGER,
-                    mean_risk REAL,
-                    mean_risk_var REAL,
+                    mean_remaining_path_risk REAL,
+                    remaining_path_risk_var REAL,
+                    cumulative_risk_exposure REAL,
                     avg_path_length REAL,
                     avg_time REAL,
                     max_time REAL,
@@ -51,6 +52,7 @@ def create_tables(connection: sqlite3.Connection):
             )
     except sqlite3.Error as e:
         raise RuntimeError(f"Error creating tables: {e}")
+
 
 
 
@@ -108,12 +110,13 @@ def write_experiment_metrics(
     algorithm: str,
     awareness: float,
     n_records: int,
-    mean_risk: float,
-    mean_risk_var: float,
+    mean_remaining_path_risk: float,
+    remaining_path_risk_var: float,
+    cumulative_risk_exposure: float,
     avg_path_length: float,
     avg_time: float,
     max_time: float
-) :
+):
     """
     Inserts or replaces metrics for a given experiment.
     """
@@ -123,9 +126,10 @@ def write_experiment_metrics(
                 """
                 INSERT OR REPLACE INTO experiment_metrics (
                     experiment_id, agent_group_id, algorithm, awareness,
-                    n_records, mean_risk, mean_risk_var,
+                    n_records, mean_remaining_path_risk, remaining_path_risk_var,
+                    cumulative_risk_exposure,
                     avg_path_length, avg_time, max_time
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     experiment_id,
@@ -133,17 +137,16 @@ def write_experiment_metrics(
                     algorithm,
                     awareness,
                     n_records,
-                    mean_risk,
-                    mean_risk_var,
+                    mean_remaining_path_risk,
+                    remaining_path_risk_var,
+                    cumulative_risk_exposure,
                     avg_path_length,
                     avg_time,
                     max_time
                 )
             )
-
     except sqlite3.Error as e:
         raise RuntimeError(f"Error writing experiment metrics: {e}")
-
 
 def read_all_experiments(connection: sqlite3.Connection) -> pd.DataFrame:
     """
@@ -285,3 +288,23 @@ def export_experiment_metrics_to_csv(
         raise RuntimeError(f"Error exportando experiment_metrics a CSV: {e}")
     finally:
         conn.close()
+
+def metrics_by_algorithm_awareness(df_metrics: pd.DataFrame) -> pd.DataFrame:
+    df = df_metrics.copy()
+
+    out = (
+        df.groupby(["algorithm", "awareness"], as_index=False)
+          .agg(
+              mean_remaining_path_risk=("mean_remaining_path_risk", "mean"),
+              remaining_path_risk_var=("remaining_path_risk_var", "mean"),
+              cumulative_risk_exposure=("cumulative_risk_exposure", "mean"),
+              avg_path_length=("avg_path_length", "mean"),
+              avg_time=("avg_time", "mean"),
+              max_time=("max_time", "max"),
+          )
+          .sort_values(["algorithm", "awareness"])
+          .reset_index(drop=True)
+    )
+    return out
+
+

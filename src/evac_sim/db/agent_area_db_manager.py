@@ -1,7 +1,7 @@
 import math
 import sqlite3
 from collections import defaultdict
-from typing import List
+from typing import List,Iterable
 
 import pandas as pd
 
@@ -220,30 +220,89 @@ def get_max_risk(connection: sqlite3.Connection) -> float:
     except sqlite3.Error as e:
         raise RuntimeError(f"Error retrieving maximum risk: {e}")
 
-def get_average_risk(connection: sqlite3.Connection) -> float:
+def get_average_normalized_risk_exposure(connection: sqlite3.Connection) -> float:
     """
-    Calculates the average risk level across all agents and frames in the simulation,
-    rounding the result up to one decimal place.
+    Calculates the average normalized risk exposure across all agents.
+
+    For each agent, risk exposure is computed as the mean risk experienced
+    per time step (frame). The final value is the average of these per-agent
+    normalized exposures.
 
     Args:
         connection (sqlite3.Connection): An open SQLite database connection.
 
     Returns:
-        float: The overall average risk level in the simulation, rounded up to 1 decimal place.
+        float: The average normalized risk exposure.
 
     Raises:
         RuntimeError: If there is an error retrieving the data.
     """
     try:
-        query = "SELECT AVG(risk) AS avg_risk_level FROM agent_area_data;"
+        query = """
+            SELECT agent_id, AVG(risk) AS avg_agent_risk
+            FROM agent_area_data
+            GROUP BY agent_id;
+        """
         cursor = connection.cursor()
         cursor.execute(query)
-        result = cursor.fetchone()
+        rows = cursor.fetchall()
 
-        if result and result[0] is not None:
-            # Round up to one decimal place
-            return math.ceil(result[0] * 10) / 10
-        return 0.0  # Return 0.0 if there is no data
+        if not rows:
+            return 0.0
+
+        # Average of per-agent normalized risk exposures
+        normalized_exposure = sum(row[1] for row in rows if row[1] is not None) / len(rows)
+        return float(normalized_exposure)
 
     except sqlite3.Error as e:
-        raise RuntimeError(f"Error retrieving average risk: {e}")
+        raise RuntimeError(f"Error retrieving normalized risk exposure: {e}")
+
+def get_average_normalized_risk_exposure_by_group(
+    connection: sqlite3.Connection,
+    agent_ids: Iterable[int]
+) -> float:
+    """
+    Calculates the average normalized risk exposure for a given set of agents.
+
+    For each agent, risk exposure is computed as the mean risk experienced
+    per time step (frame). The final value is the average of these per-agent
+    normalized exposures, restricted to the provided agent_ids.
+
+    Args:
+        connection (sqlite3.Connection): An open SQLite database connection.
+        agent_ids (Iterable[int]): Collection of agent identifiers.
+
+    Returns:
+        float: The average normalized risk exposure for the given agents.
+
+    Raises:
+        RuntimeError: If there is an error retrieving the data.
+    """
+    agent_ids = list(agent_ids)
+    if not agent_ids:
+        return 0.0
+
+    try:
+        placeholders = ",".join("?" for _ in agent_ids)
+        query = f"""
+            SELECT agent_id, AVG(risk) AS avg_agent_risk
+            FROM agent_area_data
+            WHERE agent_id IN ({placeholders})
+            GROUP BY agent_id;
+        """
+        cursor = connection.cursor()
+        cursor.execute(query, agent_ids)
+        rows = cursor.fetchall()
+
+        if not rows:
+            return 0.0
+
+        # Average of per-agent normalized risk exposures
+        values = [row[1] for row in rows if row[1] is not None]
+        if not values:
+            return 0.0
+
+        return float(sum(values) / len(values))
+
+    except sqlite3.Error as e:
+        raise RuntimeError(f"Error retrieving normalized risk exposure: {e}")

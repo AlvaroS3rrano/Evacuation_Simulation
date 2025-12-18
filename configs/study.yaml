@@ -1,3 +1,22 @@
+crowding:
+  environment: "cruise_ship"
+  sources: ["82", "83", "92", "59", "45", "80", "103", "119", "25", "64", "32", "136", "141", "170", "148", "4"]
+  agents: [10, 10, 30, 5, 3, 4, 2, 5, 4, 3, 2, 3, 1, 2, 3, 2]
+  targets: ["163", "164"]
+  mode_type: 0
+  risk_seed: 1234
+  risk_iterations: 7000
+  risk_increase_chance: 0.05
+  starting_risks:
+    - ["8", 1.0]
+  risk_overrides: null
+  risk_threshold: 0.5
+  gamma: 0.2
+  stairs_max_speed: 0.6
+  normal_max_speed: 1.2
+  every_nth_frame_simulation: 3
+  every_nth_frame_animation: 50
+
 example_case:
   environment: "cruise_ship"
   sources: ["82", "83"]
@@ -10,10 +29,10 @@ example_case:
   starting_risks:
     - ["8", 1.0]
   risk_overrides:
-    - [2400, "153", 0.6]
-    - [2400, "225", 1.0]
-    - [2400, "224", 1.0]
-    - [2400, "201", 0.6]
+    - [2350, "153", 0.6]
+    - [2350, "225", 1.0]
+    - [2350, "224", 1.0]
+    - [2350, "201", 0.6]
   risk_threshold: 0.5
   gamma: 0.2
   stairs_max_speed: 0.6
@@ -26,7 +45,7 @@ representative_case:
   sources: ["82", "83", "73", "77", "92"]
   agents: [5, 5, 6, 6, 10]
   targets: ["163", "164"]
-  mode_type: 3
+  mode_type: 0
   risk_seed: 233
   risk_iterations: 7000
   risk_increase_chance: 0.05
@@ -49,7 +68,7 @@ representative_case_theme_park:
   sources: [ "1", "4", "35", "50" ]
   agents: [ 13, 7, 6, 4 ]
   targets: [ "65", "23" ]
-  mode_type: 2
+  mode_type: 0
   risk_seed: 2468
   risk_iterations: 7000
   risk_increase_chance: 0.01
@@ -291,7 +310,7 @@ case_11:
   sources: [ "69", "14"]
   agents: [ 13, 7]
   targets: [ "50"]
-  mode_type: 3
+  mode_type: 0
   risk_seed: 2465
   risk_iterations: 7000
   risk_increase_chance: 0.02
@@ -313,7 +332,7 @@ case_12:
   sources: [ "65", "14" ]
   agents: [ 13, 7 ]
   targets: [ "35" ]
-  mode_type: 3
+  mode_type: 0
   risk_seed: 246
   risk_iterations: 7000
   risk_increase_chance: 0.02
@@ -332,7 +351,7 @@ case_13:
   sources: [ "5", "14" ]
   agents: [ 5, 7 ]
   targets: [ "65" ]
-  mode_type: 2
+  mode_type: 0
   risk_seed: 246
   risk_iterations: 7000
   risk_increase_chance: 0.05
@@ -351,7 +370,7 @@ case_14:
   sources: [ "5", "14" ]
   agents: [ 5, 7 ]
   targets: [ "65" ]
-  mode_type: 2
+  mode_type: 0
   risk_seed: 2469
   risk_iterations: 7000
   risk_increase_chance: 0.02
