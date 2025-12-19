@@ -1,8 +1,8 @@
 crowding:
-  environment: "cruise_ship"
+  environment: "cruise_ship_v2"
   sources: ["82", "83", "92", "59", "45", "80", "103", "119", "25", "64", "32", "136", "141", "170", "148", "4"]
   agents: [10, 10, 30, 5, 3, 4, 2, 5, 4, 3, 2, 3, 1, 2, 3, 2]
-  targets: ["163", "164"]
+  targets: ["163", "164", "226", "227"]
   mode_type: 0
   risk_seed: 1234
   risk_iterations: 7000

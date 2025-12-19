@@ -5,30 +5,19 @@ from typing import List
 import pandas as pd
 
 
-def create_group_path_table(connection: sqlite3.Connection):
+def create_group_path_table(connection: sqlite3.Connection, force_reset: bool = False) -> None:
     """
-    Creates a table to store dynamic path-choice data per group in the SQLite database.
-
-    Columns:
-      - frame: simulation frame number
-      - group_id: identifier for the agent group
-      - algorithm: "efficient" or "centrality"
-      - awareness: "high" or "low"
-      - current_area: TEXT, current area ID
-      - next_path: JSON list of area IDs for the remaining route
-      - est_risk_mean: mean estimated risk of the remaining path (computed over static risks of next_path areas)
-      - est_risk_max: max estimated risk
-      - est_risk_min: min estimated risk
-      - est_risk_var: variance of estimated risk
-      - risk_now: instantaneous risk at current area and frame
-    Primary key: (frame, group_id, algorithm, awareness)
+    Creates the 'group_path_data' table if it doesn't exist.
+    If force_reset=True, drops and recreates the table.
     """
     try:
         with connection:
-            connection.execute("DROP TABLE IF EXISTS group_path_data")
+            if force_reset:
+                connection.execute("DROP TABLE IF EXISTS group_path_data")
+
             connection.execute(
                 """
-                CREATE TABLE group_path_data (
+                CREATE TABLE IF NOT EXISTS group_path_data (
                     frame INTEGER NOT NULL,
                     group_id INTEGER NOT NULL,
                     algorithm TEXT NOT NULL,
@@ -95,6 +84,7 @@ def write_group_path_data(
             )
     except sqlite3.Error as e:
         raise RuntimeError(f"Error inserting group path data: {e}")
+
 
 
 def read_group_path_data(connection: sqlite3.Connection) -> pd.DataFrame:

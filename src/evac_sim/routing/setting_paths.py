@@ -169,65 +169,150 @@ def updateFloorPaths(EnvInf, current_floor, sources, targets, gamma, *, blocked_
 
 
 def getTargetsForCurrentNode(EnvInf, current_node, current_floor, exits):
-    """ Determine the targets for the current node based on the floor and configuration """
-    targets = exits
-    if EnvInf.floor_number > 1:
-        if current_floor != 0:
-            next_floor = current_floor - 1
-            if current_node not in EnvInf.floor_connecting_nodes[(current_floor, next_floor)]:
-                targets = EnvInf.floor_connecting_nodes[(current_floor, next_floor)]
-            else:
-                targets = EnvInf.floor_connecting_nodes[(next_floor, next_floor - 1)]
-    return targets
+    """
+    Targets on the current floor:
+      - exits that are on this floor
+      - connectors to floor-1 (down) if exist
+      - connectors to floor+1 (up) if exist
+    """
+    targets = set()
 
+    # Exits ON the current floor
+    for e in exits:
+        if EnvInf.graph.nodes[e]["floor"] == current_floor:
+            targets.add(e)
+
+    # Connectors going DOWN
+    down_floor = current_floor - 1
+    if (current_floor, down_floor) in EnvInf.floor_connecting_nodes:
+        for n in EnvInf.floor_connecting_nodes[(current_floor, down_floor)]:
+            if n != current_node:
+                targets.add(n)
+
+    # Connectors going UP
+    up_floor = current_floor + 1
+    if (current_floor, up_floor) in EnvInf.floor_connecting_nodes:
+        for n in EnvInf.floor_connecting_nodes[(current_floor, up_floor)]:
+            if n != current_node:
+                targets.add(n)
+
+    return list(targets)
+
+def _get_exits_on_floor(EnvInf, exits, floor):
+    return [e for e in exits if EnvInf.graph.nodes[e]["floor"] == floor]
+
+def _is_connector(EnvInf, node, floor_from, floor_to):
+    return node in EnvInf.floor_connecting_nodes.get((floor_from, floor_to), [])
+
+def _vertical_dir_from_last(EnvInf, last_node, current_floor, exits_set):
+    # 0 = already exit / no expansion
+    if last_node in exits_set:
+        return 0
+    # down?
+    if current_floor > 0 and _is_connector(EnvInf, last_node, current_floor, current_floor - 1):
+        return -1
+    # up?
+    if current_floor < EnvInf.floor_number - 1 and _is_connector(EnvInf, last_node, current_floor, current_floor + 1):
+        return +1
+    return None
 
 def getPosiblePaths(EnvInf, current_node, exits, gamma, algo, *, blocked_nodes=None):
     if blocked_nodes is None:
         blocked_nodes = []
-    alternative_paths = []
+
     current_floor = EnvInf.graph.nodes[current_node]["floor"]
+    Gcur = EnvInf.floors[current_floor] if EnvInf.floors is not None else EnvInf.graph
 
-    # Update paths for previous floors
-    for i in range(current_floor):
-        if i not in EnvInf.floor_paths:
-            sources = EnvInf.floor_connecting_nodes[(i+1, i)]
-            targets = exits if i == 0 else EnvInf.floor_connecting_nodes[(i, i-1)]
-            updateFloorPaths(EnvInf, i, sources, targets, gamma, blocked_nodes=blocked_nodes)
+    exits_set = set(exits)
 
-    # Get the paths for the current floor if not available
-    if current_floor not in EnvInf.floor_paths:
-        EnvInf.floor_paths[current_floor] = {}
-    if current_node not in EnvInf.floor_paths[current_floor]:
-        targets = getTargetsForCurrentNode(EnvInf, current_node, current_floor, exits)
-        currentG = EnvInf.graph if EnvInf.floors == None else EnvInf.floors[current_floor]
-        alternative_paths = getAlternativePathsForNode(current_node, targets, gamma, currentG, EnvInf.paths_connection, blocked_nodes=blocked_nodes)
-        EnvInf.floor_paths[current_floor][current_node] = alternative_paths
-    else:
-        alternative_paths = EnvInf.floor_paths[current_floor][current_node]
+    # 1) Base targets: exits on same floor + connectors up/down
+    exits_same_floor = _get_exits_on_floor(EnvInf, exits, current_floor)
 
-    # Combine previous floor paths with the current floor paths
-    alternative_paths_aux = []
-    for i in range(current_floor):
-        for first_segment, first_cost, first_betweeness in alternative_paths:
-            for node, segments in EnvInf.floor_paths[i].items():
-                if first_segment[-1] == node:
-                    for second_segment, second_cost, second_betweeness in segments:
-                        complete_path = first_segment + second_segment[1:]
-                        complete_path_cost = first_cost + second_cost
-                        complete_path_betweeness = first_betweeness + second_betweeness
-                        alternative_paths_aux.append((complete_path, complete_path_cost, complete_path_betweeness))
-        alternative_paths = alternative_paths_aux
+    base_targets = list(exits_same_floor)
 
-    # Sort paths based on the algorithm
-    if algo == 0: # based on cost
-        alternative_paths.sort(key=lambda x: x[1])
-    elif algo == 1: # based on betweenness
-        alternative_paths.sort(key=lambda x: x[2], reverse=True)
+    if current_floor > 0:
+        base_targets += EnvInf.floor_connecting_nodes[(current_floor, current_floor - 1)]
+    if current_floor < EnvInf.floor_number - 1:
+        base_targets += EnvInf.floor_connecting_nodes[(current_floor, current_floor + 1)]
 
-    # Return only the paths, without the costs
-    paths = [path for path, _, _ in alternative_paths]
-    return paths
+    # compute alternatives from current node to base_targets
+    alternative_paths = getAlternativePathsForNode(
+        current_node, base_targets, gamma, Gcur, EnvInf.paths_connection, blocked_nodes=blocked_nodes
+    )
 
+    # 2) Expand connector-ending paths to reach a final exit, but WITHOUT changing vertical direction
+    complete = []
+    frontier = []  # items: (segment, cost, betweenness, dir, floor_at_end)
+
+    for seg, c, b in alternative_paths:
+        if not seg:
+            continue
+        last = seg[-1]
+        d = _vertical_dir_from_last(EnvInf, last, current_floor, exits_set)
+        if d == 0:
+            complete.append((seg, c, b))          # already ends at an exit
+        elif d in (-1, +1):
+            frontier.append((seg, c, b, d, current_floor))
+        # else: can't expand (ignore)
+
+    # Precompute exits by floor for quick targeting
+    exits_by_floor = {f: _get_exits_on_floor(EnvInf, exits, f) for f in range(EnvInf.floor_number)}
+
+    # BFS-like expansion by floors, keeping direction fixed
+    while frontier:
+        new_frontier = []
+
+        for seg, c, b, d, floor_at_end in frontier:
+            connector = seg[-1]
+            next_floor = floor_at_end + d
+            if next_floor < 0 or next_floor >= EnvInf.floor_number:
+                continue
+
+            # Targets on next_floor:
+            targets = list(exits_by_floor[next_floor])
+
+            # continue moving in same direction if possible
+            cont_floor = next_floor + d
+            if 0 <= cont_floor < EnvInf.floor_number:
+                targets += EnvInf.floor_connecting_nodes.get((next_floor, cont_floor), [])
+
+            # Ensure we have floor_paths cache for next_floor for these sources/targets
+            if next_floor not in EnvInf.floor_paths:
+                EnvInf.floor_paths[next_floor] = {}
+
+            if connector not in EnvInf.floor_paths[next_floor]:
+                Gnext = EnvInf.floors[next_floor] if EnvInf.floors is not None else EnvInf.graph
+                EnvInf.floor_paths[next_floor][connector] = getAlternativePathsForNode(
+                    connector, targets, gamma, Gnext, EnvInf.paths_connection, blocked_nodes=blocked_nodes
+                )
+
+            segments2 = EnvInf.floor_paths[next_floor].get(connector, [])
+
+            for seg2, c2, b2 in segments2:
+                if not seg2:
+                    continue
+                full = seg + seg2[1:]
+                cc = c + c2
+                bb = b + b2
+                last2 = full[-1]
+
+                if last2 in exits_set:
+                    complete.append((full, cc, bb))
+                else:
+                    # enforce monotone direction: only keep expanding if last2 is a connector continuing in same direction
+                    # and NOT a connector in opposite direction (prevents “up then down”)
+                    if _vertical_dir_from_last(EnvInf, last2, next_floor, exits_set) == d:
+                        new_frontier.append((full, cc, bb, d, next_floor))
+
+        frontier = new_frontier
+
+    # 3) Sort paths based on algo
+    if algo == 0:      # by cost
+        complete.sort(key=lambda x: x[1])
+    elif algo == 1:    # by betweenness
+        complete.sort(key=lambda x: x[2], reverse=True)
+
+    return [p for p, _, _ in complete]
 
 def compute_low_awareness_alternative_path(exits, risk_per_node, next_node, current_node, agent_group, EnvInf, gamma, risk_threshold):
     """
