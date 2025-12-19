@@ -5,15 +5,21 @@ from typing import List, Dict, Any
 import pandas as pd
 
 
-def create_tables(connection: sqlite3.Connection):
+def create_tables(connection: sqlite3.Connection, force_reset: bool = False) -> None:
+    """
+    Creates the 'experiments' and 'experiment_metrics' tables if they don't exist.
+    If force_reset=True, drops and recreates both tables.
+    """
     try:
         with connection:
-            connection.execute("DROP TABLE IF EXISTS experiment_metrics")
-            connection.execute("DROP TABLE IF EXISTS experiments")
+            if force_reset:
+                # Drop child first (FK), then parent
+                connection.execute("DROP TABLE IF EXISTS experiment_metrics")
+                connection.execute("DROP TABLE IF EXISTS experiments")
 
             connection.execute(
                 """
-                CREATE TABLE experiments (
+                CREATE TABLE IF NOT EXISTS experiments (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     name TEXT NOT NULL,
                     risk_nodes TEXT NOT NULL,
@@ -33,7 +39,7 @@ def create_tables(connection: sqlite3.Connection):
 
             connection.execute(
                 """
-                CREATE TABLE experiment_metrics (
+                CREATE TABLE IF NOT EXISTS experiment_metrics (
                     experiment_id INTEGER NOT NULL,
                     agent_group_id TEXT NOT NULL,
                     algorithm TEXT NOT NULL,
@@ -45,16 +51,13 @@ def create_tables(connection: sqlite3.Connection):
                     avg_path_length REAL,
                     avg_time REAL,
                     max_time REAL,
-                    PRIMARY KEY (experiment_id, agent_group_id, algorithm, awareness)
+                    PRIMARY KEY (experiment_id, agent_group_id, algorithm, awareness),
                     FOREIGN KEY(experiment_id) REFERENCES experiments(id) ON DELETE CASCADE
                 )
                 """
             )
     except sqlite3.Error as e:
         raise RuntimeError(f"Error creating tables: {e}")
-
-
-
 
 def write_experiment(
     connection: sqlite3.Connection,

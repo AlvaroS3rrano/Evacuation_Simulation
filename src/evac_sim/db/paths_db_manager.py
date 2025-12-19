@@ -5,29 +5,26 @@ from typing import List
 import pandas as pd
 
 
-def create_paths_table(connection: sqlite3.Connection):
+def create_paths_table(connection: sqlite3.Connection, force_reset: bool = False) -> None:
     """
-    Creates a table to store the paths between nodes in the SQLite database.
-
-    Args:
-        connection (sqlite3.Connection): An open SQLite database connection.
-
-    Raises:
-        RuntimeError: If there is an error creating the table.
+    Creates the 'paths' table if it doesn't exist.
+    If force_reset=True, drops and recreates the table.
     """
     try:
         with connection:
-            connection.execute("DROP TABLE IF EXISTS paths")  # Elimina la tabla si ya existe
+            if force_reset:
+                connection.execute("DROP TABLE IF EXISTS paths")
+
             connection.execute(
                 """
-                CREATE TABLE paths (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,  -- ID único para cada fila
-                    source INTEGER NOT NULL,  -- Nodo de origen
-                    target INTEGER NOT NULL,  -- Nodo de destino
-                    cost INTEGER NOT NULL,    -- Costo del camino
-                    path TEXT NOT NULL,       -- Camino como cadena JSON
-                    betweenness REAL NOT NULL -- Betweenness centrality score
-)
+                CREATE TABLE IF NOT EXISTS paths (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    source INTEGER NOT NULL,
+                    target INTEGER NOT NULL,
+                    cost INTEGER NOT NULL,
+                    path TEXT NOT NULL,
+                    betweenness REAL NOT NULL
+                )
                 """
             )
     except sqlite3.Error as e:

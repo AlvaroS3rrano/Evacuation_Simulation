@@ -3,23 +3,19 @@ from collections import defaultdict
 
 import pandas as pd
 
-
-def create_risk_table(connection: sqlite3.Connection):
+def create_risk_table(connection: sqlite3.Connection, force_reset: bool = False) -> None:
     """
-    Creates a table to store risk levels in the SQLite database.
-
-    Args:
-        connection (sqlite3.Connection): Open SQLite database connection.
-
-    Raises:
-        RuntimeError: If there is an error creating the table.
+    Creates the 'risk_data' table if it doesn't exist.
+    If force_reset=True, drops and recreates the table.
     """
     try:
         with connection:
-            connection.execute("DROP TABLE IF EXISTS risk_data")
+            if force_reset:
+                connection.execute("DROP TABLE IF EXISTS risk_data")
+
             connection.execute(
                 """
-                CREATE TABLE risk_data (
+                CREATE TABLE IF NOT EXISTS risk_data (
                     frame INTEGER NOT NULL,
                     area TEXT NOT NULL,
                     risk_level REAL NOT NULL,
@@ -29,7 +25,6 @@ def create_risk_table(connection: sqlite3.Connection):
             )
     except sqlite3.Error as e:
         raise RuntimeError(f"Error creating risk_data table: {e}")
-
 
 def write_risk_levels(connection: sqlite3.Connection, frame: int, risks: dict):
     """
