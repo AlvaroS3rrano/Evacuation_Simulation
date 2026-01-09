@@ -292,22 +292,5 @@ def export_experiment_metrics_to_csv(
     finally:
         conn.close()
 
-def metrics_by_algorithm_awareness(df_metrics: pd.DataFrame) -> pd.DataFrame:
-    df = df_metrics.copy()
-
-    out = (
-        df.groupby(["algorithm", "awareness"], as_index=False)
-          .agg(
-              mean_remaining_path_risk=("mean_remaining_path_risk", "mean"),
-              remaining_path_risk_var=("remaining_path_risk_var", "mean"),
-              cumulative_risk_exposure=("cumulative_risk_exposure", "mean"),
-              avg_path_length=("avg_path_length", "mean"),
-              avg_time=("avg_time", "mean"),
-              max_time=("max_time", "max"),
-          )
-          .sort_values(["algorithm", "awareness"])
-          .reset_index(drop=True)
-    )
-    return out
 
 
