@@ -1,21 +1,19 @@
+from operator import itemgetter
+
 from src.evac_sim.db.paths_db_manager import *
 from src.evac_sim.routing.path_algorithms import *
 
 
-def update_graph_risks(G, risk_per_node):
-    """
-    Updates the risk values for each node in the graph based on the provided risk mapping.
+def update_all_graph_risks(EnvInf, risk_per_node, default=0.0):
+    # Global
+    for n in EnvInf.graph.nodes:
+        EnvInf.graph.nodes[n]["risk"] = risk_per_node.get(n, default)
 
-    Args:
-        G (networkx.Graph): The graph whose nodes will have their risk attributes updated.
-        risk_per_node (dict): A dictionary mapping node identifiers to their corresponding risk values.
-    """
-    # Iterate over each node and its associated risk value in the risk_per_node dictionary.
-    for node, risk in risk_per_node.items():
-        # Check if the node exists in the graph to avoid updating non-existent nodes.
-        if G.has_node(node):
-            # Update the 'risk' attribute of the node in the graph.
-            G.nodes[node]['risk'] = risk
+    # Floors
+    if EnvInf.floors is not None:
+        for f, Gf in EnvInf.floors.items():
+            for n in Gf.nodes:
+                Gf.nodes[n]["risk"] = risk_per_node.get(n, default)
 
 def handle_blocked_node_in_path(best_path, agent_group):
     """
@@ -146,13 +144,9 @@ def getAlternativePathsForNode(current_node, targets, gamma, currentG, paths_con
             all_paths.extend(alternative_paths)  # Add the newly computed paths to the list
 
     # Filter out paths with blocked nodes
-    paths_aux = collect_unblocked_paths(all_paths, blocked_nodes)
-    if paths_aux:
-      all_paths = paths_aux
-    # Compute efficient paths based on cost
-    efficient_paths = compute_efficient_paths(all_paths, gamma)
+    all_paths = collect_unblocked_paths(all_paths, blocked_nodes)
 
-    return efficient_paths
+    return all_paths
 
 
 
@@ -216,101 +210,225 @@ def _vertical_dir_from_last(EnvInf, last_node, current_floor, exits_set):
         return +1
     return None
 
-def getPosiblePaths(EnvInf, current_node, exits, gamma, algo, *, blocked_nodes=None):
-    if blocked_nodes is None:
-        blocked_nodes = []
+from operator import itemgetter
 
-    current_floor = EnvInf.graph.nodes[current_node]["floor"]
-    Gcur = EnvInf.floors[current_floor] if EnvInf.floors is not None else EnvInf.graph
+def _get_graph_for_floor(EnvInf, floor: int):
+    return EnvInf.floors[floor] if EnvInf.floors is not None else EnvInf.graph
 
-    exits_set = set(exits)
 
-    # 1) Base targets: exits on same floor + connectors up/down
+def _build_base_targets(EnvInf, exits, current_floor: int):
+    # Exits on same floor + connectors up/down
     exits_same_floor = _get_exits_on_floor(EnvInf, exits, current_floor)
-
-    base_targets = list(exits_same_floor)
+    targets = list(exits_same_floor)
 
     if current_floor > 0:
-        base_targets += EnvInf.floor_connecting_nodes[(current_floor, current_floor - 1)]
+        targets += EnvInf.floor_connecting_nodes.get((current_floor, current_floor - 1), [])
     if current_floor < EnvInf.floor_number - 1:
-        base_targets += EnvInf.floor_connecting_nodes[(current_floor, current_floor + 1)]
+        targets += EnvInf.floor_connecting_nodes.get((current_floor, current_floor + 1), [])
 
-    # compute alternatives from current node to base_targets
-    alternative_paths = getAlternativePathsForNode(
-        current_node, base_targets, gamma, Gcur, EnvInf.paths_connection, blocked_nodes=blocked_nodes
-    )
+    return targets
 
-    # 2) Expand connector-ending paths to reach a final exit, but WITHOUT changing vertical direction
+
+def _segment_end_floor(EnvInf, seg):
+    return EnvInf.graph.nodes[seg[-1]]["floor"]
+
+
+def _init_complete_and_frontier(EnvInf, alternative_paths, current_floor: int, exits_set):
     complete = []
-    frontier = []  # items: (segment, cost, betweenness, dir, floor_at_end)
+    frontier = []  # (seg, cost, betw, dir, floor_at_end)
 
     for seg, c, b in alternative_paths:
         if not seg:
             continue
+
         last = seg[-1]
-        d = _vertical_dir_from_last(EnvInf, last, current_floor, exits_set)
+        last_floor = EnvInf.graph.nodes[last]["floor"]
+        d = _vertical_dir_from_last(EnvInf, last, last_floor, exits_set)
+
         if d == 0:
-            complete.append((seg, c, b))          # already ends at an exit
+            complete.append((seg, c, b))
         elif d in (-1, +1):
-            frontier.append((seg, c, b, d, current_floor))
-        # else: can't expand (ignore)
+            frontier.append((seg, c, b, d, last_floor))
 
-    # Precompute exits by floor for quick targeting
-    exits_by_floor = {f: _get_exits_on_floor(EnvInf, exits, f) for f in range(EnvInf.floor_number)}
+    return complete, frontier
 
-    # BFS-like expansion by floors, keeping direction fixed
-    while frontier:
-        new_frontier = []
 
-        for seg, c, b, d, floor_at_end in frontier:
-            connector = seg[-1]
-            next_floor = floor_at_end + d
-            if next_floor < 0 or next_floor >= EnvInf.floor_number:
+def _precompute_exits_by_floor(EnvInf, exits):
+    return {f: _get_exits_on_floor(EnvInf, exits, f) for f in range(EnvInf.floor_number)}
+
+
+def _build_targets_for_next_floor(EnvInf, exits_by_floor, next_floor: int, d: int):
+    # Exits on next floor + connector continuing in same direction
+    targets = list(exits_by_floor[next_floor])
+
+    cont_floor = next_floor + d
+    if 0 <= cont_floor < EnvInf.floor_number:
+        targets += EnvInf.floor_connecting_nodes.get((next_floor, cont_floor), [])
+
+    return targets
+
+
+def _ensure_floor_cache(EnvInf, floor: int):
+    if floor not in EnvInf.floor_paths:
+        EnvInf.floor_paths[floor] = {}
+
+
+def _get_cached_segments_from_connector(
+    EnvInf,
+    connector,
+    next_floor: int,
+    targets,
+    gamma,
+    blocked_nodes,
+):
+    # Cache by (floor, connector). Note: if targets/blocked_nodes vary, consider richer cache key.
+    _ensure_floor_cache(EnvInf, next_floor)
+
+    if connector not in EnvInf.floor_paths[next_floor]:
+        Gnext = _get_graph_for_floor(EnvInf, next_floor)
+        EnvInf.floor_paths[next_floor][connector] = getAlternativePathsForNode(
+            connector,
+            targets,
+            gamma,
+            Gnext,
+            EnvInf.paths_connection,
+            blocked_nodes=blocked_nodes,
+        )
+
+    return EnvInf.floor_paths[next_floor].get(connector, [])
+
+
+def _can_concatenate_without_cycle(seg, seg2):
+    # Avoid repeating nodes when concatenating
+    seg_set = set(seg)
+    tail = seg2[1:]
+    return not any(n in seg_set for n in tail)
+
+
+def _expand_frontier_once(
+    EnvInf,
+    frontier,
+    exits_set,
+    exits_by_floor,
+    gamma,
+    blocked_nodes,
+    visited_states,
+):
+    complete = []
+    new_frontier = []
+
+    for seg, c, b, d, floor_at_end in frontier:
+        if not seg:
+            continue
+
+        connector = seg[-1]
+        state = (connector, floor_at_end, d)
+        if state in visited_states:
+            continue
+        visited_states.add(state)
+
+        next_floor = floor_at_end + d
+        if next_floor < 0 or next_floor >= EnvInf.floor_number:
+            continue
+
+        targets = _build_targets_for_next_floor(EnvInf, exits_by_floor, next_floor, d)
+        segments2 = _get_cached_segments_from_connector(
+            EnvInf, connector, next_floor, targets, gamma, blocked_nodes
+        )
+
+        if not segments2:
+            continue
+
+        for seg2, c2, b2 in segments2:
+            if not seg2:
+                continue
+            if not _can_concatenate_without_cycle(seg, seg2):
                 continue
 
-            # Targets on next_floor:
-            targets = list(exits_by_floor[next_floor])
+            full = seg + seg2[1:]
+            cc = c + c2
+            bb = b + b2
+            last2 = full[-1]
 
-            # continue moving in same direction if possible
-            cont_floor = next_floor + d
-            if 0 <= cont_floor < EnvInf.floor_number:
-                targets += EnvInf.floor_connecting_nodes.get((next_floor, cont_floor), [])
+            if last2 in exits_set:
+                complete.append((full, cc, bb))
+                continue
 
-            # Ensure we have floor_paths cache for next_floor for these sources/targets
-            if next_floor not in EnvInf.floor_paths:
-                EnvInf.floor_paths[next_floor] = {}
+            last2_floor = EnvInf.graph.nodes[last2]["floor"]
+            d2 = _vertical_dir_from_last(EnvInf, last2, last2_floor, exits_set)
 
-            if connector not in EnvInf.floor_paths[next_floor]:
-                Gnext = EnvInf.floors[next_floor] if EnvInf.floors is not None else EnvInf.graph
-                EnvInf.floor_paths[next_floor][connector] = getAlternativePathsForNode(
-                    connector, targets, gamma, Gnext, EnvInf.paths_connection, blocked_nodes=blocked_nodes
-                )
+            # Keep monotone direction
+            if d2 == d:
+                new_frontier.append((full, cc, bb, d, last2_floor))
 
-            segments2 = EnvInf.floor_paths[next_floor].get(connector, [])
+    return complete, new_frontier
 
-            for seg2, c2, b2 in segments2:
-                if not seg2:
-                    continue
-                full = seg + seg2[1:]
-                cc = c + c2
-                bb = b + b2
-                last2 = full[-1]
 
-                if last2 in exits_set:
-                    complete.append((full, cc, bb))
-                else:
-                    # enforce monotone direction: only keep expanding if last2 is a connector continuing in same direction
-                    # and NOT a connector in opposite direction (prevents “up then down”)
-                    if _vertical_dir_from_last(EnvInf, last2, next_floor, exits_set) == d:
-                        new_frontier.append((full, cc, bb, d, next_floor))
+def _filter_complete_by_gamma(complete, gamma: float):
+    if not complete:
+        return complete
 
-        frontier = new_frontier
+    min_cost = min(complete, key=itemgetter(1))[1]
+    max_allowed = min_cost * (1 + gamma)
 
-    # 3) Sort paths based on algo
-    if algo == 0:      # by cost
-        complete.sort(key=lambda x: x[1])
-    elif algo == 1:    # by betweenness
-        complete.sort(key=lambda x: x[2], reverse=True)
+    if any(c > max_allowed for _, c, _ in complete):
+        complete = [t for t in complete if t[1] <= max_allowed]
+
+    return complete
+
+
+def _sort_complete(complete, algo: int):
+    # algo: 0 cost asc, 1 betweenness desc
+    complete.sort(
+        key=itemgetter(1) if algo == 0 else itemgetter(2),
+        reverse=(algo == 1),
+    )
+    return complete
+
+
+def getPosiblePaths(EnvInf, current_node, exits, gamma, algo, *, blocked_nodes=None):
+    if blocked_nodes is None:
+        blocked_nodes = []
+
+    exits_set = set(exits)
+    current_floor = EnvInf.graph.nodes[current_node]["floor"]
+    Gcur = _get_graph_for_floor(EnvInf, current_floor)
+
+    base_targets = _build_base_targets(EnvInf, exits, current_floor)
+
+    # Get in-floor segments (no gamma filtering here)
+    alternative_paths = getAlternativePathsForNode(
+        current_node,
+        base_targets,
+        gamma,
+        Gcur,
+        EnvInf.paths_connection,
+        blocked_nodes=blocked_nodes,
+    )
+
+    complete, frontier = _init_complete_and_frontier(
+        EnvInf, alternative_paths, current_floor, exits_set
+    )
+
+    exits_by_floor = _precompute_exits_by_floor(EnvInf, exits)
+
+    visited_states = set()
+    while frontier:
+        newly_complete, frontier = _expand_frontier_once(
+            EnvInf,
+            frontier,
+            exits_set,
+            exits_by_floor,
+            gamma,
+            blocked_nodes,
+            visited_states,
+        )
+        complete.extend(newly_complete)
+
+    # Gamma filter only on full paths
+    complete = _filter_complete_by_gamma(complete, gamma)
+
+    complete = _sort_complete(complete, algo)
 
     return [p for p, _, _ in complete]
 
@@ -344,7 +462,6 @@ def compute_low_awareness_alternative_path(exits, risk_per_node, next_node, curr
 
     algo = agent_group.algorithm
     current_path = getattr(agent_group, 'path', None)
-    G = EnvInf.graph
 
     if current_path is not None:
         # If the risk of the next node is below the threshold, no update is needed.
@@ -352,8 +469,9 @@ def compute_low_awareness_alternative_path(exits, risk_per_node, next_node, curr
             return None
 
         # Update the graph with the risk values for each node.
-        update_graph_risks(G, risk_per_node)
+        update_all_graph_risks(EnvInf, risk_per_node)
 
+    G = EnvInf.graph
     # Sort the neighbors of the current_node by their risk (lowest risk first).
     neighbors_sorted = sorted(
         G.neighbors(current_node),
@@ -401,7 +519,6 @@ def compute_high_awareness_alternative_path(exits, risk_per_node, current_node, 
     # Retrieve the algorithm identifier and current path from the agent group.
     algo = agent_group.algorithm
     current_path = agent_group.path
-    G = EnvInf.graph
     dangerous_path = False  # Flag to indicate if any node in the current path is dangerous.
     if current_path is not None:
         # Iterate over the nodes in the current path.
@@ -422,8 +539,8 @@ def compute_high_awareness_alternative_path(exits, risk_per_node, current_node, 
     # If a dangerous node is found in the current path, attempt to compute an alternative path.
     if dangerous_path:
         # Update the graph with the current risk values for each node.
-        update_graph_risks(G, risk_per_node)
-
+        update_all_graph_risks(EnvInf, risk_per_node)
+        G = EnvInf.graph
 
         alternative_paths = getPosiblePaths(EnvInf, current_node, exits, gamma, algo, blocked_nodes=agent_group.blocked_nodes)
 
