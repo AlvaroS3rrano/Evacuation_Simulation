@@ -6,8 +6,6 @@ risk evaluation, path planning strategies, and interactive visualizations.
 This project is developed in the context of academic research on evacuation dynamics
 and intelligent environments.
 
----
-
 ## 📌 Project Overview
 
 The goal of this project is to simulate evacuation processes in complex environments,
@@ -24,8 +22,6 @@ A key aspect of the framework is the modeling of different levels of agent
 environmental awareness, distinguishing between high-awareness and low-awareness
 agents, as well as the comparison of multiple routing strategies.
 
----
-
 ## ✨ Main Features
 
 - Agent-based evacuation simulation
@@ -38,8 +34,6 @@ agents, as well as the comparison of multiple routing strategies.
 - Comparison of multiple routing strategies:
   - Efficient routing based on *k-shortest paths*
   - Centrality-based routing strategies (agile routing)
-
----
 
 ## 🗂 Project Structure
 
