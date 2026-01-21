@@ -85,6 +85,24 @@ representative_case_theme_park:
   every_nth_frame_simulation: 3
   every_nth_frame_animation: 50
 
+corridor_case_1:
+  environment: "corridor"
+  sources: [ "16"]
+  agents: [ 5 ]
+  targets: [ "1", "14"]
+  mode_type: 1
+  risk_seed: 1001
+  risk_iterations: 2000
+  risk_increase_chance: 0.05
+  starting_risks:
+  risk_overrides:
+  risk_threshold: 0.5
+  gamma: 0.2
+  stairs_max_speed: 0.6
+  normal_max_speed: 1.2
+  every_nth_frame_simulation: 3
+  every_nth_frame_animation: 50
+
 case_1:
   environment: "cruise_ship"
   sources: ["82", "83"]
