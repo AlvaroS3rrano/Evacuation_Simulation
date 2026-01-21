@@ -1,0 +1,11 @@
+id,case_name,name,risk_nodes,source_nodes,agents_per_source,random_seed
+1,corridor_case_1,corridor_case_1,[],"[""16""]",[5],1001
+3,corridor_case_2,corridor_case_2,"[[0, ""11"", 0.8]]","[""16""]",[10],1002
+7,corridor_case_3,corridor_case_3,"[[0, ""9"", 1.0]]","[""16""]",[20],1003
+8,corridor_case_4,corridor_case_4,"[[0, ""11"", 1.0], [0, ""12"", 0.7]]","[""16""]",[30],1004
+9,corridor_case_5,corridor_case_5,"[[0, ""10"", 0.9]]","[""9""]",[15],1005
+10,corridor_case_6,corridor_case_6,"[[0, ""10"", 1.0], [0, ""11"", 1.0]]","[""9""]",[25],1006
+11,corridor_case_7,corridor_case_7,[],"[""16"", ""9""]","[10, 10]",1007
+12,corridor_case_8,corridor_case_8,"[[0, ""11"", 1.0], [0, ""12"", 1.0], [0, ""13"", 0.8]]","[""16""]",[40],1008
+13,corridor_case_9,corridor_case_9,"[[0, ""10"", 1.0], [0, ""11"", 1.0], [0, ""12"", 1.0]]","[""9""]",[50],1009
+14,corridor_case_10,corridor_case_10,"[[0, ""10"", 1.0], [0, ""11"", 1.0], [0, ""12"", 1.0], [0, ""13"", 1.0]]","[""16"", ""9""]","[20, 20]",1010
