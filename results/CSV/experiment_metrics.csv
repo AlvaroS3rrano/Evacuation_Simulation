@@ -1,3 +1,0 @@
-experiment_id,agent_group_id,algorithm,awareness,n_records,mean_remaining_path_risk,remaining_path_risk_var,cumulative_risk_exposure,avg_path_length,avg_time,max_time,name,risk_nodes,source_nodes,agents_per_source,random_seed
-1,16,Efficient,High,17,0.0,0.0,0.0,3.4705882352941178,22.278000000000024,24.960000000000026,corridor_case_1,[],"[""16""]",[5],1001
-1,16,Efficient,Low,17,0.0,0.0,0.0,3.4705882352941178,22.278000000000024,24.960000000000026,corridor_case_1,[],"[""16""]",[5],1001

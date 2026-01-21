@@ -21,12 +21,14 @@ def create_tables(connection: sqlite3.Connection, force_reset: bool = False) -> 
                 """
                 CREATE TABLE IF NOT EXISTS experiments (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    case_name TEXT NOT NULL,
                     name TEXT NOT NULL,
                     risk_nodes TEXT NOT NULL,
                     source_nodes TEXT NOT NULL,
                     agents_per_source TEXT NOT NULL,
                     random_seed INTEGER NOT NULL,
                     UNIQUE(
+                        case_name,
                         name,
                         risk_nodes,
                         source_nodes,
@@ -50,6 +52,8 @@ def create_tables(connection: sqlite3.Connection, force_reset: bool = False) -> 
                     cumulative_risk_exposure REAL,
                     avg_path_length REAL,
                     avg_time REAL,
+                    median_time REAL,
+                    p90_time REAL,
                     max_time REAL,
                     PRIMARY KEY (experiment_id, agent_group_id, algorithm, awareness),
                     FOREIGN KEY(experiment_id) REFERENCES experiments(id) ON DELETE CASCADE
@@ -61,6 +65,7 @@ def create_tables(connection: sqlite3.Connection, force_reset: bool = False) -> 
 
 def write_experiment(
     connection: sqlite3.Connection,
+    case_name: str,
     name: str,
     risk_nodes: List[Any],
     source_nodes: List[Any],
@@ -74,14 +79,18 @@ def write_experiment(
         with connection:
             connection.execute(
                 """
-                INSERT OR IGNORE INTO experiments (
+                INSERT
+                OR IGNORE INTO experiments (
+                    case_name,
                     name,
                     risk_nodes,
                     source_nodes,
                     agents_per_source,
                     random_seed
-                ) VALUES (?, ?, ?, ?, ?)""",
+                ) VALUES (?, ?, ?, ?, ?, ?)
+                """,
                 (
+                    case_name,
                     name,
                     json.dumps(risk_nodes),
                     json.dumps(source_nodes),
@@ -90,9 +99,18 @@ def write_experiment(
                 )
             )
         cursor = connection.execute(
-            "SELECT id FROM experiments WHERE name = ? AND risk_nodes = ? AND source_nodes = ? "
-            "AND agents_per_source = ? AND random_seed = ?",
+            """
+            SELECT id
+            FROM experiments
+            WHERE case_name = ?
+              AND name = ?
+              AND risk_nodes = ?
+              AND source_nodes = ?
+              AND agents_per_source = ?
+              AND random_seed = ?
+            """,
             (
+                case_name,
                 name,
                 json.dumps(risk_nodes),
                 json.dumps(source_nodes),
@@ -100,6 +118,7 @@ def write_experiment(
                 random_seed
             )
         )
+
         row = cursor.fetchone()
         return row[0]
     except sqlite3.Error as e:
@@ -118,6 +137,8 @@ def write_experiment_metrics(
     cumulative_risk_exposure: float,
     avg_path_length: float,
     avg_time: float,
+    median_time: float,
+    p90_time: float,
     max_time: float
 ):
     """
@@ -131,8 +152,8 @@ def write_experiment_metrics(
                     experiment_id, agent_group_id, algorithm, awareness,
                     n_records, mean_remaining_path_risk, remaining_path_risk_var,
                     cumulative_risk_exposure,
-                    avg_path_length, avg_time, max_time
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    avg_path_length, avg_time, median_time, p90_time, max_time
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     experiment_id,
@@ -145,7 +166,9 @@ def write_experiment_metrics(
                     cumulative_risk_exposure,
                     avg_path_length,
                     avg_time,
-                    max_time
+                    median_time,
+                    p90_time,
+                    max_time,
                 )
             )
     except sqlite3.Error as e:
@@ -171,7 +194,8 @@ def read_all_metrics(connection: sqlite3.Connection) -> pd.DataFrame:
     """
     try:
         query = (
-            "SELECT m.*, e.name, e.risk_nodes, e.source_nodes, e.agents_per_source, e.random_seed "
+            "SELECT m.*, e.case_name, e.name, e.risk_nodes, "
+            "e.source_nodes, e.agents_per_source, e.random_seed "
             "FROM experiment_metrics m "
             "JOIN experiments e ON m.experiment_id = e.id"
         )
@@ -264,7 +288,8 @@ def export_experiment_metrics_to_csv(
     try:
         if include_experiment_context:
             query = (
-                "SELECT m.*, e.name, e.risk_nodes, e.source_nodes, e.agents_per_source, e.random_seed "
+                "SELECT m.*, e.case_name, e.name, e.risk_nodes, "
+                "e.source_nodes, e.agents_per_source, e.random_seed "
                 "FROM experiment_metrics m "
                 "JOIN experiments e ON m.experiment_id = e.id"
             )

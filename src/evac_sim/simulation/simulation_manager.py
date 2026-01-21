@@ -6,7 +6,8 @@ from src.evac_sim.db.agent_area_db_manager import write_agent_area
 from src.evac_sim.db.danger_sim_db_manager import get_risk_levels_by_frame
 from src.evac_sim.db.group_path_db_manager import write_group_path_data
 from src.evac_sim.envs.journey_configuration import set_journeys
-from src.evac_sim.routing.setting_paths import compute_alternative_path, is_sublist
+from src.evac_sim.routing.decision_policies import compute_alternative_path
+from src.evac_sim.routing.utils import is_sublist
 from src.evac_sim.simulation.simulation_logic import compute_current_nodes, update_agent_speed_on_stairs
 
 
