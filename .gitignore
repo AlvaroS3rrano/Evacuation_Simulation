@@ -1,3 +1,8 @@
 /data/sqlite
 
 /results/images/*.png
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
