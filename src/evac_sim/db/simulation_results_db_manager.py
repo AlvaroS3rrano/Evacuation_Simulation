@@ -22,18 +22,12 @@ def create_tables(connection: sqlite3.Connection, force_reset: bool = False) -> 
                 CREATE TABLE IF NOT EXISTS experiments (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     case_name TEXT NOT NULL,
-                    name TEXT NOT NULL,
                     risk_nodes TEXT NOT NULL,
                     source_nodes TEXT NOT NULL,
                     agents_per_source TEXT NOT NULL,
                     random_seed INTEGER NOT NULL,
                     UNIQUE(
-                        case_name,
-                        name,
-                        risk_nodes,
-                        source_nodes,
-                        agents_per_source,
-                        random_seed
+                        case_name
                     )
                 )
                 """
@@ -43,6 +37,7 @@ def create_tables(connection: sqlite3.Connection, force_reset: bool = False) -> 
                 """
                 CREATE TABLE IF NOT EXISTS experiment_metrics (
                     experiment_id INTEGER NOT NULL,
+                    case_name TEXT NOT NULL,
                     agent_group_id TEXT NOT NULL,
                     algorithm TEXT NOT NULL,
                     awareness REAL NOT NULL,
@@ -51,11 +46,12 @@ def create_tables(connection: sqlite3.Connection, force_reset: bool = False) -> 
                     remaining_path_risk_var REAL,
                     cumulative_risk_exposure REAL,
                     avg_path_length REAL,
+                    min_time REAL,
                     avg_time REAL,
                     median_time REAL,
                     p90_time REAL,
                     max_time REAL,
-                    PRIMARY KEY (experiment_id, agent_group_id, algorithm, awareness),
+                    PRIMARY KEY (case_name, agent_group_id, algorithm, awareness),
                     FOREIGN KEY(experiment_id) REFERENCES experiments(id) ON DELETE CASCADE
                 )
                 """
@@ -63,64 +59,55 @@ def create_tables(connection: sqlite3.Connection, force_reset: bool = False) -> 
     except sqlite3.Error as e:
         raise RuntimeError(f"Error creating tables: {e}")
 
-def write_experiment(
-    connection: sqlite3.Connection,
-    case_name: str,
-    name: str,
-    risk_nodes: List[Any],
-    source_nodes: List[Any],
-    agents_per_source: Dict[Any, int],
-    random_seed: int
-) -> int:
-    """
-    Inserts or ignores a global experiment setup, returning its id.
-    """
+def write_experiment(connection, case_name, risk_nodes, source_nodes, agents_per_source, random_seed):
     try:
+        risk_json = json.dumps(risk_nodes)
+        source_json = json.dumps(source_nodes)
+        agents_json = json.dumps(agents_per_source)
+
         with connection:
+            row = connection.execute(
+                """
+                SELECT id, risk_nodes, source_nodes, agents_per_source, random_seed
+                FROM experiments
+                WHERE case_name = ?
+                """,
+                (case_name,)
+            ).fetchone()
+
+            if row is not None:
+                existing_id, ex_risk, ex_source, ex_agents, ex_seed = row
+
+                same_config = (
+                    ex_risk == risk_json
+                    and ex_source == source_json
+                    and ex_agents == agents_json
+                    and ex_seed == random_seed
+                )
+
+                # If config differs, delete and recreate from scratch
+                if not same_config:
+                    connection.execute("DELETE FROM experiments WHERE id = ?", (existing_id,))
+                else:
+                    # Config is identical -> reuse existing experiment id
+                    return existing_id
+
+            # Insert new experiment
             connection.execute(
                 """
-                INSERT
-                OR IGNORE INTO experiments (
-                    case_name,
-                    name,
-                    risk_nodes,
-                    source_nodes,
-                    agents_per_source,
-                    random_seed
-                ) VALUES (?, ?, ?, ?, ?, ?)
+                INSERT INTO experiments (case_name, risk_nodes, source_nodes, agents_per_source, random_seed)
+                VALUES (?, ?, ?, ?, ?)
                 """,
-                (
-                    case_name,
-                    name,
-                    json.dumps(risk_nodes),
-                    json.dumps(source_nodes),
-                    json.dumps(agents_per_source),
-                    random_seed
-                )
+                (case_name, risk_json, source_json, agents_json, random_seed)
             )
-        cursor = connection.execute(
-            """
-            SELECT id
-            FROM experiments
-            WHERE case_name = ?
-              AND name = ?
-              AND risk_nodes = ?
-              AND source_nodes = ?
-              AND agents_per_source = ?
-              AND random_seed = ?
-            """,
-            (
-                case_name,
-                name,
-                json.dumps(risk_nodes),
-                json.dumps(source_nodes),
-                json.dumps(agents_per_source),
-                random_seed
-            )
-        )
 
-        row = cursor.fetchone()
-        return row[0]
+            new_id = connection.execute(
+                "SELECT id FROM experiments WHERE case_name = ?",
+                (case_name,)
+            ).fetchone()[0]
+
+            return new_id
+
     except sqlite3.Error as e:
         raise RuntimeError(f"Error writing experiment: {e}")
 
@@ -128,6 +115,7 @@ def write_experiment(
 def write_experiment_metrics(
     connection: sqlite3.Connection,
     experiment_id: int,
+    case_name: str,
     agent_group_id: str,
     algorithm: str,
     awareness: float,
@@ -139,6 +127,7 @@ def write_experiment_metrics(
     avg_time: float,
     median_time: float,
     p90_time: float,
+    min_time: float,
     max_time: float
 ):
     """
@@ -149,14 +138,15 @@ def write_experiment_metrics(
             connection.execute(
                 """
                 INSERT OR REPLACE INTO experiment_metrics (
-                    experiment_id, agent_group_id, algorithm, awareness,
+                    experiment_id, case_name, agent_group_id, algorithm, awareness,
                     n_records, mean_remaining_path_risk, remaining_path_risk_var,
-                    cumulative_risk_exposure,
-                    avg_path_length, avg_time, median_time, p90_time, max_time
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    cumulative_risk_exposure, avg_path_length,
+                    min_time, avg_time, median_time, p90_time, max_time
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     experiment_id,
+                    case_name,
                     agent_group_id,
                     algorithm,
                     awareness,
@@ -165,6 +155,7 @@ def write_experiment_metrics(
                     remaining_path_risk_var,
                     cumulative_risk_exposure,
                     avg_path_length,
+                    min_time,
                     avg_time,
                     median_time,
                     p90_time,
@@ -194,7 +185,7 @@ def read_all_metrics(connection: sqlite3.Connection) -> pd.DataFrame:
     """
     try:
         query = (
-            "SELECT m.*, e.case_name, e.name, e.risk_nodes, "
+            "SELECT m.*, e.case_name, e.risk_nodes, "
             "e.source_nodes, e.agents_per_source, e.random_seed "
             "FROM experiment_metrics m "
             "JOIN experiments e ON m.experiment_id = e.id"
@@ -288,7 +279,7 @@ def export_experiment_metrics_to_csv(
     try:
         if include_experiment_context:
             query = (
-                "SELECT m.*, e.case_name, e.name, e.risk_nodes, "
+                "SELECT m.*, e.case_name, e.risk_nodes, "
                 "e.source_nodes, e.agents_per_source, e.random_seed "
                 "FROM experiment_metrics m "
                 "JOIN experiments e ON m.experiment_id = e.id"
