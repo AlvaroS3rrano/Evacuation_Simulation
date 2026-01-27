@@ -79,8 +79,86 @@ def csv_to_latex_rows_casewise_config(
 
     return "\n".join(rows)
 
-# path = "../../results/CSV/Cruise_Ship_experiment_metrics.csv"
-# path = "../../results/CSV/Theme Park_experiment_metrics.csv"
-path = "../../results/CSV/corridor_experiment_metrics.csv"
-latex_rows = csv_to_latex_rows_casewise_config(path)
+def csv_to_latex_rows_for_case_config_means(
+    csv_path: str,
+    case_name: str,
+    float_fmt="{:.6f}",
+    time_fmt="{:.2f}",
+    order_configurations=True
+) -> str:
+    """
+    Build LaTeX rows for a single case_name, aggregated by (algorithm, awareness).
+
+    Output columns (LaTeX row order):
+        Configuration & Max Evac. Time (s) & Avg Evac. Time (s) & Avg Path Length & Mean RPR & RPR Var. \\
+
+    Notes:
+        - Max Evac. Time is computed as the mean of 'max_time' across groups/records for the same config.
+        - Avg Evac. Time is computed as the mean of 'avg_time'.
+        - Avg Path Length is computed as the mean of 'avg_path_length'.
+        - Mean RPR is computed as the mean of 'mean_remaining_path_risk'.
+        - RPR Var. is computed as the mean of 'remaining_path_risk_var'.
+    """
+    df = pd.read_csv(csv_path)
+
+    needed = [
+        "case_name", "algorithm", "awareness",
+        "max_time", "avg_time", "avg_path_length",
+        "mean_remaining_path_risk", "remaining_path_risk_var",
+    ]
+    df = df[needed].copy()
+
+    # Filter to the requested case
+    df_case = df[df["case_name"].astype(str) == str(case_name)].copy()
+    if df_case.empty:
+        raise ValueError(f"No rows found for case_name='{case_name}' in '{csv_path}'.")
+
+    df_case["Configuration"] = (
+        df_case["algorithm"].astype(str) + ", " + df_case["awareness"].astype(str) + " Awareness"
+    )
+
+    agg = {
+        "max_time": "mean",
+        "avg_time": "mean",
+        "avg_path_length": "mean",
+        "mean_remaining_path_risk": "mean",
+        "remaining_path_risk_var": "mean",
+    }
+
+    out = df_case.groupby(["Configuration"], as_index=False).agg(agg)
+
+    if order_configurations:
+        cfg_order = [
+            "Centrality, High Awareness",
+            "Centrality, Low Awareness",
+            "Efficient, High Awareness",
+            "Efficient, Low Awareness",
+        ]
+        out["Configuration"] = pd.Categorical(
+            out["Configuration"], categories=cfg_order, ordered=True
+        )
+        out = out.sort_values(["Configuration"])
+
+    rows = []
+    for _, r in out.iterrows():
+        rows.append(
+            f"{r['Configuration']} & "
+            f"{time_fmt.format(r['max_time'])} & "
+            f"{time_fmt.format(r['avg_time'])} & "
+            f"{time_fmt.format(r['avg_path_length'])} & "
+            f"{float_fmt.format(r['mean_remaining_path_risk'])} & "
+            f"{float_fmt.format(r['remaining_path_risk_var'])} \\\\"
+        )
+
+    return "\n".join(rows)
+
+
+
+# path = "../../../results/CSV/Cruise_Ship_experiment_metrics.csv"
+path = "../../../results/CSV/Theme Park_experiment_metrics.csv"
+# path = "../../--/results/CSV/corridor_experiment_metrics.csv"
+#latex_rows = csv_to_latex_rows_casewise_config(path)
+latex_rows = csv_to_latex_rows_for_case_config_means(path, "representative_case_theme_park")
 print(latex_rows)
+
+
