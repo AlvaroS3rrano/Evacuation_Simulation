@@ -31,7 +31,7 @@ def extract_case_number(case_name: str):
 
 def csv_to_latex_rows_casewise_config(
     csv_path: str,
-    float_fmt="{:.6f}",
+    float_fmt="{:.4f}",
     time_fmt="{:.2f}",
     order_configurations=True,
     addlinespace_between_cases=False
@@ -40,7 +40,7 @@ def csv_to_latex_rows_casewise_config(
 
     needed = [
         "case_name","algorithm","awareness",
-        "mean_remaining_path_risk","remaining_path_risk_var","cumulative_risk_exposure",
+        "mean_remaining_path_risk","remaining_path_risk_var",
         "avg_path_length","min_time","max_time","avg_time","median_time","p90_time",
     ]
     df = df[needed].copy()
@@ -52,7 +52,6 @@ def csv_to_latex_rows_casewise_config(
     agg = {
         "mean_remaining_path_risk": "mean",
         "remaining_path_risk_var": "mean",
-        "cumulative_risk_exposure": "mean",
         "avg_path_length": "mean",
         "min_time": "min",
         "max_time": "max",
@@ -94,7 +93,6 @@ def csv_to_latex_rows_casewise_config(
             f"{case_label} & {r['Configuration']} & "
             f"{float_fmt.format(r['mean_remaining_path_risk'])} & "
             f"{float_fmt.format(r['remaining_path_risk_var'])} & "
-            f"{float_fmt.format(r['cumulative_risk_exposure'])} & "
             f"{time_fmt.format(r['avg_path_length'])} & "
             f"{time_fmt.format(r['min_time'])} & "
             f"{time_fmt.format(r['max_time'])} & "
@@ -109,7 +107,7 @@ def csv_to_latex_rows_casewise_config(
 def csv_to_latex_rows_for_case_config_means(
     csv_path: str,
     case_name: str,
-    float_fmt="{:.6f}",
+    float_fmt="{:.4f}",
     time_fmt="{:.2f}",
     order_configurations=True
 ) -> str:
@@ -182,7 +180,7 @@ def csv_to_latex_rows_for_case_config_means(
 def csv_to_latex_rows_scenario_compact_config(
     csv_path: str,
     stat: str = "mean",  # "mean" or "std"
-    float_fmt="{:.6f}",
+    float_fmt="{:.4f}",
     time_fmt="{:.2f}",
     order_configurations=True
 ) -> str:
@@ -256,12 +254,12 @@ def csv_to_latex_rows_scenario_compact_config(
     return "\n".join(rows)
 
 
-#path = "../../../results/CSV/Cruise_Ship_experiment_metrics.csv"
+# path = "../../../results/CSV/Cruise_Ship_experiment_metrics.csv"
 path = "../../../results/CSV/Theme Park_experiment_metrics.csv"
-# path = "../../--/results/CSV/corridor_experiment_metrics.csv"
+# path = "../../../results/CSV/corridor_experiment_metrics.csv"
 latex_rows = csv_to_latex_rows_casewise_config(path)
-#latex_rows = csv_to_latex_rows_for_case_config_means(path, "representative_case_theme_park")
-#latex_rows = csv_to_latex_rows_scenario_compact_config(path, stat="mean")
+# latex_rows = csv_to_latex_rows_for_case_config_means(path, "example_case")
+# latex_rows = csv_to_latex_rows_scenario_compact_config(path, stat="std")
 print(latex_rows)
 
 
