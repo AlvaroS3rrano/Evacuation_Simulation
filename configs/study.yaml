@@ -15,6 +15,7 @@ example_case:
     - [2350, "224", 1.0]
     - [2350, "201", 0.6]
   risk_threshold: 0.5
+  propagation_threshold: 0.5
   gamma: 0.2
   stairs_max_speed: 0.6
   normal_max_speed: 1.2
@@ -38,6 +39,7 @@ representative_case:
     - [2200, "224", 1.0]
     - [2200, "201", 0.6]
   risk_threshold: 0.5
+  propagation_threshold: 0.5
   gamma: 0.3
   stairs_max_speed: 0.6
   normal_max_speed: 1.2
@@ -61,6 +63,7 @@ representative_case_theme_park:
     - [ "11", 1.0 ]
   risk_overrides:
   risk_threshold: 0.5
+  propagation_threshold: 0.5
   gamma: 0.2
   stairs_max_speed: 0.6
   normal_max_speed: 1.2
@@ -81,6 +84,7 @@ corridor_case_1:
   starting_risks:
   risk_overrides:
   risk_threshold: 0.5
+  propagation_threshold: 0.5
   gamma: 0.2
   stairs_max_speed: 0.6
   normal_max_speed: 1.2
@@ -99,6 +103,7 @@ corridor_case_2:
   starting_risks:
   risk_overrides:
   risk_threshold: 0.5
+  propagation_threshold: 0.5
   gamma: 0.2
   stairs_max_speed: 0.6
   normal_max_speed: 1.2
@@ -117,8 +122,9 @@ corridor_case_3:
   starting_risks:
     - ["9", 1.0]
   risk_overrides:
-  risk_threshold: 0.6
-  gamma: 0.25
+  risk_threshold: 0.5
+  propagation_threshold: 0.5
+  gamma: 0.2
   stairs_max_speed: 0.6
   normal_max_speed: 1.2
   every_nth_frame_simulation: 3
@@ -138,6 +144,7 @@ corridor_case_4:
     - ["12", 0.7]
   risk_overrides:
   risk_threshold: 0.5
+  propagation_threshold: 0.5
   gamma: 0.2
   stairs_max_speed: 0.6
   normal_max_speed: 1.2
@@ -156,8 +163,9 @@ corridor_case_5:
   starting_risks:
     - ["4", 0.9]
   risk_overrides:
-  risk_threshold: 0.4
-  gamma: 0.15
+  risk_threshold: 0.5
+  propagation_threshold: 0.5
+  gamma: 0.2
   stairs_max_speed: 0.6
   normal_max_speed: 1.2
   every_nth_frame_simulation: 3
@@ -176,8 +184,9 @@ corridor_case_6:
     - ["10", 1.0]
     - ["11", 1.0]
   risk_overrides:
-  risk_threshold: 0.6
-  gamma: 0.25
+  risk_threshold: 0.5
+  propagation_threshold: 0.5
+  gamma: 0.2
   stairs_max_speed: 0.6
   normal_max_speed: 1.2
   every_nth_frame_simulation: 3
@@ -195,6 +204,7 @@ corridor_case_7:
   starting_risks:
   risk_overrides:
   risk_threshold: 0.5
+  propagation_threshold: 0.5
   gamma: 0.2
   stairs_max_speed: 0.6
   normal_max_speed: 1.2
@@ -215,8 +225,9 @@ corridor_case_8:
     - ["12", 1.0]
     - ["13", 0.8]
   risk_overrides:
-  risk_threshold: 0.7
-  gamma: 0.3
+  risk_threshold: 0.5
+  propagation_threshold: 0.5
+  gamma: 0.2
   stairs_max_speed: 0.6
   normal_max_speed: 1.2
   every_nth_frame_simulation: 3
@@ -236,8 +247,9 @@ corridor_case_9:
     - ["11", 1.0]
     - ["12", 1.0]
   risk_overrides:
-  risk_threshold: 0.7
-  gamma: 0.35
+  risk_threshold: 0.5
+  propagation_threshold: 0.5
+  gamma: 0.2
   stairs_max_speed: 0.6
   normal_max_speed: 1.2
   every_nth_frame_simulation: 3
@@ -256,8 +268,9 @@ corridor_case_10:
     - ["10", 1.0]
     - ["11", 1.0]
   risk_overrides:
-  risk_threshold: 0.8
-  gamma: 0.4
+  risk_threshold: 0.5
+  propagation_threshold: 0.5
+  gamma: 0.2
   stairs_max_speed: 0.6
   normal_max_speed: 1.2
   every_nth_frame_simulation: 3
@@ -284,6 +297,7 @@ cruise_ship_case_1:
     - [2200, "224", 1.0]
     - [2200, "201", 0.6]
   risk_threshold: 0.5
+  propagation_threshold: 0.5
   gamma: 0.3
   stairs_max_speed: 0.6
   normal_max_speed: 1.2
@@ -307,6 +321,7 @@ cruise_ship_case_2:
     - [2200, "224", 1.0]
     - [2200, "201", 0.6]
   risk_threshold: 0.5
+  propagation_threshold: 0.5
   gamma: 0.3
   stairs_max_speed: 0.6
   normal_max_speed: 1.2
@@ -330,6 +345,7 @@ cruise_ship_case_3:
     - [2200, "224", 1.0]
     - [2200, "201", 0.6]
   risk_threshold: 0.5
+  propagation_threshold: 0.5
   gamma: 0.3
   stairs_max_speed: 0.6
   normal_max_speed: 1.2
@@ -353,6 +369,7 @@ cruise_ship_case_4:
     - [2200, "224", 1.0]
     - [2200, "201", 0.6]
   risk_threshold: 0.5
+  propagation_threshold: 0.5
   gamma: 0.3
   stairs_max_speed: 0.6
   normal_max_speed: 1.2
@@ -371,6 +388,7 @@ cruise_ship_case_5:
   starting_risks:
   risk_overrides: []
   risk_threshold: 0.5
+  propagation_threshold: 0.5
   gamma: 0.2
   stairs_max_speed: 0.6
   normal_max_speed: 1.2
@@ -394,6 +412,7 @@ cruise_ship_case_6:
   risk_overrides:
     - [2400, "201", 1.0]
   risk_threshold: 0.5
+  propagation_threshold: 0.5
   gamma: 0.2
   stairs_max_speed: 0.6
   normal_max_speed: 1.2
@@ -418,6 +437,7 @@ cruise_ship_case_7:
     - ["144", 1.0]
   risk_overrides: []
   risk_threshold: 0.5
+  propagation_threshold: 0.5
   gamma: 0.2
   stairs_max_speed: 0.6
   normal_max_speed: 1.2
@@ -439,6 +459,7 @@ cruise_ship_case_8:
   risk_overrides:
     - [3000, "172", 0.8]
   risk_threshold: 0.5
+  propagation_threshold: 0.5
   gamma: 0.2
   stairs_max_speed: 0.6
   normal_max_speed: 1.2
@@ -461,6 +482,7 @@ cruise_ship_case_9:
     - ["75", 1.0]
   risk_overrides: []
   risk_threshold: 0.5
+  propagation_threshold: 0.5
   gamma: 0.2
   stairs_max_speed: 0.6
   normal_max_speed: 1.2
@@ -486,6 +508,7 @@ cruise_ship_case_10:
     - [3000, "165", 1.0]
     - [3000, "103", 1.0]
   risk_threshold: 0.5
+  propagation_threshold: 0.5
   gamma: 0.2
   stairs_max_speed: 0.6
   normal_max_speed: 1.2
@@ -513,6 +536,7 @@ theme_park_case_1:
     - [ "11", 1.0 ]
   risk_overrides:
   risk_threshold: 0.5
+  propagation_threshold: 0.5
   gamma: 0.2
   stairs_max_speed: 0.6
   normal_max_speed: 1.2
@@ -536,6 +560,7 @@ theme_park_case_2:
     - [ "11", 1.0 ]
   risk_overrides:
   risk_threshold: 0.5
+  propagation_threshold: 0.5
   gamma: 0.2
   stairs_max_speed: 0.6
   normal_max_speed: 1.2
@@ -559,6 +584,7 @@ theme_park_case_3:
     - [ "11", 1.0 ]
   risk_overrides:
   risk_threshold: 0.5
+  propagation_threshold: 0.5
   gamma: 0.2
   stairs_max_speed: 0.6
   normal_max_speed: 1.2
@@ -582,6 +608,7 @@ theme_park_case_4:
     - [ "11", 1.0 ]
   risk_overrides:
   risk_threshold: 0.5
+  propagation_threshold: 0.5
   gamma: 0.2
   stairs_max_speed: 0.6
   normal_max_speed: 1.2
@@ -600,6 +627,7 @@ theme_park_case_5:
   starting_risks:
   risk_overrides:
   risk_threshold: 0.5
+  propagation_threshold: 0.5
   gamma: 0.2
   stairs_max_speed: 0.6
   normal_max_speed: 1.2
@@ -622,6 +650,7 @@ theme_park_case_6:
     - [ "3", 1.0 ]
   risk_overrides:
   risk_threshold: 0.5
+  propagation_threshold: 0.5
   gamma: 0.5
   stairs_max_speed: 0.6
   normal_max_speed: 1.2
@@ -641,6 +670,7 @@ theme_park_case_7:
     - [ "48", 0.5 ]
   risk_overrides:
   risk_threshold: 0.5
+  propagation_threshold: 0.5
   gamma: 0.2
   stairs_max_speed: 0.6
   normal_max_speed: 1.2
@@ -660,6 +690,7 @@ theme_park_case_8:
     - [ "69", 1.0 ]
   risk_overrides:
   risk_threshold: 0.5
+  propagation_threshold: 0.5
   gamma: 0.2
   stairs_max_speed: 0.6
   normal_max_speed: 1.2
@@ -679,6 +710,7 @@ theme_park_case_9:
     - [ "67", 1.0 ]
   risk_overrides:
   risk_threshold: 0.5
+  propagation_threshold: 0.5
   gamma: 0.2
   stairs_max_speed: 0.6
   normal_max_speed: 1.2
@@ -698,6 +730,7 @@ theme_park_case_10:
     - [ "67", 1.0 ]
   risk_overrides:
   risk_threshold: 0.5
+  propagation_threshold: 0.5
   gamma: 0.2
   stairs_max_speed: 0.6
   normal_max_speed: 1.2
@@ -719,6 +752,7 @@ crowding:
   starting_risks:
   risk_overrides: null
   risk_threshold: 0.5
+  propagation_threshold: 0.5
   gamma: 0.2
   stairs_max_speed: 0.6
   normal_max_speed: 1.2

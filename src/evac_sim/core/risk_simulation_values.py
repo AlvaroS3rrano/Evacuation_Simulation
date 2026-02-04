@@ -5,7 +5,8 @@ class RiskSimulationValues:
     Attributes:
         iterations (int): Total number of simulation frames.
         increase_chance (float): Probability of an individual risk increase per frame.
-        danger_threshold (float): Risk value above which a node is considered dangerous.
+        propagation_threshold (float): Risk value above which a node becomes an active emitter
+            and propagates risk to neighboring nodes.
         risk_overrides (list of tuple, optional): Optional list of (frame, node, risk)
             tuples to force-set specific node risks at given frames. Defaults to an empty list.
         starting_risks (list of tuple, optional): Optional list of (node, risk)
@@ -16,7 +17,7 @@ class RiskSimulationValues:
         self,
         iterations: int = 3000,
         increase_chance: float = 0.01,
-        danger_threshold: float = 0.5,
+        propagation_threshold: float = 0.5,
         starting_risks: list[tuple[str, float]] | None = None,
         risk_overrides: list[tuple[int, str, float]] | None = None,
     ):
@@ -26,7 +27,8 @@ class RiskSimulationValues:
         Parameters:
             iterations (int): Total number of simulation frames (default is 3000).
             increase_chance (float): Probability of an individual risk increase per frame (default is 0.01).
-            danger_threshold (float): Risk threshold to define a dangerous node (default is 0.5).
+            propagation_threshold (float): Risk threshold that activates a node as an emitter
+                in the propagation model (default is 0.5).
             starting_risks (list of (str, float) tuples, optional):
                 Defines initial risk values for specific nodes (default is None → empty list).
             risk_overrides (list of (int, str, float) tuples, optional):
@@ -34,9 +36,10 @@ class RiskSimulationValues:
         """
         self.iterations = iterations
         self.increase_chance = increase_chance
-        self.danger_threshold = danger_threshold
+        self.propagation_threshold = propagation_threshold
         self.starting_risks = starting_risks or []
         self.risk_overrides = risk_overrides or []
+
 
 if __name__ == "__main__":
 

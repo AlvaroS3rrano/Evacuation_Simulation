@@ -53,7 +53,15 @@ def getAlternativePathsForNode(
     all_paths = []
 
     for target in targets:
-        query = "SELECT * FROM paths WHERE source = ? AND target = ?"
+        # IMPORTANT: Make DB reads deterministic.
+        # SQLite does not guarantee row order without ORDER BY, and downstream routing
+        # may make tie-breaking decisions based on the order of returned paths.
+        query = (
+            "SELECT path, cost, betweenness "
+            "FROM paths "
+            "WHERE source = ? AND target = ? "
+            "ORDER BY cost ASC, betweenness DESC, path ASC"
+        )
         paths_df = pd.read_sql_query(query, paths_connection, params=[current_node, target])
 
         if not paths_df.empty:
@@ -68,6 +76,17 @@ def getAlternativePathsForNode(
             # Compute missing paths and persist them
             computed = collect_k_shortest_paths(currentG, current_node, [target])
 
+            # Make computed order deterministic as well (especially when many paths have the
+            # same cost and the underlying graph iteration order can vary).
+            computed = sorted(
+                computed,
+                key=lambda t: (
+                    float(t[1]),        # cost
+                    -float(t[2]),       # betweenness (descending)
+                    tuple(t[0]),        # path (lexicographic)
+                ),
+            )
+
             for path, cost, betweenness in computed:
                 insert_path(paths_connection, current_node, target, cost, path, betweenness)
 
@@ -75,7 +94,16 @@ def getAlternativePathsForNode(
 
     # Remove any path containing blocked nodes (soft constraint)
     all_paths = collect_unblocked_paths(all_paths, blocked_nodes)
-    return all_paths
+    # Deterministic final ordering after filtering.
+    return sorted(
+        all_paths,
+        key=lambda t: (
+            float(t[1]),
+            -float(t[2]),
+            tuple(t[0]),
+        ),
+    )
+
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -109,9 +137,10 @@ def _get_cached_segments_from_connector(
     Retrieve cached alternative path segments starting from a connector on `next_floor`.
 
     NOTE:
-        The cache is currently keyed only by (next_floor, connector). If `targets`, `gamma`,
-        or `blocked_nodes` vary across calls, cached results may not match the desired constraints.
-        If this becomes problematic, enrich the cache key (e.g., include targets hash + blocked hash).
+        The cache key includes the connector plus the current constraints (targets, gamma,
+        and blocked nodes). This avoids re-using segments computed under a different
+        constraint set, which can otherwise lead to run-to-run differences depending on
+        call order.
 
     Args:
         EnvInf: Environment info (graph, optional floors, floor_paths cache, DB connection).
@@ -126,11 +155,24 @@ def _get_cached_segments_from_connector(
     """
     _ensure_floor_cache(EnvInf, next_floor)
 
-    if connector not in EnvInf.floor_paths[next_floor]:
+    # Cache key MUST include constraints; otherwise we can re-use segments computed
+    # under a different set of targets / blocked nodes, yielding non-deterministic
+    # behavior across runs depending on call order.
+    if isinstance(targets, type({}.keys())):
+        targets = list(targets)
+
+    targets_key = tuple(sorted(targets))
+    blocked_key = tuple(sorted(blocked_nodes or []))
+    # Round gamma to avoid tiny float representation differences turning into cache misses.
+    gamma_key = round(float(gamma), 12) if gamma is not None else None
+
+    cache_key = (connector, targets_key, gamma_key, blocked_key)
+
+    if cache_key not in EnvInf.floor_paths[next_floor]:
         # Choose the appropriate graph view
         Gnext = EnvInf.floors[next_floor] if EnvInf.floors is not None else EnvInf.graph
 
-        EnvInf.floor_paths[next_floor][connector] = getAlternativePathsForNode(
+        EnvInf.floor_paths[next_floor][cache_key] = getAlternativePathsForNode(
             connector,
             targets,
             gamma,
@@ -139,7 +181,8 @@ def _get_cached_segments_from_connector(
             blocked_nodes=blocked_nodes,
         )
 
-    return EnvInf.floor_paths[next_floor].get(connector, [])
+    return EnvInf.floor_paths[next_floor].get(cache_key, [])
+
 
 
 def updateFloorPaths(EnvInf, current_floor, sources, targets, gamma, *, blocked_nodes=None) -> None:
