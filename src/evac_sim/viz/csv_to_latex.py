@@ -1,55 +1,131 @@
-import pandas as pd
 import re
+import pandas as pd
 
-def extract_case_info(case_name: str):
+# ----------------------------
+# Constants / shared utilities
+# ----------------------------
+
+CFG_ORDER = [
+    "Centrality, High Awareness",
+    "Centrality, Low Awareness",
+    "Efficient, High Awareness",
+    "Efficient, Low Awareness",
+]
+
+# Metric spec: (column_name, is_time_metric)
+SCENARIO_METRICS = [
+    ("max_time", True),
+    ("avg_time", True),
+    ("avg_path_length", True),
+    ("mean_remaining_path_risk", False),
+    ("remaining_path_risk_var", False),
+]
+
+
+def _make_configuration(df: pd.DataFrame) -> pd.Series:
+    """Builds the 'Configuration' label from algorithm + awareness."""
+    return (
+        df["algorithm"].astype(str)
+        + ", "
+        + df["awareness"].astype(str)
+        + " Awareness"
+    )
+
+
+def _order_configurations(df: pd.DataFrame, col: str = "Configuration") -> pd.DataFrame:
+    """Applies a categorical ordering to configuration rows."""
+    df[col] = pd.Categorical(df[col], categories=CFG_ORDER, ordered=True)
+    return df.sort_values([col], kind="mergesort")
+
+
+def _flatten_agg_columns(columns) -> list[str]:
+    """Flattens MultiIndex columns from pandas aggregation into 'col_stat' names."""
+    flat = []
+    for c in columns:
+        if isinstance(c, tuple):
+            flat.append("_".join([x for x in c if x]).rstrip("_"))
+        else:
+            flat.append(c)
+    return flat
+
+
+# ----------------------------
+# Case name helpers
+# ----------------------------
+
+def extract_case_info(case_name: str) -> tuple[str, int | None]:
     """
-    Returns (base_name, case_number or None)
-    Example:
+    Returns (base_name, case_number or None).
+
+    Examples:
       'cruise_ship_case_1' -> ('cruise_ship', 1)
       'cruise_ship_representative' -> ('cruise_ship_representative', None)
     """
     s = str(case_name)
     m = re.search(r"(.*?)[_\s-]*case[_\s-]*(\d+)", s, flags=re.IGNORECASE)
-    if m:
-        base = m.group(1).rstrip("_- ")
-        return base, int(m.group(2))
-    return s, None
+    if not m:
+        return s, None
+
+    base = m.group(1).rstrip("_- ")
+    return base, int(m.group(2))
+
 
 def format_case_name(case_name: str) -> str:
-    """
-    If case number exists -> 'Case N'
-    Otherwise -> original name
-    """
-    base, num = extract_case_info(case_name)
-    if num is not None:
-        return f"Case {num}"
-    return str(case_name)
+    """If a case number exists -> 'Case N', otherwise returns the original name."""
+    _, num = extract_case_info(case_name)
+    return f"Case {num}" if num is not None else str(case_name)
 
-def extract_case_number(case_name: str):
-    m = re.search(r"case[_\s-]*(\d+)", case_name, re.IGNORECASE)
-    return (0, int(m.group(1))) if m else (1, float("inf"))
+
+# ----------------------------
+# Aggregation helpers
+# ----------------------------
+
+def _read_csv_columns(csv_path: str, columns: list[str]) -> pd.DataFrame:
+    """Reads only the required columns from a CSV (keeps code DRY)."""
+    return pd.read_csv(csv_path, usecols=columns).copy()
+
+
+def _aggregate_by_configuration(
+    df: pd.DataFrame,
+    metrics: dict[str, str | list[str]],
+    group_cols: list[str],
+    order_configurations: bool = True
+) -> pd.DataFrame:
+    """
+    Aggregates df over group_cols using metrics dict and returns aggregated dataframe.
+    Optionally applies configuration ordering if 'Configuration' is present.
+    """
+    out = df.groupby(group_cols, as_index=False).agg(metrics)
+
+    # Flatten MultiIndex columns if needed
+    out.columns = _flatten_agg_columns(out.columns)
+
+    if order_configurations and "Configuration" in out.columns:
+        out = _order_configurations(out, "Configuration")
+
+    return out
+
+
+# ----------------------------
+# 1) Casewise table (case_name x configuration)
+# ----------------------------
 
 def csv_to_latex_rows_casewise_config(
     csv_path: str,
-    float_fmt="{:.4f}",
-    time_fmt="{:.2f}",
-    order_configurations=True,
-    addlinespace_between_cases=False
+    float_fmt: str = "{:.4f}",
+    time_fmt: str = "{:.2f}",
+    order_configurations: bool = True,
+    addlinespace_between_cases: bool = False
 ) -> str:
-    df = pd.read_csv(csv_path)
-
-    needed = [
-        "case_name","algorithm","awareness",
-        "mean_remaining_path_risk","remaining_path_risk_var",
-        "avg_path_length","min_time","max_time","avg_time","median_time","p90_time",
+    columns = [
+        "case_name", "algorithm", "awareness",
+        "mean_remaining_path_risk", "remaining_path_risk_var",
+        "avg_path_length", "min_time", "max_time", "avg_time", "median_time", "p90_time",
     ]
-    df = df[needed].copy()
+    df = _read_csv_columns(csv_path, columns)
+    df["Configuration"] = _make_configuration(df)
 
-    df["Configuration"] = (
-        df["algorithm"].astype(str) + ", " + df["awareness"].astype(str) + " Awareness"
-    )
-
-    agg = {
+    metrics = {
         "mean_remaining_path_risk": "mean",
         "remaining_path_risk_var": "mean",
         "avg_path_length": "mean",
@@ -60,33 +136,30 @@ def csv_to_latex_rows_casewise_config(
         "p90_time": "mean",
     }
 
-    out = df.groupby(["case_name", "Configuration"], as_index=False).agg(agg)
+    out = _aggregate_by_configuration(
+        df=df,
+        metrics=metrics,
+        group_cols=["case_name", "Configuration"],
+        order_configurations=order_configurations,
+    )
 
-    if order_configurations:
-        cfg_order = [
-            "Centrality, High Awareness",
-            "Centrality, Low Awareness",
-            "Efficient, High Awareness",
-            "Efficient, Low Awareness",
-        ]
-        out["Configuration"] = pd.Categorical(out["Configuration"], categories=cfg_order, ordered=True)
-
-    # order cases numerically; non-numbered last
-    # Order cases by base name, then by case number (if any)
-    case_info = out["case_name"].apply(extract_case_info)
-    out["case_base"] = case_info.apply(lambda x: x[0])
-    out["case_num"] = case_info.apply(lambda x: x[1] if x[1] is not None else 1e9)
+    # Order cases by (base_name, case_number), keeping stable order within ties
+    case_info = out["case_name"].map(extract_case_info)
+    out["case_base"] = case_info.map(lambda x: x[0])
+    out["case_num"] = case_info.map(lambda x: x[1] if x[1] is not None else 1_000_000_000)
 
     out = out.sort_values(
         ["case_base", "case_num", "Configuration"],
-        kind="mergesort"  # stable sort
+        kind="mergesort",
     ).drop(columns=["case_base", "case_num"])
 
     rows = []
-    last_case = None
+    last_case_label = None
+
     for _, r in out.iterrows():
         case_label = format_case_name(r["case_name"])
-        if addlinespace_between_cases and last_case is not None and case_label != last_case:
+
+        if addlinespace_between_cases and last_case_label is not None and case_label != last_case_label:
             rows.append(r"\addlinespace")
 
         rows.append(
@@ -100,49 +173,43 @@ def csv_to_latex_rows_casewise_config(
             f"{time_fmt.format(r['median_time'])} & "
             f"{time_fmt.format(r['p90_time'])} \\\\"
         )
-        last_case = case_label
+
+        last_case_label = case_label
 
     return "\n".join(rows)
+
+
+# ----------------------------
+# 2) Single case table (configuration only) - MEANS
+# ----------------------------
 
 def csv_to_latex_rows_for_case_config_means(
     csv_path: str,
     case_name: str,
-    float_fmt="{:.4f}",
-    time_fmt="{:.2f}",
-    order_configurations=True
+    float_fmt: str = "{:.4f}",
+    time_fmt: str = "{:.2f}",
+    order_configurations: bool = True
 ) -> str:
     """
-    Build LaTeX rows for a single case_name, aggregated by (algorithm, awareness).
+    Builds LaTeX rows for a single case, aggregated by (algorithm, awareness).
 
-    Output columns (LaTeX row order):
-        Configuration & Max Evac. Time (s) & Avg Evac. Time (s) & Avg Path Length & Mean RPR & RPR Var. \\
-
-    Notes:
-        - Max Evac. Time is computed as the mean of 'max_time' across groups/records for the same config.
-        - Avg Evac. Time is computed as the mean of 'avg_time'.
-        - Avg Path Length is computed as the mean of 'avg_path_length'.
-        - Mean RPR is computed as the mean of 'mean_remaining_path_risk'.
-        - RPR Var. is computed as the mean of 'remaining_path_risk_var'.
+    Output columns:
+      Configuration & Max Evac. Time & Avg Evac. Time & Avg Path Length & Mean RPR & RPR Var \\\\
     """
-    df = pd.read_csv(csv_path)
-
-    needed = [
+    columns = [
         "case_name", "algorithm", "awareness",
         "max_time", "avg_time", "avg_path_length",
         "mean_remaining_path_risk", "remaining_path_risk_var",
     ]
-    df = df[needed].copy()
+    df = _read_csv_columns(csv_path, columns)
 
-    # Filter to the requested case
-    df_case = df[df["case_name"].astype(str) == str(case_name)].copy()
-    if df_case.empty:
+    df = df[df["case_name"].astype(str) == str(case_name)].copy()
+    if df.empty:
         raise ValueError(f"No rows found for case_name='{case_name}' in '{csv_path}'.")
 
-    df_case["Configuration"] = (
-        df_case["algorithm"].astype(str) + ", " + df_case["awareness"].astype(str) + " Awareness"
-    )
+    df["Configuration"] = _make_configuration(df)
 
-    agg = {
+    metrics = {
         "max_time": "mean",
         "avg_time": "mean",
         "avg_path_length": "mean",
@@ -150,19 +217,12 @@ def csv_to_latex_rows_for_case_config_means(
         "remaining_path_risk_var": "mean",
     }
 
-    out = df_case.groupby(["Configuration"], as_index=False).agg(agg)
-
-    if order_configurations:
-        cfg_order = [
-            "Centrality, High Awareness",
-            "Centrality, Low Awareness",
-            "Efficient, High Awareness",
-            "Efficient, Low Awareness",
-        ]
-        out["Configuration"] = pd.Categorical(
-            out["Configuration"], categories=cfg_order, ordered=True
-        )
-        out = out.sort_values(["Configuration"])
+    out = _aggregate_by_configuration(
+        df=df,
+        metrics=metrics,
+        group_cols=["Configuration"],
+        order_configurations=order_configurations,
+    )
 
     rows = []
     for _, r in out.iterrows():
@@ -177,89 +237,89 @@ def csv_to_latex_rows_for_case_config_means(
 
     return "\n".join(rows)
 
+
+# ----------------------------
+# 3) Scenario compact table (configuration only) - mean/std/mean±std
+# ----------------------------
+
+def _aggregate_scenario_compact_config(
+    csv_path: str,
+    order_configurations: bool = True,
+) -> pd.DataFrame:
+    """Reads a scenario CSV and aggregates mean/std per configuration."""
+    columns = ["algorithm", "awareness"] + [m for m, _ in SCENARIO_METRICS]
+    df = _read_csv_columns(csv_path, columns)
+    df["Configuration"] = _make_configuration(df)
+
+    metrics = {m: ["mean", "std"] for m, _ in SCENARIO_METRICS}
+
+    out = _aggregate_by_configuration(
+        df=df,
+        metrics=metrics,
+        group_cols=["Configuration"],
+        order_configurations=order_configurations,
+    )
+    return out
+
+
 def csv_to_latex_rows_scenario_compact_config(
     csv_path: str,
-    stat: str = "mean",  # "mean" or "std"
-    float_fmt="{:.4f}",
-    time_fmt="{:.2f}",
-    order_configurations=True
+    mode: str = "mean",  # "mean", "std", "mean+std"
+    float_fmt: str = "{:.4f}",
+    time_fmt: str = "{:.2f}",
+    order_configurations: bool = True,
+    do_print: bool = False,
 ) -> str:
     """
-    Build LaTeX rows for ONE SCENARIO (one CSV), aggregated across ALL case_name and runs,
-    grouped by (algorithm, awareness).
+    Returns (and optionally prints) LaTeX rows for a scenario aggregated by configuration.
 
-    Output columns (LaTeX row order):
-        Configuration & Max Evac. Time (s) & Avg Evac. Time (s) & Avg Path Length & Mean RPR & RPR Var. \\
-
-    Notes:
-        - Each cell is reported as mean ± std computed over ALL records in the CSV
-          for the corresponding configuration (i.e., across all cases and runs).
-        - This produces a compact 4-row table per scenario (Theme Park / Cruise Ship / Corridor).
+    Modes:
+      - "mean":     prints only means
+      - "std":      prints only standard deviations
+      - "mean+std": prints '$mean \\pm std$' per cell
     """
-    if stat not in ("mean", "std"):
-        raise ValueError("stat must be either 'mean' or 'std'.")
+    mode = str(mode).strip().lower()
+    mean_pm_aliases = {"mean+std", "mean±std", "mean_pm_std", "meanpmstd"}
+    valid = {"mean", "std"} | mean_pm_aliases
+    if mode not in valid:
+        raise ValueError("mode must be one of: 'mean', 'std', 'mean+std'.")
 
-    df = pd.read_csv(csv_path)
+    agg = _aggregate_scenario_compact_config(csv_path, order_configurations)
 
-    needed = [
-        "algorithm", "awareness",
-        "max_time", "avg_time", "avg_path_length",
-        "mean_remaining_path_risk", "remaining_path_risk_var",
-    ]
-    df = df[needed].copy()
+    def fmt(val, is_time: bool) -> str:
+        return (time_fmt if is_time else float_fmt).format(val)
 
-    df["Configuration"] = (
-            df["algorithm"].astype(str) + ", " + df["awareness"].astype(str) + " Awareness"
-    )
-
-    # compute both mean and std once, then pick the desired 'stat'
-    agg = {
-        "max_time": ["mean", "std"],
-        "avg_time": ["mean", "std"],
-        "avg_path_length": ["mean", "std"],
-        "mean_remaining_path_risk": ["mean", "std"],
-        "remaining_path_risk_var": ["mean", "std"],
-    }
-    out = df.groupby(["Configuration"], as_index=False).agg(agg)
-
-    # flatten columns: max_time_mean, max_time_std, ...
-    out.columns = [
-        "_".join([x for x in col if x]).rstrip("_") if isinstance(col, tuple) else col
-        for col in out.columns
-    ]
-
-    if order_configurations:
-        cfg_order = [
-            "Centrality, High Awareness",
-            "Centrality, Low Awareness",
-            "Efficient, High Awareness",
-            "Efficient, Low Awareness",
-        ]
-        out["Configuration"] = pd.Categorical(
-            out["Configuration"], categories=cfg_order, ordered=True
-        )
-        out = out.sort_values(["Configuration"])
+    def cell(r, metric: str, is_time: bool) -> str:
+        if mode in ("mean", "std"):
+            return fmt(r[f"{metric}_{mode}"], is_time)
+        # mean ± std
+        return f"${fmt(r[f'{metric}_mean'], is_time)} \\pm {fmt(r[f'{metric}_std'], is_time)}$"
 
     rows = []
-    for _, r in out.iterrows():
-        rows.append(
-            f"{r['Configuration']} & "
-            f"{time_fmt.format(r[f'max_time_{stat}'])} & "
-            f"{time_fmt.format(r[f'avg_time_{stat}'])} & "
-            f"{time_fmt.format(r[f'avg_path_length_{stat}'])} & "
-            f"{float_fmt.format(r[f'mean_remaining_path_risk_{stat}'])} & "
-            f"{float_fmt.format(r[f'remaining_path_risk_var_{stat}'])} \\\\"
-        )
+    for _, r in agg.iterrows():
+        parts = [str(r["Configuration"])]
+        parts += [cell(r, metric, is_time) for metric, is_time in SCENARIO_METRICS]
+        rows.append(" & ".join(parts) + r" \\")
 
-    return "\n".join(rows)
+    result = "\n".join(rows)
+    if do_print:
+        print(result)
+    return result
 
+if __name__ == "__main__":
+    CSV_PATHS = {
+        "cruise": "../../../results/CSV/Cruise_Ship_experiment_metrics.csv",
+        "theme_park": "../../../results/CSV/Theme Park_experiment_metrics.csv",
+        "corridor": "../../../results/CSV/corridor_experiment_metrics.csv",
+    }
 
-# path = "../../../results/CSV/Cruise_Ship_experiment_metrics.csv"
-path = "../../../results/CSV/Theme Park_experiment_metrics.csv"
-# path = "../../../results/CSV/corridor_experiment_metrics.csv"
-latex_rows = csv_to_latex_rows_casewise_config(path)
-# latex_rows = csv_to_latex_rows_for_case_config_means(path, "example_case")
-# latex_rows = csv_to_latex_rows_scenario_compact_config(path, stat="std")
-print(latex_rows)
+    scenario = "corridor"  # change to "theme_park" or "corridor"
+    case = "example_case"
+    mode = "mean+std"    # "mean", "std", "mean+std"4
+
+    # latex_rows = csv_to_latex_rows_casewise_config(CSV_PATHS[scenario])
+    # latex_rows = csv_to_latex_rows_for_case_config_means(CSV_PATHS[scenario], "example_case")
+    latex_rows = csv_to_latex_rows_scenario_compact_config(CSV_PATHS[scenario], mode=mode)
+    print(latex_rows)
 
 
