@@ -44,6 +44,7 @@ def centrality_measures(G, all_paths):
 
     return node_route_frequency, scored_paths
 
+
 def collect_k_shortest_paths(G: nx.DiGraph, source, targets, k=50):
     """
     Collects up to k simple paths of minimum cost from the source node to each target node,
@@ -77,6 +78,7 @@ def collect_k_shortest_paths(G: nx.DiGraph, source, targets, k=50):
     _, scored_paths = centrality_measures(G, all_paths)
     return scored_paths
 
+
 def collect_unblocked_paths(paths, blocked_nodes):
     """
     Filters out paths that contain any of the blocked nodes, only if blocked_nodes is not empty.
@@ -92,10 +94,12 @@ def collect_unblocked_paths(paths, blocked_nodes):
     if blocked_nodes:
         # Filter out paths that contain any blocked nodes
         paths = [
-            (path, cost, centrality) for (path, cost, centrality) in paths
+            (path, cost, centrality)
+            for (path, cost, centrality) in paths
             if not any(node in blocked_nodes for node in path)
         ]
     return paths
+
 
 def compute_efficient_paths(paths, gamma):
     """
@@ -118,8 +122,7 @@ def compute_efficient_paths(paths, gamma):
 
     # Filter paths to include only those that satisfy the cost tolerance
     efficient_paths = [
-        (path, cost, centrality) for path, cost, centrality in paths
-        if cost <= max_allowed_cost
+        (path, cost, centrality) for path, cost, centrality in paths if cost <= max_allowed_cost
     ]
 
     # Return only the filtered efficient paths

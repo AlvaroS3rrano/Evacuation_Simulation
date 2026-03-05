@@ -1,7 +1,8 @@
 import random
 
 import networkx as nx
-from src.evac_sim.db.danger_sim_db_manager import *
+
+from evac_sim.db.danger_sim_db_manager import *
 
 
 def update_risk(G: nx.DiGraph, increase_chance=0.2, propagation_threshold=0.5):
@@ -39,7 +40,9 @@ def update_risk(G: nx.DiGraph, increase_chance=0.2, propagation_threshold=0.5):
             # First level: direct neighbors receive one-third of the emitter's risk.
             risk_direct = round(node_risk / 3, 1)
             for neighbor in UG.neighbors(node):
-                new_risks[neighbor] = max(new_risks.get(neighbor, G.nodes[neighbor]["risk"]), risk_direct)
+                new_risks[neighbor] = max(
+                    new_risks.get(neighbor, G.nodes[neighbor]["risk"]), risk_direct
+                )
 
             # Second level: neighbors of direct neighbors (excluding the original node and its direct neighbors).
             first_level = set(UG.neighbors(node))
@@ -49,7 +52,8 @@ def update_risk(G: nx.DiGraph, increase_chance=0.2, propagation_threshold=0.5):
                     if second_neighbor == node or second_neighbor in first_level:
                         continue
                     new_risks[second_neighbor] = max(
-                        new_risks.get(second_neighbor, G.nodes[second_neighbor]["risk"]), risk_second
+                        new_risks.get(second_neighbor, G.nodes[second_neighbor]["risk"]),
+                        risk_second,
                     )
 
     # Apply the new risk values to the graph.
@@ -115,7 +119,9 @@ def simulate_risk(risk_sim_values, every_nth_frame, G, exits, connection, seed=N
         if frame % every_nth_frame == 0:
             try:
                 # Update risks in the graph based on propagation and random increase chance
-                update_risk(G, risk_sim_values.increase_chance, risk_sim_values.propagation_threshold)
+                update_risk(
+                    G, risk_sim_values.increase_chance, risk_sim_values.propagation_threshold
+                )
 
                 # Ensure that exit nodes retain a risk of 0 after the update
                 for exit_node in exits:
@@ -123,6 +129,8 @@ def simulate_risk(risk_sim_values, every_nth_frame, G, exits, connection, seed=N
                         G.nodes[exit_node]["risk"] = 0
 
                 # Save the updated risk levels for the current frame
-                write_risk_levels(connection, frame, {node: G.nodes[node]["risk"] for node in G.nodes})
+                write_risk_levels(
+                    connection, frame, {node: G.nodes[node]["risk"] for node in G.nodes}
+                )
             except Exception as e:
                 print(f"Error updating risks at frame {frame}: {e}")

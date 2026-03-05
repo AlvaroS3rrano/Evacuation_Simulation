@@ -2,25 +2,21 @@ import json
 
 import pandas as pd
 
+from evac_sim.db.paths_db_manager import insert_path
+
 # ──────────────────────────────────────────────────────────────────────────────
 # Imports from your project
 # ──────────────────────────────────────────────────────────────────────────────
 from .path_algorithms import collect_k_shortest_paths
-from src.evac_sim.db.paths_db_manager import insert_path
 from .utils import collect_unblocked_paths
 
 # ──────────────────────────────────────────────────────────────────────────────
 # DB-backed path retrieval
 # ──────────────────────────────────────────────────────────────────────────────
 
+
 def getAlternativePathsForNode(
-    current_node,
-    targets,
-    gamma,
-    currentG,
-    paths_connection,
-    *,
-    blocked_nodes=None
+    current_node, targets, gamma, currentG, paths_connection, *, blocked_nodes=None
 ):
     """
     Retrieve or compute alternative paths from a source node to one or more targets.
@@ -69,7 +65,9 @@ def getAlternativePathsForNode(
             all_paths.extend(
                 [
                     (json.loads(path), cost, betweenness)
-                    for path, cost, betweenness in zip(paths_df["path"], paths_df["cost"], paths_df["betweenness"])
+                    for path, cost, betweenness in zip(
+                        paths_df["path"], paths_df["cost"], paths_df["betweenness"]
+                    )
                 ]
             )
         else:
@@ -81,9 +79,9 @@ def getAlternativePathsForNode(
             computed = sorted(
                 computed,
                 key=lambda t: (
-                    float(t[1]),        # cost
-                    -float(t[2]),       # betweenness (descending)
-                    tuple(t[0]),        # path (lexicographic)
+                    float(t[1]),  # cost
+                    -float(t[2]),  # betweenness (descending)
+                    tuple(t[0]),  # path (lexicographic)
                 ),
             )
 
@@ -105,10 +103,10 @@ def getAlternativePathsForNode(
     )
 
 
-
 # ──────────────────────────────────────────────────────────────────────────────
 # In-memory cache for multi-floor expansion
 # ──────────────────────────────────────────────────────────────────────────────
+
 
 def _ensure_floor_cache(EnvInf, floor: int) -> None:
     """
@@ -184,7 +182,6 @@ def _get_cached_segments_from_connector(
     return EnvInf.floor_paths[next_floor].get(cache_key, [])
 
 
-
 def updateFloorPaths(EnvInf, current_floor, sources, targets, gamma, *, blocked_nodes=None) -> None:
     """
     Precompute and cache alternative paths for each source node on a given floor.
@@ -212,12 +209,7 @@ def updateFloorPaths(EnvInf, current_floor, sources, targets, gamma, *, blocked_
     all_floor_paths = {}
     for source in sources:
         alternative_paths = getAlternativePathsForNode(
-            source,
-            targets,
-            gamma,
-            currentG,
-            EnvInf.paths_connection,
-            blocked_nodes=blocked_nodes
+            source, targets, gamma, currentG, EnvInf.paths_connection, blocked_nodes=blocked_nodes
         )
         all_floor_paths[source] = alternative_paths
 

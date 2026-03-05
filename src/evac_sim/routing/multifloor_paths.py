@@ -1,19 +1,16 @@
 # multifloor_paths.py
 
 from operator import itemgetter
-from typing import Any, Dict, Iterable, List, Optional, Sequence, Set, Tuple
-
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Imports from the project
 # ──────────────────────────────────────────────────────────────────────────────
-
-from .path_cache import getAlternativePathsForNode, _get_cached_segments_from_connector
-
+from .path_cache import _get_cached_segments_from_connector, getAlternativePathsForNode
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Basic floor / connector helpers
 # ──────────────────────────────────────────────────────────────────────────────
+
 
 def _get_exits_on_floor(EnvInf, exits, floor):
     """Return exits that belong to the given floor."""
@@ -62,7 +59,9 @@ def _vertical_dir_from_last(EnvInf, last_node, current_floor, exits_set):
         return 0
     if current_floor > 0 and _is_connector(EnvInf, last_node, current_floor, current_floor - 1):
         return -1
-    if current_floor < EnvInf.floor_number - 1 and _is_connector(EnvInf, last_node, current_floor, current_floor + 1):
+    if current_floor < EnvInf.floor_number - 1 and _is_connector(
+        EnvInf, last_node, current_floor, current_floor + 1
+    ):
         return +1
     return None
 
@@ -70,6 +69,7 @@ def _vertical_dir_from_last(EnvInf, last_node, current_floor, exits_set):
 # ──────────────────────────────────────────────────────────────────────────────
 # Multi-floor stitching helpers
 # ──────────────────────────────────────────────────────────────────────────────
+
 
 def _init_complete_and_frontier(EnvInf, alternative_paths, current_floor: int, exits_set):
     """
@@ -223,6 +223,7 @@ def _expand_frontier_once(
 # Post-processing helpers (filtering + sorting)
 # ──────────────────────────────────────────────────────────────────────────────
 
+
 def _filter_complete_by_gamma(complete, gamma: float):
     """
     Keep only paths whose cost <= min_cost * (1 + gamma).
@@ -255,6 +256,7 @@ def _sort_complete(complete, algo: int):
 # ──────────────────────────────────────────────────────────────────────────────
 # Public API
 # ──────────────────────────────────────────────────────────────────────────────
+
 
 def getPosiblePaths(EnvInf, current_node, exits, gamma, algo, *, blocked_nodes=None):
     """

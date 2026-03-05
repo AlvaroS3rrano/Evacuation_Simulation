@@ -1,7 +1,7 @@
 import math
 import sqlite3
 from collections import defaultdict
-from typing import List,Iterable
+from typing import Iterable, List
 
 import pandas as pd
 
@@ -18,9 +18,10 @@ def create_agent_area_table(connection: sqlite3.Connection):
     """
     try:
         with connection:
-            connection.execute("DROP TABLE IF EXISTS agent_area_data")  # Elimina la tabla si ya existe
             connection.execute(
-                """
+                "DROP TABLE IF EXISTS agent_area_data"
+            )  # Elimina la tabla si ya existe
+            connection.execute("""
                 CREATE TABLE agent_area_data (
                     frame INTEGER NOT NULL,
                     agent_id INTEGER NOT NULL,
@@ -28,12 +29,18 @@ def create_agent_area_table(connection: sqlite3.Connection):
                     risk FLOAT NOT NULL,
                     PRIMARY KEY (frame, agent_id)
                 )
-                """
-            )
+                """)
     except sqlite3.Error as e:
         raise RuntimeError(f"Error creating agent_area_data table: {e}")
 
-def write_agent_area(connection: sqlite3.Connection, frame: int, agents: List[int], areas: dict, risk_this_frame: dict):
+
+def write_agent_area(
+    connection: sqlite3.Connection,
+    frame: int,
+    agents: List[int],
+    areas: dict,
+    risk_this_frame: dict,
+):
     """
     Stores the area assignment for a list of agents in a specific frame into the database, including risk levels.
     Each agent's area is determined from the provided 'areas' dictionary, and the risk is obtained from the
@@ -84,6 +91,7 @@ def read_agent_area_data(connection: sqlite3.Connection) -> pd.DataFrame:
     except Exception as e:
         raise RuntimeError(f"Error reading agent area data: {e}")
 
+
 def read_agent_area_data_by_frame(connection: sqlite3.Connection, frame: int) -> pd.DataFrame:
     """
     Reads the data stored in the agent_area_data table for a specified frame.
@@ -103,6 +111,7 @@ def read_agent_area_data_by_frame(connection: sqlite3.Connection, frame: int) ->
         return pd.read_sql_query(query, connection, params=(frame,))
     except Exception as e:
         raise RuntimeError(f"Error reading agent area data for frame {frame}: {e}")
+
 
 # not used
 def get_total_risk(connection: sqlite3.Connection) -> float:
@@ -172,7 +181,7 @@ def calculate_average_agent_combined_risk(connection: sqlite3.Connection) -> flo
         for agent_id, risk in rows:
             if risk is None or not (0 <= risk <= 1):
                 raise ValueError(f"Invalid risk value: {risk}")
-            agent_product[agent_id] *= (1 - risk)
+            agent_product[agent_id] *= 1 - risk
 
         total_combined_risk = 0.0
         count = 0
@@ -191,6 +200,7 @@ def calculate_average_agent_combined_risk(connection: sqlite3.Connection) -> flo
 
     except sqlite3.Error as e:
         raise RuntimeError(f"Error retrieving agent risk data: {e}")
+
 
 def get_max_risk(connection: sqlite3.Connection) -> float:
     """
@@ -219,6 +229,7 @@ def get_max_risk(connection: sqlite3.Connection) -> float:
 
     except sqlite3.Error as e:
         raise RuntimeError(f"Error retrieving maximum risk: {e}")
+
 
 def get_average_normalized_risk_exposure(connection: sqlite3.Connection) -> float:
     """
@@ -257,9 +268,9 @@ def get_average_normalized_risk_exposure(connection: sqlite3.Connection) -> floa
     except sqlite3.Error as e:
         raise RuntimeError(f"Error retrieving normalized risk exposure: {e}")
 
+
 def get_average_normalized_risk_exposure_by_group(
-    connection: sqlite3.Connection,
-    agent_ids: Iterable[int]
+    connection: sqlite3.Connection, agent_ids: Iterable[int]
 ) -> float:
     """
     Calculates the average normalized risk exposure for a given set of agents.

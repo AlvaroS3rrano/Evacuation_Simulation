@@ -3,6 +3,7 @@ from collections import defaultdict
 
 import pandas as pd
 
+
 def create_risk_table(connection: sqlite3.Connection, force_reset: bool = False) -> None:
     """
     Creates the 'risk_data' table if it doesn't exist.
@@ -13,18 +14,17 @@ def create_risk_table(connection: sqlite3.Connection, force_reset: bool = False)
             if force_reset:
                 connection.execute("DROP TABLE IF EXISTS risk_data")
 
-            connection.execute(
-                """
+            connection.execute("""
                 CREATE TABLE IF NOT EXISTS risk_data (
                     frame INTEGER NOT NULL,
                     area TEXT NOT NULL,
                     risk_level REAL NOT NULL,
                     PRIMARY KEY (frame, area)
                 )
-                """
-            )
+                """)
     except sqlite3.Error as e:
         raise RuntimeError(f"Error creating risk_data table: {e}")
+
 
 def write_risk_levels(connection: sqlite3.Connection, frame: int, risks: dict):
     """
@@ -141,6 +141,7 @@ def fetch_all_risks(connection: sqlite3.Connection) -> list:
         return cursor.fetchall()
     except sqlite3.Error as e:
         raise RuntimeError(f"Error fetching all risk data: {e}")
+
 
 def get_high_risk_data(connection: sqlite3.Connection) -> pd.DataFrame:
     """

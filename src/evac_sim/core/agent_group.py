@@ -15,7 +15,18 @@ class AgentGroup:
         blocked_nodes (list): List of nodes that are currently blocked.
     """
 
-    def __init__(self, agents, path, current_nodes, algorithm, awareness_level, *, blocked_nodes=None, wait_until_node=None, areInStairs=[]):
+    def __init__(
+        self,
+        agents,
+        path,
+        current_nodes,
+        algorithm,
+        awareness_level,
+        *,
+        blocked_nodes=None,
+        wait_until_node=None,
+        areInStairs=[],
+    ):
         """
         Initializes an AgentGroup instance.
 
@@ -30,18 +41,22 @@ class AgentGroup:
             wait_until_node (str, optional): Node identifier to wait at before executing certain operations.
                                              The related function will only execute once the agent reaches this node.
         """
-        self.agents = agents                          # List of agent IDs.
-        self.path = path                              # Designated path for the group.
-        self.current_nodes = current_nodes            # Dictionary mapping agent IDs to their current nodes.
-        self.algorithm = algorithm                    # Algorithm used (0 for shortest path, 1 for centrality measures).
-        self.awareness_level = awareness_level        # Awareness level (0 or 1).
+        self.agents = agents  # List of agent IDs.
+        self.path = path  # Designated path for the group.
+        self.current_nodes = current_nodes  # Dictionary mapping agent IDs to their current nodes.
+        self.algorithm = (
+            algorithm  # Algorithm used (0 for shortest path, 1 for centrality measures).
+        )
+        self.awareness_level = awareness_level  # Awareness level (0 or 1).
         self.blocked_nodes = blocked_nodes if blocked_nodes is not None else []
-        self.wait_until_node = wait_until_node        # Node at which to continue looking for new paths
-        self.areInStairs = areInStairs                # List of agents IDs that are in a stairs node
+        self.wait_until_node = wait_until_node  # Node at which to continue looking for new paths
+        self.areInStairs = areInStairs  # List of agents IDs that are in a stairs node
 
     def __repr__(self):
         """
         Returns a string representation of the AgentGroup instance, useful for debugging.
         """
-        return (f"AgentGroup(agents={self.agents}, path={self.path}, "
-                f"algorithm={self.algorithm}, awareness_level={self.awareness_level})")
+        return (
+            f"AgentGroup(agents={self.agents}, path={self.path}, "
+            f"algorithm={self.algorithm}, awareness_level={self.awareness_level})"
+        )

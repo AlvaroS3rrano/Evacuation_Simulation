@@ -1,6 +1,6 @@
 import json
 import sqlite3
-from typing import List, Dict, Any
+from typing import Any, Dict, List
 
 import pandas as pd
 
@@ -17,8 +17,7 @@ def create_tables(connection: sqlite3.Connection, force_reset: bool = False) -> 
                 connection.execute("DROP TABLE IF EXISTS experiment_metrics")
                 connection.execute("DROP TABLE IF EXISTS experiments")
 
-            connection.execute(
-                """
+            connection.execute("""
                 CREATE TABLE IF NOT EXISTS experiments (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     case_name TEXT NOT NULL,
@@ -30,11 +29,9 @@ def create_tables(connection: sqlite3.Connection, force_reset: bool = False) -> 
                         case_name
                     )
                 )
-                """
-            )
+                """)
 
-            connection.execute(
-                """
+            connection.execute("""
                 CREATE TABLE IF NOT EXISTS experiment_metrics (
                     experiment_id INTEGER NOT NULL,
                     case_name TEXT NOT NULL,
@@ -54,12 +51,14 @@ def create_tables(connection: sqlite3.Connection, force_reset: bool = False) -> 
                     PRIMARY KEY (case_name, agent_group_id, algorithm, awareness),
                     FOREIGN KEY(experiment_id) REFERENCES experiments(id) ON DELETE CASCADE
                 )
-                """
-            )
+                """)
     except sqlite3.Error as e:
         raise RuntimeError(f"Error creating tables: {e}")
 
-def write_experiment(connection, case_name, risk_nodes, source_nodes, agents_per_source, random_seed):
+
+def write_experiment(
+    connection, case_name, risk_nodes, source_nodes, agents_per_source, random_seed
+):
     try:
         risk_json = json.dumps(risk_nodes)
         source_json = json.dumps(source_nodes)
@@ -72,7 +71,7 @@ def write_experiment(connection, case_name, risk_nodes, source_nodes, agents_per
                 FROM experiments
                 WHERE case_name = ?
                 """,
-                (case_name,)
+                (case_name,),
             ).fetchone()
 
             if row is not None:
@@ -98,12 +97,11 @@ def write_experiment(connection, case_name, risk_nodes, source_nodes, agents_per
                 INSERT INTO experiments (case_name, risk_nodes, source_nodes, agents_per_source, random_seed)
                 VALUES (?, ?, ?, ?, ?)
                 """,
-                (case_name, risk_json, source_json, agents_json, random_seed)
+                (case_name, risk_json, source_json, agents_json, random_seed),
             )
 
             new_id = connection.execute(
-                "SELECT id FROM experiments WHERE case_name = ?",
-                (case_name,)
+                "SELECT id FROM experiments WHERE case_name = ?", (case_name,)
             ).fetchone()[0]
 
             return new_id
@@ -128,7 +126,7 @@ def write_experiment_metrics(
     median_time: float,
     p90_time: float,
     min_time: float,
-    max_time: float
+    max_time: float,
 ):
     """
     Inserts or replaces metrics for a given experiment.
@@ -160,10 +158,11 @@ def write_experiment_metrics(
                     median_time,
                     p90_time,
                     max_time,
-                )
+                ),
             )
     except sqlite3.Error as e:
         raise RuntimeError(f"Error writing experiment metrics: {e}")
+
 
 def read_all_experiments(connection: sqlite3.Connection) -> pd.DataFrame:
     """
@@ -206,7 +205,7 @@ def read_metrics_by_experiment(
     risk_nodes: List[Any],
     source_nodes: List[Any],
     agents_per_source: Dict[Any, int],
-    random_seed: int
+    random_seed: int,
 ) -> pd.DataFrame:
     """
     Retrieves metrics for the specified experiment parameters.
@@ -219,13 +218,14 @@ def read_metrics_by_experiment(
             risk_nodes,
             source_nodes,
             agents_per_source,
-            random_seed
+            random_seed,
         )
         query = "SELECT * FROM experiment_metrics WHERE experiment_id = ?"
         df = pd.read_sql_query(query, connection, params=(exp_id,))
         return df
     except Exception as e:
         raise RuntimeError(f"Error reading metrics for experiment: {e}")
+
 
 def read_all_experiment_metrics(db_path: str) -> pd.DataFrame:
     """
@@ -243,9 +243,10 @@ def read_all_experiment_metrics(db_path: str) -> pd.DataFrame:
     finally:
         conn.close()
 
+
 def export_experiments_to_csv(
-        db_path: str,
-        csv_path: str = "experiments.csv",
+    db_path: str,
+    csv_path: str = "experiments.csv",
 ) -> str:
     """
     Exporta la tabla 'experiments' a un CSV.
@@ -263,11 +264,12 @@ def export_experiments_to_csv(
     finally:
         conn.close()
 
+
 def export_experiment_metrics_to_csv(
-        db_path: str,
-        csv_path: str = "experiment_metrics.csv",
-        include_experiment_context: bool = True,
-        convert_agent_group_id_bytes: bool = True,
+    db_path: str,
+    csv_path: str = "experiment_metrics.csv",
+    include_experiment_context: bool = True,
+    convert_agent_group_id_bytes: bool = True,
 ) -> str:
     """
     Exporta 'experiment_metrics' a CSV.
@@ -291,6 +293,7 @@ def export_experiment_metrics_to_csv(
 
         # Conversión opcional de agent_group_id binario -> entero legible
         if convert_agent_group_id_bytes and "agent_group_id" in df.columns:
+
             def _conv(v):
                 if isinstance(v, (bytes, bytearray)):
                     return int.from_bytes(v, byteorder="little")
@@ -307,6 +310,3 @@ def export_experiment_metrics_to_csv(
         raise RuntimeError(f"Error exportando experiment_metrics a CSV: {e}")
     finally:
         conn.close()
-
-
-

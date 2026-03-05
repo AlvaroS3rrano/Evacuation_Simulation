@@ -1,4 +1,4 @@
-from typing import Dict, Any
+from typing import Any, Dict
 
 
 def update_all_graph_risks(EnvInf, risk_per_node: Dict[Any, float], default: float = 0.0) -> None:

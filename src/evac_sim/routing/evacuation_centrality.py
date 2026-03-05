@@ -1,7 +1,6 @@
 import gurobipy as gp
 import networkx as nx
 from gurobipy import GRB
-
 from path_algorithms import compute_efficient_paths
 
 
@@ -44,7 +43,9 @@ def evacuationCentralityAlgorithm(G, source, targets, gamma):
     for arc in arcs_set:
         paths_using_arc = [p_idx for p_idx, arcs in enumerate(path_arcs) if arc in arcs]
         if paths_using_arc:
-            model.addConstr(gp.quicksum(x[p_idx] for p_idx in paths_using_arc) <= 1, name=f"arc_{arc}")
+            model.addConstr(
+                gp.quicksum(x[p_idx] for p_idx in paths_using_arc) <= 1, name=f"arc_{arc}"
+            )
 
     # Objective: maximize the sum of x[p] (i.e., maximize the number of arc-disjoint paths).
     model.setObjective(gp.quicksum(x[p_idx] for p_idx in range(len(efficient_paths))), GRB.MAXIMIZE)
@@ -54,7 +55,9 @@ def evacuationCentralityAlgorithm(G, source, targets, gamma):
         return efficient_paths, 0, [], {}
 
     evacuation_centrality = int(model.objVal)
-    best_paths = [efficient_paths[p_idx] for p_idx in range(len(efficient_paths)) if x[p_idx].X > 0.5]
+    best_paths = [
+        efficient_paths[p_idx] for p_idx in range(len(efficient_paths)) if x[p_idx].X > 0.5
+    ]
 
     # Step 4: Compute a new "agility" score for each efficient path.
     # Instead of using the sum of centrality values, we use the geometric mean of the intermediate nodes' centralities.
@@ -108,7 +111,7 @@ if __name__ == "__main__":
         ("F", "H", 2),
         ("G", "I", 3),
         ("H", "I", 3),
-        ("F", "I", 4)
+        ("F", "I", 4),
     ]
 
     # Add edges to the graph with the specified cost attribute

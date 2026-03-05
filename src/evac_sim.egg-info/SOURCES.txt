@@ -8,6 +8,7 @@ src/evac_sim.egg-info/PKG-INFO
 src/evac_sim.egg-info/SOURCES.txt
 src/evac_sim.egg-info/dependency_links.txt
 src/evac_sim.egg-info/entry_points.txt
+src/evac_sim.egg-info/requires.txt
 src/evac_sim.egg-info/top_level.txt
 src/evac_sim/core/__init__.py
 src/evac_sim/core/agent_group.py

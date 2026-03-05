@@ -1,5 +1,3 @@
-
-
 # ──────────────────────────────────────────────────────────────────────────────
 # Imports from your project (adjust to your final package structure)
 # ──────────────────────────────────────────────────────────────────────────────
@@ -9,6 +7,7 @@ from .multifloor_paths import getPosiblePaths
 # ──────────────────────────────────────────────────────────────────────────────
 # Helper functions (local policies)
 # ──────────────────────────────────────────────────────────────────────────────
+
 
 def handle_blocked_node_in_path(best_path, agent_group) -> None:
     """
@@ -39,7 +38,9 @@ def handle_blocked_node_in_path(best_path, agent_group) -> None:
                 agent_group.blocked_nodes.append(prev_node)
 
 
-def select_best_alternative_path(alternative_paths, neighbors_sorted, min_risk_neighbors, agent_group):
+def select_best_alternative_path(
+    alternative_paths, neighbors_sorted, min_risk_neighbors, agent_group
+):
     """
     Select the best path among candidate alternative paths using neighbor-risk heuristics.
 
@@ -117,15 +118,9 @@ def _get_possible_paths_with_fallback(EnvInf, current_node, exits, gamma, algo, 
 # Replanning policies
 # ──────────────────────────────────────────────────────────────────────────────
 
+
 def compute_low_awareness_alternative_path(
-    exits,
-    risk_per_node,
-    next_node,
-    current_node,
-    agent_group,
-    EnvInf,
-    gamma,
-    risk_threshold
+    exits, risk_per_node, next_node, current_node, agent_group, EnvInf, gamma, risk_threshold
 ):
     """
     Compute an alternative path for low-awareness agents using local (next-hop / neighborhood) risk.
@@ -154,8 +149,7 @@ def compute_low_awareness_alternative_path(
 
     # Sort neighbors by risk (lowest first)
     neighbors_sorted = sorted(
-        G.neighbors(current_node),
-        key=lambda neighbor: G.nodes[neighbor].get("risk", float("inf"))
+        G.neighbors(current_node), key=lambda neighbor: G.nodes[neighbor].get("risk", float("inf"))
     )
 
     # If the node is isolated, replanning is impossible
@@ -164,13 +158,17 @@ def compute_low_awareness_alternative_path(
 
     # Soft-block neighbors whose risk exceeds the threshold
     for neighbour in neighbors_sorted:
-        if risk_per_node.get(neighbour, 0.0) >= risk_threshold and neighbour not in agent_group.blocked_nodes:
+        if (
+            risk_per_node.get(neighbour, 0.0) >= risk_threshold
+            and neighbour not in agent_group.blocked_nodes
+        ):
             agent_group.blocked_nodes.append(neighbour)
 
     # Identify the "best" neighbors: lowest-risk ones + any neighbor below threshold
     min_risk = G.nodes[neighbors_sorted[0]].get("risk", float("inf"))
     min_risk_neighbors = [
-        n for n in neighbors_sorted
+        n
+        for n in neighbors_sorted
         if G.nodes[n].get("risk", float("inf")) == min_risk
         or G.nodes[n].get("risk", float("inf")) < risk_threshold
     ]
@@ -186,13 +184,7 @@ def compute_low_awareness_alternative_path(
 
 
 def compute_high_awareness_alternative_path(
-    exits,
-    risk_per_node,
-    current_node,
-    agent_group,
-    EnvInf,
-    gamma,
-    risk_threshold
+    exits, risk_per_node, current_node, agent_group, EnvInf, gamma, risk_threshold
 ):
     """
     Compute an alternative path for high-awareness agents by scanning the remaining planned path for risk.
@@ -214,7 +206,7 @@ def compute_high_awareness_alternative_path(
     if current_path is not None:
         try:
             index = current_path.index(current_node)
-            for node in current_path[index + 1:]:
+            for node in current_path[index + 1 :]:
                 if risk_per_node.get(node, 0.0) >= risk_threshold:
                     if node not in agent_group.blocked_nodes:
                         agent_group.blocked_nodes.append(node)
@@ -259,6 +251,7 @@ def compute_high_awareness_alternative_path(
 # Dispatcher
 # ──────────────────────────────────────────────────────────────────────────────
 
+
 def compute_alternative_path(
     exits,
     agent_group,
@@ -267,7 +260,7 @@ def compute_alternative_path(
     next_node=None,
     risk_per_node=None,
     risk_threshold=0.5,
-    gamma=0.4
+    gamma=0.4,
 ):
     """
     Dispatch alternative-path computation based on the group's awareness level and wait policy.
@@ -282,7 +275,9 @@ def compute_alternative_path(
     wait_node = agent_group.wait_until_node
 
     # Clear wait condition if it is inactive or satisfied by any agent in the group
-    if wait_node is None or (agent_group.current_nodes and wait_node in agent_group.current_nodes.values()):
+    if wait_node is None or (
+        agent_group.current_nodes and wait_node in agent_group.current_nodes.values()
+    ):
         agent_group.wait_until_node = None
 
         if agent_group.awareness_level == 0:

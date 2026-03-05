@@ -15,8 +15,7 @@ def create_paths_table(connection: sqlite3.Connection, force_reset: bool = False
             if force_reset:
                 connection.execute("DROP TABLE IF EXISTS paths")
 
-            connection.execute(
-                """
+            connection.execute("""
                 CREATE TABLE IF NOT EXISTS paths (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     source INTEGER NOT NULL,
@@ -25,12 +24,19 @@ def create_paths_table(connection: sqlite3.Connection, force_reset: bool = False
                     path TEXT NOT NULL,
                     betweenness REAL NOT NULL
                 )
-                """
-            )
+                """)
     except sqlite3.Error as e:
         raise RuntimeError(f"Error creating paths table: {e}")
 
-def insert_path(connection: sqlite3.Connection, source: int, target: int, cost: int, path: List[int], betweenness: float):
+
+def insert_path(
+    connection: sqlite3.Connection,
+    source: int,
+    target: int,
+    cost: int,
+    path: List[int],
+    betweenness: float,
+):
     """
     Insert or update a path between two nodes in the database, along with its betweenness centrality.
 
@@ -48,10 +54,11 @@ def insert_path(connection: sqlite3.Connection, source: int, target: int, cost: 
             path_str = json.dumps(path)
             connection.execute(
                 "INSERT OR REPLACE INTO paths (source, target, cost, path, betweenness) VALUES (?, ?, ?, ?, ?)",
-                (source, target, cost, path_str, betweenness)
+                (source, target, cost, path_str, betweenness),
             )
     except sqlite3.Error as e:
         raise RuntimeError(f"Error inserting the path between {source} and {target}: {e}")
+
 
 def find_paths_containing_node(connection: sqlite3.Connection, node: int):
     """
@@ -78,6 +85,7 @@ def find_paths_containing_node(connection: sqlite3.Connection, node: int):
     except Exception as e:
         raise RuntimeError(f"Error finding paths that contain node {node}: {e}")
 
+
 def read_all_paths(connection: sqlite3.Connection) -> pd.DataFrame:
     """
     Reads all paths stored in the paths table.
@@ -94,7 +102,10 @@ def read_all_paths(connection: sqlite3.Connection) -> pd.DataFrame:
     except Exception as e:
         raise RuntimeError(f"Error reading all paths: {e}")
 
-def read_paths_by_source_target(connection: sqlite3.Connection, source: int, target: int) -> pd.DataFrame:
+
+def read_paths_by_source_target(
+    connection: sqlite3.Connection, source: int, target: int
+) -> pd.DataFrame:
     """
     Reads the paths stored in the paths table for a specific source and target.
 

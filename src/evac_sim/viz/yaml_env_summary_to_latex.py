@@ -1,9 +1,10 @@
 from __future__ import annotations
 
-from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, Iterable
-import statistics
 import re
+import statistics
+from pathlib import Path
+from typing import Any, Dict, Iterable, List, Optional, Tuple
+
 import yaml
 
 
@@ -126,8 +127,8 @@ def _collect_env_metrics(data: Dict[str, Any], environment: str) -> Dict[str, Li
 def yaml_to_latex_rows_env_summary(
     yaml_path: str,
     environments: Iterable[str],
-    mode: str = "mean",          # "mean", "std", "mean+std"
-    float_fmt: str = "{:.2f}",   # formatting for numeric cells
+    mode: str = "mean",  # "mean", "std", "mean+std"
+    float_fmt: str = "{:.2f}",  # formatting for numeric cells
     labels: Optional[Dict[str, str]] = None,  # optional mapping env -> label
     do_print: bool = False,
 ) -> str:
@@ -182,6 +183,7 @@ def yaml_to_latex_rows_env_summary(
     if do_print:
         print(result)
     return result
+
 
 if __name__ == "__main__":
     path = "../../../configs/study.yaml"

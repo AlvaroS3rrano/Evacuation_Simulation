@@ -7,9 +7,10 @@ def is_sublist(sub, main) -> bool:
     """
     n = len(sub)
     for i in range(len(main) - n + 1):
-        if main[i:i + n] == sub:
+        if main[i : i + n] == sub:
             return True
     return False
+
 
 def collect_unblocked_paths(paths, blocked_nodes):
     """

@@ -15,11 +15,7 @@ DATABASE_VERSION: Final = 2
 
 def get_database_version(connection: sqlite3.Connection) -> int:
     cur = connection.cursor()
-    return int(
-        cur.execute(
-            "SELECT value FROM metadata WHERE key = ?", ("version",)
-        ).fetchone()[0]
-    )
+    return int(cur.execute("SELECT value FROM metadata WHERE key = ?", ("version",)).fetchone()[0])
 
 
 def uses_latest_database_version(connection: sqlite3.Connection) -> bool:
@@ -82,9 +78,7 @@ class SqliteTrajectoryWriter(TrajectoryWriter):
             )
             cur.execute("DROP TABLE IF EXISTS geometry")
             cur.execute(
-                "CREATE TABLE geometry("
-                "   hash INTEGER NOT NULL, "
-                "   wkt TEXT NOT NULL)"
+                "CREATE TABLE geometry(" "   hash INTEGER NOT NULL, " "   wkt TEXT NOT NULL)"
             )
             cur.execute("CREATE UNIQUE INDEX geometry_hash on geometry( hash)")
             cur.execute(
@@ -98,9 +92,7 @@ class SqliteTrajectoryWriter(TrajectoryWriter):
                 "   geometry_hash INTEGER NOT NULL)"
             )
 
-            cur.execute(
-                "CREATE INDEX frame_id_idx ON trajectory_data(frame, id)"
-            )
+            cur.execute("CREATE INDEX frame_id_idx ON trajectory_data(frame, id)")
             cur.execute("COMMIT")
         except sqlite3.Error as e:
             cur.execute("ROLLBACK")
@@ -178,9 +170,7 @@ class SqliteTrajectoryWriter(TrajectoryWriter):
         return self._con
 
     def _value_or_default(self, cur, key, default: float | int | str):
-        res = cur.execute(
-            "SELECT value FROM metadata WHERE key = ?", (key,)
-        ).fetchone()
+        res = cur.execute("SELECT value FROM metadata WHERE key = ?", (key,)).fetchone()
         if res is None:
             return default
         else:
@@ -225,9 +215,7 @@ def convert_database_v1_to_v2(connection: sqlite3.Connection):
                 f"Internal Error: When converting from database version 1 to 2, encountered database version {version}."
             )
 
-        cur.execute(
-            "UPDATE metadata SET value = ? WHERE key = ?", (2, "version")
-        )
+        cur.execute("UPDATE metadata SET value = ? WHERE key = ?", (2, "version"))
 
         cur.execute(
             "CREATE TABLE frame_data("

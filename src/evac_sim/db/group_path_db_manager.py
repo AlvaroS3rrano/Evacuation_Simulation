@@ -15,8 +15,7 @@ def create_group_path_table(connection: sqlite3.Connection, force_reset: bool = 
             if force_reset:
                 connection.execute("DROP TABLE IF EXISTS group_path_data")
 
-            connection.execute(
-                """
+            connection.execute("""
                 CREATE TABLE IF NOT EXISTS group_path_data (
                     frame INTEGER NOT NULL,
                     group_id INTEGER NOT NULL,
@@ -31,8 +30,7 @@ def create_group_path_table(connection: sqlite3.Connection, force_reset: bool = 
                     risk_now REAL NOT NULL,
                     PRIMARY KEY (frame, group_id, algorithm, awareness)
                 )
-                """
-            )
+                """)
     except sqlite3.Error as e:
         raise RuntimeError(f"Error creating group_path_data table: {e}")
 
@@ -49,7 +47,7 @@ def write_group_path_data(
     est_risk_max: float,
     est_risk_min: float,
     est_risk_var: float,
-    risk_now: float
+    risk_now: float,
 ):
     """
     Inserts or replaces a record in group_path_data for the given frame, group, algorithm, and awareness.
@@ -79,12 +77,11 @@ def write_group_path_data(
                     est_risk_max,
                     est_risk_min,
                     est_risk_var,
-                    risk_now
-                )
+                    risk_now,
+                ),
             )
     except sqlite3.Error as e:
         raise RuntimeError(f"Error inserting group path data: {e}")
-
 
 
 def read_group_path_data(connection: sqlite3.Connection) -> pd.DataFrame:
@@ -93,7 +90,7 @@ def read_group_path_data(connection: sqlite3.Connection) -> pd.DataFrame:
     """
     try:
         df = pd.read_sql_query("SELECT * FROM group_path_data", connection)
-        df['next_path'] = df['next_path'].apply(json.loads)
+        df["next_path"] = df["next_path"].apply(json.loads)
         return df
     except Exception as e:
         raise RuntimeError(f"Error reading group path data: {e}")
@@ -105,10 +102,11 @@ def read_group_path_by_frame(connection: sqlite3.Connection, frame: int) -> pd.D
     """
     try:
         df = pd.read_sql_query(
-            "SELECT * FROM group_path_data WHERE frame = ? AND algorithm = ? AND awareness = ?", connection,
-            params=(frame, )
+            "SELECT * FROM group_path_data WHERE frame = ? AND algorithm = ? AND awareness = ?",
+            connection,
+            params=(frame,),
         )
-        df['next_path'] = df['next_path'].apply(json.loads)
+        df["next_path"] = df["next_path"].apply(json.loads)
         return df
     except Exception as e:
         raise RuntimeError(f"Error reading group path data for frame {frame}: {e}")

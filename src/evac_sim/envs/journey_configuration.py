@@ -1,4 +1,6 @@
 import jupedsim as jps
+
+
 def create_journeys_for_simulation(start, paths, waypoint_ids, exit_ids):
     """
     Generates journey descriptions for simulation agents using the best paths obtained previously.
@@ -41,7 +43,11 @@ def create_journeys_for_simulation(start, paths, waypoint_ids, exit_ids):
         for idx, waypoint in enumerate(needed_waypoints):
             # If it's the last waypoint, the next stage is the exit (mapped from exit_ids);
             # otherwise, the next stage is the following waypoint.
-            next_waypoint = exit_ids[path[-1]] if idx == len(needed_waypoints) - 1 else needed_waypoints[idx + 1]
+            next_waypoint = (
+                exit_ids[path[-1]]
+                if idx == len(needed_waypoints) - 1
+                else needed_waypoints[idx + 1]
+            )
             journey.set_transition_for_stage(
                 waypoint, jps.Transition.create_fixed_transition(next_waypoint)
             )
@@ -50,6 +56,7 @@ def create_journeys_for_simulation(start, paths, waypoint_ids, exit_ids):
         journeys.append((journey, path))
 
     return journeys
+
 
 def set_journeys(simulation, start, paths, waypoint_ids, exit_ids):
     """

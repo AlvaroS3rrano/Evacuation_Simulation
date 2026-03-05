@@ -1,14 +1,34 @@
+from __future__ import annotations
+
+import logging
 from statistics import mean, pvariance
 
 import jupedsim as jps
-from src.evac_sim.core.agent_group import AgentGroup
-from src.evac_sim.db.agent_area_db_manager import write_agent_area
-from src.evac_sim.db.danger_sim_db_manager import get_risk_levels_by_frame
-from src.evac_sim.db.group_path_db_manager import write_group_path_data
-from src.evac_sim.envs.journey_configuration import set_journeys
-from src.evac_sim.routing.decision_policies import compute_alternative_path
-from src.evac_sim.routing.utils import is_sublist
-from src.evac_sim.simulation.simulation_logic import compute_current_nodes, update_agent_speed_on_stairs
+
+from evac_sim.core.agent_group import AgentGroup
+from evac_sim.db.agent_area_db_manager import write_agent_area
+from evac_sim.db.danger_sim_db_manager import get_risk_levels_by_frame
+from evac_sim.db.group_path_db_manager import write_group_path_data
+from evac_sim.envs.journey_configuration import set_journeys
+from evac_sim.routing.decision_policies import compute_alternative_path
+from evac_sim.routing.utils import is_sublist
+from evac_sim.simulation.simulation_logic import compute_current_nodes, update_agent_speed_on_stairs
+
+logger = logging.getLogger(__name__)
+
+
+def _ctx(
+    *, frame: int | None = None, group_id: int | None = None, agents: int | None = None
+) -> str:
+    """Build a consistent context string for logs."""
+    parts: list[str] = []
+    if frame is not None:
+        parts.append(f"frame={frame}")
+    if group_id is not None:
+        parts.append(f"group={group_id}")
+    if agents is not None:
+        parts.append(f"agents={agents}")
+    return " | ".join(parts)
 
 
 def validate_agent(agent_id: int, simulation, current_nodes: dict) -> bool:
@@ -32,8 +52,16 @@ def try_get_node_index(node, path: list) -> int:
         return -1
 
 
-def update_group_paths(sim_cfg, risk_map: dict, group: AgentGroup,
-                       env_info, threshold: float = 0.5) -> AgentGroup:
+def update_group_paths(
+    sim_cfg,
+    risk_map: dict,
+    group: AgentGroup,
+    env_info,
+    threshold: float = 0.5,
+    *,
+    frame: int,
+    group_id: int,
+) -> AgentGroup:
     """
     Evaluates whether the group's path should be rerouted.
     If a better path is found, all agents follow the new path,
@@ -48,7 +76,7 @@ def update_group_paths(sim_cfg, risk_map: dict, group: AgentGroup,
     simulation = sim_cfg.simulation
     waypoints = sim_cfg.waypoints_ids
 
-    # Select the leading agent in the group
+    # Select the leading agent in the group (furthest along current_path)
     to_check = [max(agent_ids, key=lambda aid: current_path.index(current_nodes[aid]))]
 
     for aid in to_check:
@@ -64,52 +92,71 @@ def update_group_paths(sim_cfg, risk_map: dict, group: AgentGroup,
 
         # Compute an alternative path from the current node
         alt_path = compute_alternative_path(
-            sim_cfg.get_exit_ids_keys(), group, env_info,
-            curr_node, next_node,
-            risk_map, threshold, sim_cfg.gamma
+            sim_cfg.get_exit_ids_keys(),
+            group,
+            env_info,
+            curr_node,
+            next_node,
+            risk_map,
+            threshold,
+            sim_cfg.gamma,
         )
 
         if alt_path and not is_sublist(alt_path, current_path):
-            # Combine the current path up to curr_node with the new alt_path
+            # Combine current_path up to curr_node with alt_path (avoid repeating curr_node)
             try:
                 current_idx = current_path.index(curr_node)
-                full_path = current_path[:current_idx + 1] + alt_path[1:]  # avoid repeating curr_node
+                full_path = current_path[: current_idx + 1] + alt_path[1:]
             except ValueError:
-                full_path = alt_path  # fallback if something goes wrong
+                full_path = alt_path  # fallback
 
             # Create a new journey using the full_path
             journeys = set_journeys(
-                simulation, curr_node,
-                [full_path], waypoints, sim_cfg.exit_ids
+                simulation,
+                curr_node,
+                [full_path],
+                waypoints,
+                sim_cfg.exit_ids,
             )
             new_jid, _ = journeys[curr_node][0]
 
             # Assign each agent to the correct stage along the new path
-            for aid in agent_ids:
-                node = current_nodes[aid]
+            for agent_id in agent_ids:
+                node = current_nodes[agent_id]
                 try:
                     node_idx = full_path.index(node)
-                    next_node = full_path[min(node_idx + 1, len(full_path) - 1)]
+                    next_stage_node = full_path[min(node_idx + 1, len(full_path) - 1)]
                 except ValueError:
-                    next_node = full_path[1] if len(full_path) > 1 else full_path[0]
+                    next_stage_node = full_path[1] if len(full_path) > 1 else full_path[0]
 
-                stage_id = waypoints[next_node]
-                simulation.switch_agent_journey(aid, new_jid, stage_id)
+                stage_id = waypoints[next_stage_node]
+                simulation.switch_agent_journey(agent_id, new_jid, stage_id)
+
+            logger.info(
+                "Reroute applied | %s | curr=%s next=%s | old_len=%d new_len=%d",
+                _ctx(frame=frame, group_id=group_id, agents=len(agent_ids)),
+                curr_node,
+                next_node,
+                len(current_path),
+                len(full_path),
+            )
 
             group.path = full_path
             return group
 
     return group
 
-def record_group_path_data(gr_pth_conn, frame: int, group_id: int,
-                            group: AgentGroup, risks: dict):
+
+def record_group_path_data(
+    gr_pth_conn, frame: int, group_id: int, group: AgentGroup, risks: dict
+) -> None:
     """
     Compute risk estimates and record dynamic path-choice data for a group at a given frame.
     """
-    # Map numeric level to string
-    algorithm = 'Centrality' if group.algorithm == 1 else 'Efficient'
-    awareness = 'High' if group.awareness_level == 1 else 'Low'
-    # Current area
+    algorithm = "Centrality" if group.algorithm == 1 else "Efficient"
+    awareness = "High" if group.awareness_level == 1 else "Low"
+
+    # Determine current area as the furthest node reached along the group's path
     max_idx = -1
     current_area = None
     for aid in group.agents:
@@ -125,22 +172,24 @@ def record_group_path_data(gr_pth_conn, frame: int, group_id: int,
             current_area = area
 
     if current_area is None and group.agents:
-        current_area = group.current_nodes[group.agents[0]]
-    # Remaining path
+        current_area = group.current_nodes.get(group.agents[0])
+
+    # Remaining path from current area
     if max_idx >= 0:
         next_path = group.path[max_idx:]
     else:
         next_path = group.path
-    # Compute risk estimates over remaining path
+
+    # Risk estimates over remaining path
     risk_values = [risks.get(area, 0.0) for area in next_path]
     est_risk_mean = mean(risk_values) if risk_values else 0.0
     est_risk_max = max(risk_values) if risk_values else 0.0
     est_risk_min = min(risk_values) if risk_values else 0.0
     est_risk_var = pvariance(risk_values) if len(risk_values) > 1 else 0.0
-    # Instantaneous risk at current area
-    risk_now = risks.get(current_area, 0.0)
 
-    # Record to database
+    # Instantaneous risk at current area
+    risk_now = risks.get(current_area, 0.0) if current_area is not None else 0.0
+
     write_group_path_data(
         gr_pth_conn,
         frame,
@@ -153,58 +202,105 @@ def record_group_path_data(gr_pth_conn, frame: int, group_id: int,
         est_risk_max,
         est_risk_min,
         est_risk_var,
-        risk_now
+        risk_now,
     )
 
 
-def process_frame(sim_cfg, groups: dict, env_info, conn, area_conn, gr_pth_conn, frame: int, threshold: float):
+def process_frame(
+    sim_cfg, groups: dict, env_info, conn, area_conn, gr_pth_conn, frame: int, threshold: float
+) -> None:
     """
-    Compute current nodes, log agent areas, adjust speeds, update paths for each group, and record path-choice data.
+    Compute current nodes, log agent areas, adjust speeds, update paths for each group,
+    and record path-choice data.
     """
-    # Retrieve risk map for this frame (area_id -> risk value)
     risks = get_risk_levels_by_frame(conn, frame)
 
     for group_id, group in groups.items():
-        # Compute each agent's current node
-        compute_current_nodes(sim_cfg, group, frame)
-        # Log agent areas
-        write_agent_area(area_conn, frame, group.agents, group.current_nodes, risks)
-        # Update speeds on stairs if needed
-        update_agent_speed_on_stairs(env_info.graph, sim_cfg, group)
-        # Potentially reroute group
-        group = update_group_paths(sim_cfg, risks, group, env_info, threshold)
-        # Record path-choice data
-        record_group_path_data(gr_pth_conn, frame, group_id, group, risks)
+        try:
+            compute_current_nodes(sim_cfg, group, frame)
+            # Keep only agents still present in the simulation (evacuated agents disappear)
+            active_ids = {a.id for a in sim_cfg.simulation.agents()}
 
-        groups[group_id] = group
+            group.agents = [aid for aid in group.agents if aid in active_ids]
+            group.current_nodes = {aid: n for aid, n in group.current_nodes.items() if aid in active_ids}
+
+            if not group.agents:
+                # Nothing to log/update for this group at this frame
+                continue
+
+            write_agent_area(area_conn, frame, group.agents, group.current_nodes, risks)
+            update_agent_speed_on_stairs(env_info.graph, sim_cfg, group)
+
+            group = update_group_paths(
+                sim_cfg,
+                risks,
+                group,
+                env_info,
+                threshold,
+                frame=frame,
+                group_id=group_id,
+            )
+
+            record_group_path_data(gr_pth_conn, frame, group_id, group, risks)
+            groups[group_id] = group
+
+        except Exception:
+            logger.exception(
+                "Group processing failed | %s",
+                _ctx(
+                    frame=frame, group_id=group_id, agents=len(getattr(group, "agents", []) or [])
+                ),
+            )
+            raise
 
 
-def run_agent_simulation(sim_cfg, agent_groups: dict, env_info, conn, area_conn, gr_pth_conn, threshold: float):
+def run_agent_simulation(
+    sim_cfg, log_every_frames: int,  agent_groups: dict, env_info, conn, area_conn, gr_pth_conn, threshold: float
+) -> None:
     """
     Advance the simulation and periodically process agent movements and path updates.
     """
     sim = sim_cfg.simulation
-    # Initial logging at frame zero
+    logger.info("Simulation start | agents=%d", sim.agent_count())
+
+    # Initial processing at frame 0
     if sim.agent_count() > 0:
         process_frame(sim_cfg, agent_groups, env_info, conn, area_conn, gr_pth_conn, 0, threshold)
 
-    # Main loop: iterate until no agents remain
+    last_log_frame = -1
+    LOG_EVERY_FRAMES = log_every_frames
+
+    frame = 0
     while sim.agent_count() > 0:
         sim.iterate()
         iteration = sim.iteration_count()
 
-        # Trigger at configured simulation intervals
-        if iteration % sim_cfg.every_nth_frame_simulation == 0:
-            frame = iteration // sim_cfg.every_nth_frame_simulation
-            if frame % sim_cfg.every_nth_frame_animation == 0:
-                try:
-                    process_frame(sim_cfg, agent_groups, env_info, conn, area_conn, gr_pth_conn, frame, threshold)
-                except Exception as exc:
-                    print(f"Error at frame {frame}: {exc}")
+        if iteration % sim_cfg.every_nth_frame_simulation != 0:
+            continue
+
+        frame = iteration // sim_cfg.every_nth_frame_simulation
+
+        # Progress logging (throttled)
+        if frame % LOG_EVERY_FRAMES == 0 and frame != last_log_frame:
+            last_log_frame = frame
+            logger.info("Progress | frame=%d | agents=%d", frame, sim.agent_count())
+
+        # Process full logic at animation frames
+        if frame % sim_cfg.every_nth_frame_animation == 0:
+            process_frame(
+                sim_cfg, agent_groups, env_info, conn, area_conn, gr_pth_conn, frame, threshold
+            )
+
+    logger.info("Simulation end | last_frame=%d", frame)
 
 
-def set_agents_in_simulation(simulation, positions: list, journey_id: int,
-                             waypoint_id: int, speed: float) -> list:
+def set_agents_in_simulation(
+    simulation,
+    positions: list,
+    journey_id: int,
+    waypoint_id: int,
+    speed: float,
+) -> list:
     """
     Add multiple agents to the simulation with the same journey and speed.
 
@@ -216,7 +312,7 @@ def set_agents_in_simulation(simulation, positions: list, journey_id: int,
             position=pos,
             journey_id=journey_id,
             stage_id=waypoint_id,
-            v0=speed
+            v0=speed,
         )
         new_agents.append(simulation.add_agent(params))
 

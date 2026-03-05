@@ -10,9 +10,7 @@ def compute_current_nodes(simulation_config, agent_group, frame) -> None:
     fallback_node = current_path[-1] if current_path else None
 
     if not current_path:
-        agent_group.current_nodes = {
-            agent_id: None for agent_id in agent_group.agents
-        }
+        agent_group.current_nodes = {agent_id: None for agent_id in agent_group.agents}
         return
 
     # Precompute existing agents
@@ -52,6 +50,7 @@ def compute_current_nodes(simulation_config, agent_group, frame) -> None:
 
     agent_group.current_nodes = computed_current_nodes
 
+
 def update_agent_speed_on_stairs(G, simulation_config, agent_group):
     """
     Checks each agent's current node and, if that node is a staircase, changes the agent's speed
@@ -79,7 +78,7 @@ def update_agent_speed_on_stairs(G, simulation_config, agent_group):
 
         if current_node is not None:
             # Check if the current node is marked as a staircase; default to False if not set
-            is_stairs = G.nodes[current_node].get('is_stairs', False)
+            is_stairs = G.nodes[current_node].get("is_stairs", False)
             if is_stairs:
                 # Set the agent's speed to stairs_max_speed when on a staircase
                 agent.model.v0 = simulation_config.stairs_max_speed

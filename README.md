@@ -1,68 +1,111 @@
-# Evacuation Simulation Framework
+# Evac-Sim - Evacuation Simulation Framework
 
-Simulation framework for pedestrian evacuation scenarios based on **JuPedSim**, including
-risk evaluation, path planning strategies, and interactive visualizations.
+Simulation framework for pedestrian evacuation scenarios based on
+**JuPedSim**, including risk evaluation, path planning strategies, and
+interactive visualizations.
 
-This project is developed in the context of academic research on evacuation dynamics
-and intelligent environments.
+This project is developed in the context of academic research on
+evacuation dynamics and intelligent environments.
+
+------------------------------------------------------------------------
 
 ## 📌 Project Overview
 
-The goal of this project is to simulate evacuation processes in complex environments,
-analyzing different routing strategies and levels of environmental awareness.
+The goal of this project is to simulate evacuation processes in complex
+environments, analyzing different routing strategies and levels of
+environmental awareness.
+
 The framework allows:
 
-- Agent-based pedestrian simulation using JuPedSim
-- Definition of custom environments and walkable areas
-- Risk computation per agent and per frame
-- Visualization of trajectories and risk evolution
-- Storage and analysis of simulation results
+-   Agent-based pedestrian simulation using **JuPedSim**
+-   Definition of custom environments and walkable areas
+-   Risk computation per agent and per frame
+-   Visualization of trajectories and risk evolution
+-   Storage and analysis of simulation results
 
-A key aspect of the framework is the modeling of different levels of agent
-environmental awareness, distinguishing between high-awareness and low-awareness
-agents, as well as the comparison of multiple routing strategies.
+A key aspect of the framework is the modeling of different levels of
+agent environmental awareness, distinguishing between **high-awareness**
+and **low-awareness** agents, as well as comparing multiple routing
+strategies.
+
+------------------------------------------------------------------------
 
 ## ✨ Main Features
 
-- Agent-based evacuation simulation
-- Multiple routing strategies
-- Risk modeling during evacuation
-- Interactive animations using Plotly
-- SQLite-based storage of simulation data
-- Modular and extensible architecture
-- Modeling of different levels of agent environmental awareness (high and low)
-- Comparison of multiple routing strategies:
-  - Efficient routing based on *k-shortest paths*
-  - Centrality-based routing strategies (agile routing)
+-   Agent-based evacuation simulation
+-   Multiple routing strategies
+-   Risk modeling during evacuation
+-   Interactive animations using Plotly
+-   SQLite-based storage of simulation data
+-   Modular and extensible architecture
+-   Modeling of different levels of agent environmental awareness
+-   Comparison of routing strategies:
+    -   Efficient routing based on *k-shortest paths*
+    -   Centrality-based routing strategies (agile routing)
+
+------------------------------------------------------------------------
 
 ## 🗂 Project Structure
 
-![Project Structure](results/images/readme/structure.png)
+    Evacuation_Simulation/
+    ├── configs/
+    │ └── study.yaml
+    │
+    ├── environments/
+    │ ├── environment.py
+    │ └── ...
+    │
+    ├── Notebooks/
+    │ └── experiments.ipynb
+    │
+    ├── results/
+    │ └── images/
+    │     └── readme/
+    │
+    ├── runs/
+    │ └── <timestamp>_<case_name>/
+    │   ├── config_resolved.yaml
+    │   ├── metadata.json
+    │   ├── logs/
+    │   │   └── run.log
+    │   └── artifacts/
+    │       ├── experiments.csv
+    │       ├── experiment_metrics.csv
+    │       ├── *_risks.db
+    │       ├── *_paths.db
+    │       ├── *_group_paths_mode_X.db
+    │       ├── agent_area_*_mode_X.db
+    │       └── *_mode_X.sqlite
+    │
+    ├── src/
+    │ └── evac_sim/
+    │   ├── core/
+    │   ├── db/
+    │   ├── envs/
+    │   ├── risk/
+    │   ├── routing/
+    │   ├── simulation/
+    │   ├── viz/
+    │   ├── cli.py
+    │   └── runner.py
+    │
+    ├── pyproject.toml
+    └── README.md
 
-The project follows a modular architecture designed to clearly separate responsibilities
-across different components of the evacuation simulation framework.
-
-The `core` module contains the fundamental data structures and configuration classes
-used throughout the system. Functional modules such as `simulation`, `routing`, and
-`risk` implement the main evacuation logic, including agent dynamics, path planning
-strategies, and risk evaluation models.
-
-The `envs` module is responsible for environment-related logic and scenario definition,
-while `db` handles data persistence and experiment result storage. Visualization and
-animation utilities are grouped under the `viz` module.
-
-This structure improves maintainability, extensibility, and reproducibility, enabling
-the framework to support systematic experimental analysis.
+------------------------------------------------------------------------
 
 ## ⚙️ Installation
 
 ### 1. Clone the repository
-```bash
-git clone <repository-url>
+
+``` bash
+git clone https://github.com/AlvaroS3rrano/Evacuation_Simulation.git
 cd Evacuation_Simulation
 ```
+
 ### 2. Create and activate a virtual environment
-```bash
+
+``` bash
 python -m venv .venv
 
 # Windows
@@ -71,114 +114,143 @@ python -m venv .venv
 # Linux / macOS
 source .venv/bin/activate
 ```
-### 3. Install dependencies
-```bash
+
+### 3. Install the project
+
+``` bash
 python -m pip install -U pip
-python -m pip install -r requirements.txt
+pip install -e .
 ```
-> ⚠️ **Windows users**  
-> JuPedSim requires **Microsoft Visual C++ Redistributable 2015–2022 (x64)** to be installed.
+
+This installs the **evac-sim CLI** used to run simulations.
+
+### 4. Optional development dependencies
+
+``` bash
+pip install -e .[dev]
+```
+
+------------------------------------------------------------------------
 
 ## ▶️ Usage
 
-### Running simulations with Jupyter
+Experiments are defined in:
 
-Launch Jupyter Notebook from the project root:
+    configs/study.yaml
 
-```bash
-jupyter notebook
+Run a simulation:
+
+``` bash
+evac-sim run --config study.yaml --case corridor_case_1
 ```
-Open one of the following notebooks:
 
-- `Notebooks/main.ipynb` – main simulation workflow  
-- `Notebooks/experiments.ipynb` – execution of experimental scenarios and result analysis  
+Verbose mode:
 
-Run the cells sequentially to configure the environment, execute the simulation,
-and visualize the results.
+``` bash
+evac-sim run --config study.yaml --case corridor_case_1 -v
+```
 
-To test different scenarios, it is only necessary to modify the simulation identifier
-in the global configuration cell of the notebook.
+Custom output directory:
 
-Specifically, update the value of `simulation_name` with one of the scenario names
-defined in `configs/study.yaml`
+``` bash
+evac-sim run --config study.yaml --case corridor_case_1 --out-dir ./runs/test_run
+```
+
+Each run generates:
+
+    runs/<timestamp>_<case_name>/
+
+------------------------------------------------------------------------
+
+## 📓 Notebooks (Optional)
+
+The repository includes several Jupyter notebooks intended for **interactive exploration,
+visualization, and result analysis**.
+
+These notebooks are located in:
+
+```text
+Notebooks/
+```
+
+They can be useful for:
+- Inspecting simulation trajectories
+- Visualizing risk evolution over time
+- Generating interactive plots and animations
+- Exploring experimental results
+
+To launch Jupyter from the project root:
+````bash
+jupyter notebook
+````
+
+Then open one of the available notebooks, such as:
+- Notebooks/main.ipynb – interactive simulation workflow
+- Notebooks/experiments.ipynb – execution and analysis of experimental scenarios
+
+> Note
+> The recommended and reproducible way to run simulations is via the CLI (evac-sim).
+> Notebooks are provided mainly for exploration, visualization, and analysis of results.
 
 ## ⚙️ Configuration
 
-Simulation parameters and experimental settings are defined using YAML configuration
-files located in the `configs/` directory.
+Simulation cases are defined in YAML files under:
 
-Each simulation scenario is identified by a unique name, which can be selected in the
-notebooks through the `simulation_name` variable.
+    configs/
 
-If a different configuration file is to be used, it is sufficient to update the
-`config_name` variable in the global configuration cell of the notebook, selecting
-one of the available YAML files in the `configs/` directory.
+Example:
+
+``` yaml
+corridor_case_1:
+  environment: corridor
+  sources: [A]
+  targets: [B]
+  agents: [50]
+  risk_seed: 42
+  risk_iterations: 3000
+  gamma: 0.5
+```
+
+Run it with:
+
+``` bash
+evac-sim run --config study.yaml --case corridor_case_1
+```
+
+------------------------------------------------------------------------
 
 ## 📊 Results
 
-Simulation outputs are automatically generated to support post-processing and
-experimental analysis.
+Each execution generates:
 
-The framework produces the following types of results:
+    runs/<timestamp>_<case_name>/
 
-- **SQLite databases** stored in `data/sqlite/`, containing agent trajectories,
-  routing information, and per-frame risk values
-- **CSV files** exported to `results/CSV/`, providing aggregated metrics suitable
-  for statistical analysis
-- **Figures** generated during execution, some of which may be saved to
-  `results/images/` depending on the experiment configuration
+Main outputs:
 
-Animations are generated interactively within the Jupyter notebooks for
-visual inspection but are not saved to disk by default.
+**Logs** - `logs/run.log`
 
-These outputs can be used for quantitative evaluation, comparison of scenarios,
-and inclusion in reports or publications.
+**CSV summaries** - `experiments.csv` - `experiment_metrics.csv`
 
-## 🎥 Simulation Examples
+**SQLite databases** - `*_risks.db` - `*_paths.db` -
+`*_group_paths_mode_X.db` - `agent_area_*_mode_X.db`
 
-Several representative evacuation scenarios have been simulated to illustrate
-the behavior of agents under different routing strategies and levels of
-environmental awareness.
+**Trajectories** - `*_mode_X.sqlite`
 
-In the following videos, agents are divided into two groups for comparison:
-- **Left group**: agents following efficient routes based on *k-shortest paths*
-- **Right group**: agents following centrality-based routing strategies (agile routing)
-
-Two levels of environmental awareness are considered:
-
-- **Low-awareness scenario**  
-  https://vimeo.com/1094342872  
-  Agents have limited knowledge of the environment and rely primarily on local
-  information when selecting routes.
-
-- **High-awareness scenario**  
-  https://vimeo.com/1094342863  
-  Agents have broader knowledge of the environment, enabling more informed
-  routing decisions.
-
-In both scenarios, the comparison between efficient routing and centrality-based
-routing allows qualitative observation of differences in congestion patterns,
-route usage, and overall evacuation dynamics.
+------------------------------------------------------------------------
 
 ## 🔁 Reproducibility
 
-All simulation experiments are designed to be reproducible by separating
-configuration, execution, and analysis.
+Each run stores:
 
-- Simulation parameters and scenarios are defined in YAML configuration files
-  located in the `configs/` directory
-- The execution workflow is fully contained in Jupyter notebooks, which can be
-  rerun from start to finish
-- Random processes can be controlled through fixed seeds defined in the
-  configuration files or notebooks
-- Simulation results are stored in structured formats (SQLite and CSV) to enable
-  independent post-processing and verification
+-   configuration used
+-   git commit hash
+-   runtime metadata
+-   execution logs
 
-This setup allows experiments to be reproduced, modified, and extended without
-changes to the core simulation code.
+------------------------------------------------------------------------
 
 ## 👤 Author
 
-**Álvaro Serrano**  
-Bachelor’s Thesis / Research Project  
+Álvaro Serrano\
+Bachelor's Thesis / Research Project\
 Evacuation simulation and intelligent environments

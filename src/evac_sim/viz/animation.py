@@ -35,13 +35,9 @@ def read_sqlite_file(
             con,
         )
         fps = float(
-            con.cursor()
-            .execute("select value from metadata where key = 'fps'")
-            .fetchone()[0]
+            con.cursor().execute("select value from metadata where key = 'fps'").fetchone()[0]
         )
-        walkable_area = (
-            con.cursor().execute("select wkt from geometry").fetchone()[0]
-        )
+        walkable_area = con.cursor().execute("select wkt from geometry").fetchone()[0]
         return (
             pedpy.TrajectoryData(data=data, frame_rate=fps),
             pedpy.WalkableArea(walkable_area),
@@ -80,6 +76,7 @@ def _create_orientation_line(row, line_length=0.2, color="black"):
 
 #######################################################
 
+
 def _get_waypoint_traces(waypoint_coords):
     """Generate Scatter traces for waypoints (markers + labels)."""
     waypoint_traces = []
@@ -100,6 +97,7 @@ def _get_waypoint_traces(waypoint_coords):
 
 
 #######################################################
+
 
 def _get_geometry_traces(area):
     """
@@ -199,6 +197,7 @@ def _get_colormap(frame_data, max_speed):
 
 def _get_shapes_for_frame(frame_data, min_speed, max_speed):
     """Create Plotly shapes, hover traces, and orientation arrows for each agent in one frame."""
+
     def create_shape(row):
         hover_trace = go.Scatter(
             x=[row["x"]],
@@ -281,13 +280,9 @@ def _create_fig(
     title = f"<b>{title_note + '  |  ' if title_note else ''}Number of Agents: {initial_agent_count}</b>"
 
     fig = go.Figure(
-        data=geometry_traces
-        + initial_scatter_trace
-        + initial_hover_trace,
+        data=geometry_traces + initial_scatter_trace + initial_hover_trace,
         frames=frames,
-        layout=go.Layout(
-            shapes=initial_shapes + initial_arrows, title=title, title_x=0.5
-        ),
+        layout=go.Layout(shapes=initial_shapes + initial_arrows, title=title, title_x=0.5),
     )
     fig.update_layout(
         updatemenus=[_get_animation_controls()],
@@ -296,9 +291,7 @@ def _create_fig(
         width=width,
         height=height,
         xaxis=dict(range=[minx - 0.5, maxx + 0.5]),
-        yaxis=dict(
-            scaleanchor="x", scaleratio=1, range=[miny - 0.5, maxy + 0.5]
-        ),
+        yaxis=dict(scaleanchor="x", scaleratio=1, range=[miny - 0.5, maxy + 0.5]),
     )
 
     return fig
@@ -385,7 +378,11 @@ def generate_risk_colors(risk_threshold=0.5):
             color = f"rgba({first_color[0]}, {first_color[1]}, {first_color[2]}, {alpha:.2f})"
         else:
             # High risk: interpolate between light purple and dark purple
-            fraction = (normalized_risk - risk_threshold) / (1 - risk_threshold) if risk_threshold != 1 else 0
+            fraction = (
+                (normalized_risk - risk_threshold) / (1 - risk_threshold)
+                if risk_threshold != 1
+                else 0
+            )
             r = int(light_purple[0] + fraction * (dark_purple[0] - light_purple[0]))
             g = int(light_purple[1] + fraction * (dark_purple[1] - light_purple[1]))
             b = int(light_purple[2] + fraction * (dark_purple[2] - light_purple[2]))
@@ -402,7 +399,9 @@ def add_static_risk_colorbar():
         A go.Scatter trace with the risk colorbar.
     """
     # Generate the color scale from black to red
-    risk_colors = generate_risk_colors()  # e.g., ['rgba(255,192,203,0.0)', ..., 'rgba(128,0,128,1)']
+    risk_colors = (
+        generate_risk_colors()
+    )  # e.g., ['rgba(255,192,203,0.0)', ..., 'rgba(128,0,128,1)']
 
     # Convert risk_colors into Plotly-compatible colorscale tuples
     colorscale = [
@@ -437,16 +436,16 @@ def add_static_risk_colorbar():
 
 def animate(
     data: pedpy.TrajectoryData,  # TrajectoryData with positions and frame info
-    area: pedpy.WalkableArea,    # WalkableArea polygon
+    area: pedpy.WalkableArea,  # WalkableArea polygon
     *,
-    every_nth_frame: int = 50,   # Subsample frequency for frames
-    width: int = 800,            # Figure width in pixels
-    height: int = 800,           # Figure height in pixels
-    radius: float = 0.2,         # Visual radius for agents
-    title_note: str = "",        # Optional title annotation
-    waypoint_coords=None,        # Optional waypoint coordinates
-    risk_per_frame: dict = None, # Risk levels per frame
-    specific_areas: dict = None, # Polygons to highlight for risk
+    every_nth_frame: int = 50,  # Subsample frequency for frames
+    width: int = 800,  # Figure width in pixels
+    height: int = 800,  # Figure height in pixels
+    radius: float = 0.2,  # Visual radius for agents
+    title_note: str = "",  # Optional title annotation
+    waypoint_coords=None,  # Optional waypoint coordinates
+    risk_per_frame: dict = None,  # Risk levels per frame
+    specific_areas: dict = None,  # Polygons to highlight for risk
 ):
     """
     Create an animated Plotly Figure showing trajectories, walkable area, agent speeds, and risk zones.
@@ -515,9 +514,7 @@ def animate(
     # Process each selected frame
     for frame_num in selected_frames:
         # Get processed data for this frame (ensuring max_agents rows)
-        frame_data, agent_count = _get_processed_frame_data(
-            data_df, frame_num, max_agents
-        )
+        frame_data, agent_count = _get_processed_frame_data(data_df, frame_num, max_agents)
         # Recompute geometry traces each frame in case risk zones change
         geometry_traces = _get_geometry_traces(area.polygon)
 
@@ -530,12 +527,12 @@ def animate(
                 geometry_traces = _change_geometry_traces(geometry_traces, specific_area, color)
 
         # Generate shapes, hover traces, and orientation arrows for this frame
-        shapes, hover_traces, arrows = _get_shapes_for_frame(
-            frame_data, min_speed, max_speed
-        )
+        shapes, hover_traces, arrows = _get_shapes_for_frame(frame_data, min_speed, max_speed)
 
         # Construct dynamic title for this frame
-        title = f"<b>{title_note + '  |  ' if title_note else ''}Number of Agents: {agent_count}</b>"
+        title = (
+            f"<b>{title_note + '  |  ' if title_note else ''}Number of Agents: {agent_count}</b>"
+        )
 
         # Frame name as string
         frame_name = str(int(frame_num))

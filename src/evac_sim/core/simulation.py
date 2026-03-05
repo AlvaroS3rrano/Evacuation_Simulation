@@ -133,9 +133,7 @@ class Simulation:
             model=py_jps_model, geometry=build_geometry(geometry)._obj, dt=dt
         )
 
-    def add_waypoint_stage(
-        self, position: tuple[float, float], distance
-    ) -> int:
+    def add_waypoint_stage(self, position: tuple[float, float], distance) -> int:
         """Add a new waypoint stage to this simulation.
 
         Arguments:
@@ -162,9 +160,7 @@ class Simulation:
         """
         return self._obj.add_queue_stage(positions)
 
-    def add_waiting_set_stage(
-        self, positions: list[tuple[float, float]]
-    ) -> int:
+    def add_waiting_set_stage(self, positions: list[tuple[float, float]]) -> int:
         """Add a new waiting set stage to this simulation.
 
         Arguments:
@@ -305,9 +301,7 @@ class Simulation:
             if self._writer:
                 self._writer.write_iteration_state(self)
 
-    def switch_agent_journey(
-        self, agent_id: int, journey_id: int, stage_id: int
-    ) -> None:
+    def switch_agent_journey(self, agent_id: int, journey_id: int, stage_id: int) -> None:
         """Switch agent to the given journey at the given stage.
 
         Arguments:
@@ -315,9 +309,7 @@ class Simulation:
             journey_id: Id of the new journey to follow
             stage_id: Id of the stage in the new journey the agent continues with
         """
-        self._obj.switch_agent_journey(
-            agent_id=agent_id, journey_id=journey_id, stage_id=stage_id
-        )
+        self._obj.switch_agent_journey(agent_id=agent_id, journey_id=journey_id, stage_id=stage_id)
 
     def agent_count(self) -> int:
         """Number of agents in the simulation.
@@ -371,9 +363,7 @@ class Simulation:
         """
         return self._obj.agent(agent_id)
 
-    def agents_in_range(
-        self, pos: tuple[float, float], distance: float
-    ) -> list[Agent]:
+    def agents_in_range(self, pos: tuple[float, float], distance: float) -> list[Agent]:
         """Agents within the given distance to the given position.
 
         Arguments:
@@ -442,9 +432,7 @@ class Simulation:
             case py_jps.WaitingSetProxy():
                 return WaitingSetStage(stage)
             case _:
-                raise Exception(
-                    f"Internal error, unexpected type: {type(stage)}"
-                )
+                raise Exception(f"Internal error, unexpected type: {type(stage)}")
 
     def set_tracing(self, status: bool) -> None:
         self._obj.set_tracing(status)
