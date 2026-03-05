@@ -1,0 +1,15 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "evac-sim"
+version = "0.1.0"
+description = "Evacuation simulation framework"
+requires-python = ">=3.9"
+
+[project.scripts]
+evac-sim = "evac_sim.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
