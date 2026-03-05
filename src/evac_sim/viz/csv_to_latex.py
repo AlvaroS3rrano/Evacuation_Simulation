@@ -6,10 +6,10 @@ import pandas as pd
 # ----------------------------
 
 CFG_ORDER = [
-    "Centrality, High Awareness",
-    "Centrality, Low Awareness",
-    "Efficient, High Awareness",
-    "Efficient, Low Awareness",
+    "Centrality, High-Awareness",
+    "Centrality, Low-Awareness",
+    "Efficient, High-Awareness",
+    "Efficient, Low-Awareness",
 ]
 
 # Metric spec: (column_name, is_time_metric)
@@ -28,7 +28,7 @@ def _make_configuration(df: pd.DataFrame) -> pd.Series:
         df["algorithm"].astype(str)
         + ", "
         + df["awareness"].astype(str)
-        + " Awareness"
+        + "-Awareness"
     )
 
 
@@ -313,13 +313,13 @@ if __name__ == "__main__":
         "corridor": "../../../results/CSV/corridor_experiment_metrics.csv",
     }
 
-    scenario = "corridor"  # change to "theme_park" or "corridor"
+    scenario = "theme_park"  # change to "theme_park" or "corridor"
     case = "example_case"
     mode = "mean+std"    # "mean", "std", "mean+std"4
 
-    # latex_rows = csv_to_latex_rows_casewise_config(CSV_PATHS[scenario])
+    latex_rows = csv_to_latex_rows_casewise_config(CSV_PATHS[scenario])
     # latex_rows = csv_to_latex_rows_for_case_config_means(CSV_PATHS[scenario], "example_case")
-    latex_rows = csv_to_latex_rows_scenario_compact_config(CSV_PATHS[scenario], mode=mode)
+    # latex_rows = csv_to_latex_rows_scenario_compact_config(CSV_PATHS[scenario], mode=mode)
     print(latex_rows)
 
 
