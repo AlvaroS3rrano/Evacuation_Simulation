@@ -11,12 +11,21 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Optional
 
+import networkx as nx
+import matplotlib as mpl
+import matplotlib.pyplot as plt
+from matplotlib.patches import Polygon as MplPolygon
+from matplotlib.path import Path as MplPath
+from shapely.geometry import Polygon, MultiPolygon
+from matplotlib import cm
+from matplotlib.ticker import FormatStrFormatter
 
 import jupedsim as jps
 import numpy as np
 import yaml
 import pandas as pd
 import gc
+from matplotlib.colors import LinearSegmentedColormap
 
 import evac_sim.envs.environment as pol
 from evac_sim.core.agent_group import AgentGroup
@@ -74,37 +83,88 @@ def _p90(values: list[float]) -> float:
         return 0.0
     return float(np.percentile(np.array(values, dtype=float), 90))
 
-
-def _evacuation_times_from_agent_area(agent_area_df: pd.DataFrame) -> dict[int, int]:
-    """
-    Returns evacuation time per agent as the last frame recorded for that agent.
-    If an agent disappears after evacuation, the last recorded frame is a good proxy.
-    """
-    if agent_area_df.empty:
-        return {}
-    # last frame per agent
-    last_frames = agent_area_df.groupby("agent_id")["frame"].max()
-    return {int(agent_id): int(frame) for agent_id, frame in last_frames.items()}
-
-def _read_sqlite_fps(conn: sqlite3.Connection) -> float:
-    row = conn.execute(
-        "SELECT value FROM metadata WHERE key = 'fps'"
-    ).fetchone()
-    if row is None:
-        raise RuntimeError("No 'fps' entry found in trajectory SQLite metadata")
-    return float(row[0])
-
 def _compute_times_from_trajectory_sqlite(
     trajectory_db_file: Path,
     agent_ids: list[int],
 ) -> list[float]:
+    """
+    Compute per-agent evacuation times from the JuPedSim trajectory SQLite output,
+    using the FPS written by JuPedSim into the trajectory database metadata.
+    """
     if not agent_ids:
         return []
 
     conn = sqlite3.connect(str(trajectory_db_file))
     try:
-        fps = _read_sqlite_fps(conn)
+        tables_df = pd.read_sql_query(
+            "SELECT name FROM sqlite_master WHERE type='table'",
+            conn,
+        )
+        table_names = set(tables_df["name"].tolist())
 
+        trajectory_table = next(
+            (name for name in ["trajectory_data", "trajectory", "trajectories"] if name in table_names),
+            None,
+        )
+
+        if trajectory_table is None:
+            raise RuntimeError(
+                f"No trajectory table found in {trajectory_db_file}. "
+                f"Available tables: {sorted(table_names)}"
+            )
+
+        fps = _read_sqlite_fps(conn)
+        ids_str = ",".join(str(int(a)) for a in agent_ids)
+
+        query = f"""
+            SELECT id, MAX(frame) AS max_frame
+            FROM {trajectory_table}
+            WHERE id IN ({ids_str})
+            GROUP BY id
+        """
+
+        df = pd.read_sql_query(query, conn)
+    finally:
+        conn.close()
+
+    if df.empty:
+        return []
+
+    return (df["max_frame"].astype(float) / fps).tolist()
+
+def _path_cost(graph: nx.Graph, path: list[Any]) -> float:
+    if not path or len(path) < 2:
+        return 0.0
+
+    total_cost = 0.0
+    for u, v in zip(path, path[1:]):
+        if not graph.has_edge(u, v):
+            raise RuntimeError(
+                f"Edge ({u}, {v}) not found while computing cost for path {path}"
+            )
+
+        edge_data = graph[u][v]
+        cost = edge_data.get("cost")
+        if cost is None:
+            raise RuntimeError(
+                f"Edge ({u}, {v}) is missing the 'cost' attribute for path {path}"
+            )
+
+        total_cost += float(cost)
+
+    return total_cost
+
+
+def _read_sqlite_fps(conn: sqlite3.Connection) -> float:
+    row = conn.execute("SELECT value FROM metadata WHERE key = ?", ("fps",)).fetchone()
+    if row is None:
+        raise RuntimeError("Trajectory DB missing metadata.fps")
+    return float(row[0])
+
+
+def _read_trajectory_dataframe(trajectory_db_file: Path) -> tuple[pd.DataFrame, float]:
+    conn = sqlite3.connect(str(trajectory_db_file))
+    try:
         tables_df = pd.read_sql_query(
             "SELECT name FROM sqlite_master WHERE type='table'",
             conn,
@@ -117,28 +177,353 @@ def _compute_times_from_trajectory_sqlite(
         )
         if trajectory_table is None:
             raise RuntimeError(
-                f"No trajectory table found in {trajectory_db_file}. "
-                f"Available tables: {sorted(table_names)}"
+                f"No trajectory table found in {trajectory_db_file}. Available tables: {sorted(table_names)}"
             )
 
-        ids_str = ",".join(str(int(a)) for a in agent_ids)
-        query = f"""
-            SELECT id, MAX(frame) AS max_frame
-            FROM {trajectory_table}
-            WHERE id IN ({ids_str})
-            GROUP BY id
-        """
-        df = pd.read_sql_query(query, conn)
+        fps = _read_sqlite_fps(conn)
+        df = pd.read_sql_query(
+            f"SELECT frame, id, pos_x, pos_y FROM {trajectory_table}",
+            conn,
+        )
     finally:
         conn.close()
 
-    if df.empty:
-        return []
+    if not df.empty:
+        df["frame"] = df["frame"].astype(float)
+        df["id"] = df["id"].astype(int)
+        df["pos_x"] = df["pos_x"].astype(float)
+        df["pos_y"] = df["pos_y"].astype(float)
 
-    return (df["max_frame"].astype(float) / fps).tolist()
+    return df, fps
+
+
+def _draw_polygon_outline(ax: plt.Axes, poly: Polygon, *, edgecolor: str = "black", linewidth: float = 1.0, alpha: float = 1.0) -> None:
+    x, y = poly.exterior.xy
+    ax.plot(x, y, color=edgecolor, linewidth=linewidth, alpha=alpha)
+    for interior in poly.interiors:
+        ix, iy = interior.xy
+        ax.plot(ix, iy, color=edgecolor, linewidth=linewidth, alpha=alpha)
+
+
+def _draw_polygon_fill(ax: plt.Axes, poly: Polygon, *, facecolor: str = "lightgray", edgecolor: str = "none", alpha: float = 1.0) -> None:
+    exterior = np.asarray(poly.exterior.coords)
+    patch = MplPolygon(
+        exterior,
+        closed=True,
+        facecolor=facecolor,
+        edgecolor=edgecolor,
+        alpha=alpha,
+    )
+    ax.add_patch(patch)
+
+
+def _iter_polygons(geom: Any) -> list[Polygon]:
+    if isinstance(geom, Polygon):
+        return [geom]
+    if isinstance(geom, MultiPolygon):
+        return list(geom.geoms)
+    raise TypeError(f"Unsupported geometry type for plotting: {type(geom)!r}")
+
+
+def _plot_environment_base(ax: plt.Axes, walkable_area: Any) -> None:
+    polygon = getattr(walkable_area, "polygon", walkable_area)
+    for poly in _iter_polygons(polygon):
+        _draw_polygon_outline(ax, poly, edgecolor="black", linewidth=1.5, alpha=0.9)
+
+    minx, miny, maxx, maxy = polygon.bounds
+    ax.set_xlim(minx, maxx)
+    ax.set_ylim(miny, maxy)
+    ax.set_aspect("equal", adjustable="box")
+    ax.set_xlabel("x")
+    ax.set_ylabel("y")
+
+
+def _get_waypoint_xy(waypoints: dict[Any, Any], node_id: Any) -> tuple[float, float]:
+    waypoint = waypoints[str(node_id)] if str(node_id) in waypoints else waypoints[node_id]
+    coords = waypoint[0]
+    return float(coords[0]), float(coords[1])
+
+
+def _starting_positions_from_trajectory(trajectory_df: pd.DataFrame) -> pd.DataFrame:
+    if trajectory_df.empty:
+        return pd.DataFrame(columns=["id", "pos_x", "pos_y"])
+
+    ordered = trajectory_df.sort_values(["id", "frame"]).copy()
+    return ordered.groupby("id", as_index=False).first()[["id", "pos_x", "pos_y"]]
+
+
+def _overlay_start_and_target_markers(
+    ax: plt.Axes,
+    *,
+    trajectory_df: pd.DataFrame,
+    waypoints: dict[Any, Any],
+    target_nodes: list[Any],
+) -> None:
+    start_df = _starting_positions_from_trajectory(trajectory_df)
+    if not start_df.empty:
+        ax.scatter(
+            start_df["pos_x"],
+            start_df["pos_y"],
+            s=18,
+            marker="o",
+            c="black",
+            edgecolors="white",
+            linewidths=0.35,
+            alpha=0.95,
+            zorder=6,
+        )
+
+    target_xy = [
+        _get_waypoint_xy(waypoints, target)
+        for target in target_nodes
+        if str(target) in waypoints or target in waypoints
+    ]
+    if target_xy:
+        tx, ty = zip(*target_xy)
+        ax.scatter(
+            tx,
+            ty,
+            s=140,
+            marker="*",
+            c="#ffd54f",
+            edgecolors="black",
+            linewidths=0.8,
+            alpha=1.0,
+            zorder=7,
+        )
+        for target, (x, y) in zip(target_nodes, target_xy):
+            ax.annotate(
+                str(target),
+                (x, y),
+                xytext=(5, 5),
+                textcoords="offset points",
+                fontsize=8,
+                color="black",
+                zorder=8,
+            )
+
+
+def _overlay_danger_snapshot(
+    fig,
+    ax,
+    *,
+    specific_areas: dict[Any, Any],
+    risk_by_area: dict[Any, float] | None,
+    danger_frame: int | None,
+) -> None:
+    if not risk_by_area:
+        return
+
+    norm_risk = mpl.colors.Normalize(vmin=0.0, vmax=1.0)
+    risk_cmap = LinearSegmentedColormap.from_list(
+        "pink_purple",
+        ["white", "pink", "purple"],
+    )
+    sm_risk = cm.ScalarMappable(cmap=risk_cmap, norm=norm_risk)
+    sm_risk.set_array([])
+
+    for area_id, risk_value in risk_by_area.items():
+        area_key = area_id if area_id in specific_areas else str(area_id)
+        if area_key not in specific_areas:
+            continue
+
+        poly = Polygon(specific_areas[area_key])
+        x, y = poly.exterior.xy
+        ax.fill(
+            x,
+            y,
+            color=risk_cmap(norm_risk(float(risk_value))),
+            alpha=0.5,
+            linewidth=0,
+            zorder=1,
+        )
+
+    cbar = fig.colorbar(sm_risk, ax=ax, fraction=0.045, pad=0.04)
+    cbar.set_label(f"danger at frame {danger_frame}")
+    cbar.set_ticks(np.arange(0.0, 1.01, 0.1))
+    cbar.ax.yaxis.set_major_formatter(FormatStrFormatter("%.1f"))
+
+
+def _save_trajectory_plot(
+    *,
+    trajectory_df: pd.DataFrame,
+    walkable_area: Any,
+    waypoints: dict[Any, Any],
+    target_nodes: list[Any],
+    specific_areas: dict[Any, Any],
+    output_file: Path,
+    title: str,
+    risk_by_area: dict[Any, float] | None = None,
+    danger_frame: int | None = None,
+) -> None:
+    fig, ax = plt.subplots(figsize=(10, 8))
+    _plot_environment_base(ax, walkable_area)
+
+    if risk_by_area:
+        _overlay_danger_snapshot(
+            fig,
+            ax,
+            specific_areas=specific_areas,
+            risk_by_area=risk_by_area,
+            danger_frame=danger_frame,
+        )
+
+    if not trajectory_df.empty:
+        for _, group_df in trajectory_df.sort_values(["id", "frame"]).groupby("id"):
+            ax.plot(
+                group_df["pos_x"],
+                group_df["pos_y"],
+                linewidth=0.6,
+                alpha=0.38,
+                color="#1f1f1f",
+                zorder=4,
+            )
+
+    _overlay_start_and_target_markers(
+        ax,
+        trajectory_df=trajectory_df,
+        waypoints=waypoints,
+        target_nodes=target_nodes,
+    )
+
+    ax.set_title(title)
+    fig.tight_layout()
+    fig.savefig(output_file, dpi=300, bbox_inches="tight")
+    plt.close(fig)
+
+
+def _save_density_plot(
+    *,
+    trajectory_df: pd.DataFrame,
+    walkable_area: Any,
+    waypoints: dict[Any, Any],
+    target_nodes: list[Any],
+    output_file: Path,
+    title: str,
+    cell_size: float = 0.5,
+) -> None:
+    polygon = getattr(walkable_area, "polygon", walkable_area)
+    minx, miny, maxx, maxy = polygon.bounds
+
+    fig, ax = plt.subplots(figsize=(10, 8))
+
+    for poly in _iter_polygons(polygon):
+        _draw_polygon_fill(ax, poly, facecolor="white", edgecolor="none", alpha=1.0)
+
+    if not trajectory_df.empty:
+        x_edges = np.arange(minx, maxx + cell_size, cell_size)
+        y_edges = np.arange(miny, maxy + cell_size, cell_size)
+
+        heatmap, xedges, yedges = np.histogram2d(
+            trajectory_df["pos_x"].to_numpy(dtype=float),
+            trajectory_df["pos_y"].to_numpy(dtype=float),
+            bins=[x_edges, y_edges],
+        )
+
+        x_centers = (xedges[:-1] + xedges[1:]) / 2.0
+        y_centers = (yedges[:-1] + yedges[1:]) / 2.0
+        xx, yy = np.meshgrid(x_centers, y_centers, indexing="ij")
+        points = np.column_stack([xx.ravel(), yy.ravel()])
+
+        mask = np.zeros(points.shape[0], dtype=bool)
+        for poly in _iter_polygons(polygon):
+            exterior_path = MplPath(np.asarray(poly.exterior.coords))
+            inside = exterior_path.contains_points(points)
+            if poly.interiors:
+                for interior in poly.interiors:
+                    inside &= ~MplPath(np.asarray(interior.coords)).contains_points(points)
+            mask |= inside
+
+        masked_heatmap = np.ma.masked_where(~mask.reshape(heatmap.shape), heatmap)
+
+        mesh = ax.pcolormesh(
+            xedges,
+            yedges,
+            masked_heatmap.T,
+            shading="auto",
+            cmap="magma",
+            alpha=0.9,
+            zorder=1,
+        )
+        cbar = fig.colorbar(mesh, ax=ax)
+        cbar.set_label("trajectory sample density")
+
+    _plot_environment_base(ax, walkable_area)
+
+    _overlay_start_and_target_markers(
+        ax,
+        trajectory_df=trajectory_df,
+        waypoints=waypoints,
+        target_nodes=target_nodes,
+    )
+
+    ax.set_title(title)
+    fig.tight_layout()
+    fig.savefig(output_file, dpi=300, bbox_inches="tight")
+    plt.close(fig)
+
+
+def _generate_mode_visual_artifacts(
+    *,
+    trajectory_file: Path,
+    walkable_area: Any,
+    waypoints: dict[Any, Any],
+    target_nodes: list[Any],
+    specific_areas: dict[Any, Any],
+    risk_db_file: Path,
+    danger_frame: int | None,
+    artifacts_dir: Path,
+    env_name: str,
+    mode: int,
+) -> None:
+    trajectory_df, fps = _read_trajectory_dataframe(trajectory_file)
+    log.info(
+        "Generating visual artifacts | mode=%s fps=%.6f rows=%d",
+        mode,
+        fps,
+        len(trajectory_df),
+    )
+
+    trajectory_png = artifacts_dir / f"{env_name}_mode_{mode}_trajectories.png"
+    density_png = artifacts_dir / f"{env_name}_mode_{mode}_density.png"
+
+    risk_by_area = None
+    if danger_frame is not None:
+        risk_conn = sqlite3.connect(str(risk_db_file))
+        try:
+            risk_by_area = get_risk_levels_by_frame(risk_conn, int(danger_frame))
+        finally:
+            risk_conn.close()
+
+    _save_trajectory_plot(
+        trajectory_df=trajectory_df,
+        walkable_area=walkable_area,
+        waypoints=waypoints,
+        target_nodes=target_nodes,
+        specific_areas=specific_areas,
+        output_file=trajectory_png,
+        title=(
+            f"{env_name} - mode {mode} trajectories"
+            + (f" - danger frame {danger_frame}" if danger_frame is not None else "")
+        ),
+        risk_by_area=risk_by_area,
+        danger_frame=danger_frame,
+    )
+
+    _save_density_plot(
+        trajectory_df=trajectory_df,
+        walkable_area=walkable_area,
+        output_file=density_png,
+        waypoints=waypoints,
+        target_nodes=target_nodes,
+        title=f"{env_name} - mode {mode} density",
+    )
+
+
 
 def _compute_group_metrics(
     *,
+    graph: nx.Graph,
     group_path_df: pd.DataFrame,
     agent_area_conn: sqlite3.Connection,
     group_id: Any,
@@ -152,11 +537,13 @@ def _compute_group_metrics(
     remaining_path_risk_var = float(gdf["est_risk_var"].mean()) if n_records else 0.0
 
     if n_records and "next_path" in gdf.columns:
-        avg_path_length = float(
-            gdf["next_path"].apply(lambda p: len(p) if isinstance(p, list) else 0).mean()
+        avg_path_cost = float(
+            gdf["next_path"].apply(
+                lambda p: _path_cost(graph, p) if isinstance(p, list) else 0.0
+            ).mean()
         )
     else:
-        avg_path_length = 0.0
+        avg_path_cost = 0.0
 
     cumulative_risk_exposure = float(
         get_average_normalized_risk_exposure_by_group(agent_area_conn, agent_ids)
@@ -176,7 +563,7 @@ def _compute_group_metrics(
         "mean_remaining_path_risk": mean_remaining_path_risk,
         "remaining_path_risk_var": remaining_path_risk_var,
         "cumulative_risk_exposure": cumulative_risk_exposure,
-        "avg_path_length": avg_path_length,
+        "avg_path_cost": avg_path_cost,
         "min_time": min_time,
         "avg_time": avg_time,
         "median_time": median_time,
@@ -217,6 +604,8 @@ def _setup_run_logging(run_dir: Path, verbose: bool) -> None:
     log_file = logs_dir / "run.log"
 
     level = logging.DEBUG if verbose else logging.INFO
+    logging.getLogger("matplotlib").setLevel(logging.WARNING)
+
     logging.basicConfig(
         level=level,
         format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
@@ -315,6 +704,9 @@ def _run_experiment_from_case(cfg: dict[str, Any], paths: RunPaths, case_id: str
 
     every_nth_frame_simulation = int(cfg["every_nth_frame_simulation"])
     every_nth_frame_animation = int(cfg["every_nth_frame_animation"])
+    danger_visualization_frame = cfg.get("danger_visualization_frame", cfg.get("danger_frame", None))
+    if danger_visualization_frame is not None:
+        danger_visualization_frame = int(danger_visualization_frame)
 
     starting_risks = [tuple(x) for x in (cfg.get("starting_risks", []) or [])]
     risk_overrides = [tuple(x) for x in (cfg.get("risk_overrides", []) or [])]
@@ -515,6 +907,7 @@ def _run_experiment_from_case(cfg: dict[str, Any], paths: RunPaths, case_id: str
             )
 
             metrics = _compute_group_metrics(
+                graph=G,
                 group_path_df=group_path_df,
                 agent_area_conn=agent_area_conn,
                 group_id=group_id,
@@ -545,7 +938,7 @@ def _run_experiment_from_case(cfg: dict[str, Any], paths: RunPaths, case_id: str
                 mean_remaining_path_risk=metrics["mean_remaining_path_risk"],
                 remaining_path_risk_var=metrics["remaining_path_risk_var"],
                 cumulative_risk_exposure=metrics["cumulative_risk_exposure"],
-                avg_path_length=metrics["avg_path_length"],
+                avg_path_cost=metrics["avg_path_cost"],
                 avg_time=metrics["avg_time"],
                 median_time=metrics["median_time"],
                 p90_time=metrics["p90_time"],
@@ -555,6 +948,19 @@ def _run_experiment_from_case(cfg: dict[str, Any], paths: RunPaths, case_id: str
 
         # Persist mode results before moving to the next one
         results_db_conn.commit()
+
+        _generate_mode_visual_artifacts(
+            trajectory_file=trajectory_file,
+            walkable_area=walkable_area,
+            waypoints=waypoints,
+            target_nodes=targets,
+            specific_areas=specific_areas,
+            risk_db_file=risk_db_file,
+            danger_frame=danger_visualization_frame,
+            artifacts_dir=paths.artifacts_dir,
+            env_name=env_name,
+            mode=mode,
+        )
 
         # Close per-mode DB connections
         agent_area_conn.close()

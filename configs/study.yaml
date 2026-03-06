@@ -21,6 +21,7 @@ example_case:
   normal_max_speed: 1.2
   every_nth_frame_simulation: 3
   every_nth_frame_animation: 50
+  danger_visualization_frame: 2200
 
 representative_case:
   environment: "cruise_ship"
@@ -45,6 +46,7 @@ representative_case:
   normal_max_speed: 1.2
   every_nth_frame_simulation: 3
   every_nth_frame_animation: 50
+  danger_visualization_frame: 2200
 
 representative_case_theme_park:
   environment: "theme_park"
@@ -69,6 +71,7 @@ representative_case_theme_park:
   normal_max_speed: 1.2
   every_nth_frame_simulation: 3
   every_nth_frame_animation: 50
+  danger_visualization_frame: 2200
 
 ######## CORRIDOR CASES ############
 
@@ -90,6 +93,7 @@ corridor_case_1:
   normal_max_speed: 1.2
   every_nth_frame_simulation: 3
   every_nth_frame_animation: 50
+  danger_visualization_frame: 500
 
 corridor_case_2:
   environment: "corridor"
@@ -109,6 +113,7 @@ corridor_case_2:
   normal_max_speed: 1.2
   every_nth_frame_simulation: 3
   every_nth_frame_animation: 50
+  danger_visualization_frame: 500
 
 corridor_case_3:
   environment: "corridor"
@@ -129,6 +134,7 @@ corridor_case_3:
   normal_max_speed: 1.2
   every_nth_frame_simulation: 3
   every_nth_frame_animation: 50
+  danger_visualization_frame: 500
 
 corridor_case_4:
   environment: "corridor"
@@ -150,6 +156,7 @@ corridor_case_4:
   normal_max_speed: 1.2
   every_nth_frame_simulation: 3
   every_nth_frame_animation: 50
+  danger_visualization_frame: 500
 
 corridor_case_5:
   environment: "corridor"
@@ -170,6 +177,7 @@ corridor_case_5:
   normal_max_speed: 1.2
   every_nth_frame_simulation: 3
   every_nth_frame_animation: 50
+  danger_visualization_frame: 500
 
 corridor_case_6:
   environment: "corridor"
@@ -191,6 +199,7 @@ corridor_case_6:
   normal_max_speed: 1.2
   every_nth_frame_simulation: 3
   every_nth_frame_animation: 50
+  danger_visualization_frame: 500
 
 corridor_case_7:
   environment: "corridor"
@@ -210,6 +219,8 @@ corridor_case_7:
   normal_max_speed: 1.2
   every_nth_frame_simulation: 3
   every_nth_frame_animation: 50
+  danger_visualization_frame: 500
+
 
 corridor_case_8:
   environment: "corridor"
@@ -232,6 +243,8 @@ corridor_case_8:
   normal_max_speed: 1.2
   every_nth_frame_simulation: 3
   every_nth_frame_animation: 50
+  danger_visualization_frame: 500
+
 
 corridor_case_9:
   environment: "corridor"
@@ -254,6 +267,8 @@ corridor_case_9:
   normal_max_speed: 1.2
   every_nth_frame_simulation: 3
   every_nth_frame_animation: 50
+  danger_visualization_frame: 500
+
 
 corridor_case_10:
   environment: "corridor"
@@ -275,6 +290,8 @@ corridor_case_10:
   normal_max_speed: 1.2
   every_nth_frame_simulation: 3
   every_nth_frame_animation: 50
+  danger_visualization_frame: 500
+
 
 ####################################
 
@@ -303,6 +320,8 @@ cruise_ship_case_1:
   normal_max_speed: 1.2
   every_nth_frame_simulation: 3
   every_nth_frame_animation: 50
+  danger_visualization_frame: 1200
+
 
 cruise_ship_case_2:
   environment: "cruise_ship"
@@ -327,6 +346,8 @@ cruise_ship_case_2:
   normal_max_speed: 1.2
   every_nth_frame_simulation: 3
   every_nth_frame_animation: 50
+  danger_visualization_frame: 1200
+
 
 cruise_ship_case_3:
   environment: "cruise_ship"
@@ -351,6 +372,7 @@ cruise_ship_case_3:
   normal_max_speed: 1.2
   every_nth_frame_simulation: 3
   every_nth_frame_animation: 50
+  danger_visualization_frame: 1200
 
 cruise_ship_case_4:
   environment: "cruise_ship"
@@ -375,6 +397,7 @@ cruise_ship_case_4:
   normal_max_speed: 1.2
   every_nth_frame_simulation: 3
   every_nth_frame_animation: 50
+  danger_visualization_frame: 1200
 
 cruise_ship_case_5:
   environment: "cruise_ship"
@@ -394,6 +417,7 @@ cruise_ship_case_5:
   normal_max_speed: 1.2
   every_nth_frame_simulation: 3
   every_nth_frame_animation: 50
+  danger_visualization_frame: 1200
 
 cruise_ship_case_6:
   environment: "cruise_ship"
@@ -418,6 +442,7 @@ cruise_ship_case_6:
   normal_max_speed: 1.2
   every_nth_frame_simulation: 3
   every_nth_frame_animation: 50
+  danger_visualization_frame: 1200
 
 cruise_ship_case_7:
   environment: "cruise_ship"
@@ -443,6 +468,7 @@ cruise_ship_case_7:
   normal_max_speed: 1.2
   every_nth_frame_simulation: 3
   every_nth_frame_animation: 50
+  danger_visualization_frame: 1200
 
 cruise_ship_case_8:
   environment: "cruise_ship"
@@ -465,6 +491,7 @@ cruise_ship_case_8:
   normal_max_speed: 1.2
   every_nth_frame_simulation: 3
   every_nth_frame_animation: 50
+  danger_visualization_frame: 1200
 
 cruise_ship_case_9:
   environment: "cruise_ship"
@@ -488,6 +515,7 @@ cruise_ship_case_9:
   normal_max_speed: 1.2
   every_nth_frame_simulation: 3
   every_nth_frame_animation: 50
+  danger_visualization_frame: 1200
 
 cruise_ship_case_10:
   environment: "cruise_ship"
@@ -514,6 +542,7 @@ cruise_ship_case_10:
   normal_max_speed: 1.2
   every_nth_frame_simulation: 3
   every_nth_frame_animation: 50
+  danger_visualization_frame: 1200
 
 ####################################
 
@@ -542,6 +571,7 @@ theme_park_case_1:
   normal_max_speed: 1.2
   every_nth_frame_simulation: 3
   every_nth_frame_animation: 50
+  danger_visualization_frame: 1200
 
 theme_park_case_2:
   environment: "theme_park"
@@ -566,6 +596,7 @@ theme_park_case_2:
   normal_max_speed: 1.2
   every_nth_frame_simulation: 3
   every_nth_frame_animation: 50
+  danger_visualization_frame: 1200
 
 theme_park_case_3:
   environment: "theme_park"
@@ -590,6 +621,7 @@ theme_park_case_3:
   normal_max_speed: 1.2
   every_nth_frame_simulation: 3
   every_nth_frame_animation: 50
+  danger_visualization_frame: 1200
 
 theme_park_case_4:
   environment: "theme_park"
@@ -614,6 +646,7 @@ theme_park_case_4:
   normal_max_speed: 1.2
   every_nth_frame_simulation: 3
   every_nth_frame_animation: 50
+  danger_visualization_frame: 1200
 
 theme_park_case_5:
   environment: "theme_park"
@@ -633,6 +666,7 @@ theme_park_case_5:
   normal_max_speed: 1.2
   every_nth_frame_simulation: 3
   every_nth_frame_animation: 50
+  danger_visualization_frame: 1200
 
 theme_park_case_6:
   environment: "theme_park"
@@ -656,6 +690,7 @@ theme_park_case_6:
   normal_max_speed: 1.2
   every_nth_frame_simulation: 3
   every_nth_frame_animation: 50
+  danger_visualization_frame: 1200
 
 theme_park_case_7:
   environment: "theme_park"
@@ -676,6 +711,7 @@ theme_park_case_7:
   normal_max_speed: 1.2
   every_nth_frame_simulation: 3
   every_nth_frame_animation: 50
+  danger_visualization_frame: 1200
 
 theme_park_case_8:
   environment: "theme_park"
@@ -696,6 +732,7 @@ theme_park_case_8:
   normal_max_speed: 1.2
   every_nth_frame_simulation: 3
   every_nth_frame_animation: 50
+  danger_visualization_frame: 1200
 
 theme_park_case_9:
   environment: "theme_park"
@@ -716,6 +753,7 @@ theme_park_case_9:
   normal_max_speed: 1.2
   every_nth_frame_simulation: 3
   every_nth_frame_animation: 50
+  danger_visualization_frame: 1200
 
 theme_park_case_10:
   environment: "theme_park"
@@ -736,6 +774,7 @@ theme_park_case_10:
   normal_max_speed: 1.2
   every_nth_frame_simulation: 3
   every_nth_frame_animation: 50
+  danger_visualization_frame: 1200
 
 ####################################
 
@@ -758,3 +797,4 @@ crowding:
   normal_max_speed: 1.2
   every_nth_frame_simulation: 3
   every_nth_frame_animation: 50
+  danger_visualization_frame: 1200

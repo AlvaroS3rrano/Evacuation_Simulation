@@ -42,7 +42,7 @@ def create_tables(connection: sqlite3.Connection, force_reset: bool = False) -> 
                     mean_remaining_path_risk REAL,
                     remaining_path_risk_var REAL,
                     cumulative_risk_exposure REAL,
-                    avg_path_length REAL,
+                    avg_path_cost REAL,
                     min_time REAL,
                     avg_time REAL,
                     median_time REAL,
@@ -121,7 +121,7 @@ def write_experiment_metrics(
     mean_remaining_path_risk: float,
     remaining_path_risk_var: float,
     cumulative_risk_exposure: float,
-    avg_path_length: float,
+    avg_path_cost: float,
     avg_time: float,
     median_time: float,
     p90_time: float,
@@ -138,7 +138,7 @@ def write_experiment_metrics(
                 INSERT OR REPLACE INTO experiment_metrics (
                     experiment_id, case_name, agent_group_id, algorithm, awareness,
                     n_records, mean_remaining_path_risk, remaining_path_risk_var,
-                    cumulative_risk_exposure, avg_path_length,
+                    cumulative_risk_exposure, avg_path_cost,
                     min_time, avg_time, median_time, p90_time, max_time
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
@@ -152,7 +152,7 @@ def write_experiment_metrics(
                     mean_remaining_path_risk,
                     remaining_path_risk_var,
                     cumulative_risk_exposure,
-                    avg_path_length,
+                    avg_path_cost,
                     min_time,
                     avg_time,
                     median_time,
