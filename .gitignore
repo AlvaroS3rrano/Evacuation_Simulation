@@ -1,5 +1,6 @@
 /data/sqlite
-
+*.db
+*.sqlite
 /results/images/*.png
 
 # Python cache
@@ -11,3 +12,5 @@ __pycache__/
 .idea/
 .vscode/
 *.iml
+
+

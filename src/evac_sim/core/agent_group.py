@@ -26,6 +26,7 @@ class AgentGroup:
         blocked_nodes=None,
         wait_until_node=None,
         areInStairs=[],
+        initial_agent_id=None,
     ):
         """
         Initializes an AgentGroup instance.
@@ -51,6 +52,7 @@ class AgentGroup:
         self.blocked_nodes = blocked_nodes if blocked_nodes is not None else []
         self.wait_until_node = wait_until_node  # Node at which to continue looking for new paths
         self.areInStairs = areInStairs  # List of agents IDs that are in a stairs node
+        self.initial_agent_id = initial_agent_id
 
     def __repr__(self):
         """

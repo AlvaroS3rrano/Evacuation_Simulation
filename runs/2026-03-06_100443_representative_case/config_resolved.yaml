@@ -1,4 +1,4 @@
-time_step_seconds: 0.03
+trajectory_frame_rate: 0.3333333333333333
 log_every_frames: 10
 environment: cruise_ship
 sources:

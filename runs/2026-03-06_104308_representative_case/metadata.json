@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-03-06T10:43:08",
+  "case_id": "representative_case",
+  "config_name": "study.yaml",
+  "environment": "cruise_ship",
+  "git_commit": "fdb181ad78d3a67e861050e06a0bfab4d00a1d89",
+  "python": "3.11.9",
+  "platform": "Windows-10-10.0.26200-SP0"
+}

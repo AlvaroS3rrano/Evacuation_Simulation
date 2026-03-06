@@ -16,6 +16,7 @@ import jupedsim as jps
 import numpy as np
 import yaml
 import pandas as pd
+import gc
 
 import evac_sim.envs.environment as pol
 from evac_sim.core.agent_group import AgentGroup
@@ -85,6 +86,56 @@ def _evacuation_times_from_agent_area(agent_area_df: pd.DataFrame) -> dict[int, 
     last_frames = agent_area_df.groupby("agent_id")["frame"].max()
     return {int(agent_id): int(frame) for agent_id, frame in last_frames.items()}
 
+def _read_sqlite_fps(conn: sqlite3.Connection) -> float:
+    row = conn.execute(
+        "SELECT value FROM metadata WHERE key = 'fps'"
+    ).fetchone()
+    if row is None:
+        raise RuntimeError("No 'fps' entry found in trajectory SQLite metadata")
+    return float(row[0])
+
+def _compute_times_from_trajectory_sqlite(
+    trajectory_db_file: Path,
+    agent_ids: list[int],
+) -> list[float]:
+    if not agent_ids:
+        return []
+
+    conn = sqlite3.connect(str(trajectory_db_file))
+    try:
+        fps = _read_sqlite_fps(conn)
+
+        tables_df = pd.read_sql_query(
+            "SELECT name FROM sqlite_master WHERE type='table'",
+            conn,
+        )
+        table_names = set(tables_df["name"].tolist())
+
+        trajectory_table = next(
+            (name for name in ["trajectory_data", "trajectory", "trajectories"] if name in table_names),
+            None,
+        )
+        if trajectory_table is None:
+            raise RuntimeError(
+                f"No trajectory table found in {trajectory_db_file}. "
+                f"Available tables: {sorted(table_names)}"
+            )
+
+        ids_str = ",".join(str(int(a)) for a in agent_ids)
+        query = f"""
+            SELECT id, MAX(frame) AS max_frame
+            FROM {trajectory_table}
+            WHERE id IN ({ids_str})
+            GROUP BY id
+        """
+        df = pd.read_sql_query(query, conn)
+    finally:
+        conn.close()
+
+    if df.empty:
+        return []
+
+    return (df["max_frame"].astype(float) / fps).tolist()
 
 def _compute_group_metrics(
     *,
@@ -92,52 +143,31 @@ def _compute_group_metrics(
     agent_area_conn: sqlite3.Connection,
     group_id: Any,
     agent_ids: list[int],
-    time_step_seconds: float,
-    every_nth_frame_simulation: int,
+    per_agent_times: list[float],
 ) -> dict[str, Any]:
-    """
-    Compute metrics for ONE group using:
-      - group_path_df: dynamic routing info per frame
-      - agent_area_data: per-agent risk time-series
-
-    Note: agent_area frames are recorded every `every_nth_frame_simulation` simulation iterations.
-    We convert frame index -> seconds as:
-        seconds = frame * every_nth_frame_simulation * time_step_seconds
-    """
-    # Filter group rows (group_id may be stored as int/str depending on SQLite typing)
     gdf = group_path_df[group_path_df["group_id"].astype(str) == str(group_id)].copy()
     n_records = int(len(gdf))
 
-    # Remaining-path risk estimates over time
     mean_remaining_path_risk = float(gdf["est_risk_mean"].mean()) if n_records else 0.0
     remaining_path_risk_var = float(gdf["est_risk_var"].mean()) if n_records else 0.0
 
-    # Average remaining path length (using next_path decoded by read_group_path_data)
     if n_records and "next_path" in gdf.columns:
-        avg_path_length = float(gdf["next_path"].apply(lambda p: len(p) if isinstance(p, list) else 0).mean())
+        avg_path_length = float(
+            gdf["next_path"].apply(lambda p: len(p) if isinstance(p, list) else 0).mean()
+        )
     else:
         avg_path_length = 0.0
 
-    # Risk exposure for this group from agent_area_data
-    cumulative_risk_exposure = float(get_average_normalized_risk_exposure_by_group(agent_area_conn, agent_ids))
+    cumulative_risk_exposure = float(
+        get_average_normalized_risk_exposure_by_group(agent_area_conn, agent_ids)
+    )
 
-    # Evacuation time stats (in seconds)
-    agent_area_df = read_agent_area_data(agent_area_conn)
-    times_map_frames = _evacuation_times_from_agent_area(agent_area_df)
-
-    times_frames = [times_map_frames.get(int(aid)) for aid in agent_ids if int(aid) in times_map_frames]
-    times_frames = [t for t in times_frames if t is not None]
-
-    frame_to_seconds = float(every_nth_frame_simulation) * float(time_step_seconds)
-
-    if times_frames:
-        times_seconds = [float(t) * frame_to_seconds for t in times_frames]
-
-        min_time = float(min(times_seconds))
-        avg_time = float(sum(times_seconds) / len(times_seconds))
-        median_time = float(np.median(np.array(times_seconds, dtype=float)))
-        p90_time = _p90(times_seconds)
-        max_time = float(max(times_seconds))
+    if per_agent_times:
+        min_time = float(min(per_agent_times))
+        avg_time = float(sum(per_agent_times) / len(per_agent_times))
+        median_time = float(np.median(np.array(per_agent_times, dtype=float)))
+        p90_time = _p90(per_agent_times)
+        max_time = float(max(per_agent_times))
     else:
         min_time = avg_time = median_time = p90_time = max_time = 0.0
 
@@ -341,11 +371,13 @@ def _run_experiment_from_case(cfg: dict[str, Any], paths: RunPaths, case_id: str
         env_info.floors = env.floors
         env_info.floor_connecting_nodes = env.floor_connecting_nodes
 
-    # --- Build simulations per mode ---
-    simulations: dict[int, jps.Simulation] = {}
+    # --- Run per mode ---
     for mode in modes:
+        log.info("Mode start | mode=%s env=%s case=%s", mode, env_name, cfg.get("name", "unknown"))
+
         trajectory_file = paths.artifacts_dir / f"{env_name}_mode_{mode}.sqlite"
-        sim = jps.Simulation(
+
+        simulation = jps.Simulation(
             model=jps.CollisionFreeSpeedModel(
                 strength_neighbor_repulsion=2.6,
                 range_neighbor_repulsion=0.1,
@@ -357,11 +389,6 @@ def _run_experiment_from_case(cfg: dict[str, Any], paths: RunPaths, case_id: str
                 every_nth_frame=every_nth_frame_simulation,
             ),
         )
-        simulations[mode] = sim
-
-    # --- Run per mode ---
-    for mode, simulation in simulations.items():
-        log.info("Mode start | mode=%s env=%s case=%s", mode, env_name, cfg.get("name", "unknown"))
 
         # Per-mode DBs (avoid mixing data across modes)
         agent_area_db_file = paths.artifacts_dir / f"agent_area_{env_name}_mode_{mode}.db"
@@ -385,7 +412,13 @@ def _run_experiment_from_case(cfg: dict[str, Any], paths: RunPaths, case_id: str
             if mode_type == 1:
                 group = AgentGroup(None, None, None, i, mode)
             else:
-                group = AgentGroup(None, None, None, algorithm_per_group[mode], awareness_levels_per_group[mode])
+                group = AgentGroup(
+                    None,
+                    None,
+                    None,
+                    algorithm_per_group[mode],
+                    awareness_levels_per_group[mode],
+                )
 
             path = compute_alternative_path(
                 targets,
@@ -409,9 +442,15 @@ def _run_experiment_from_case(cfg: dict[str, Any], paths: RunPaths, case_id: str
                 normal_max_speed,
             )
 
+            agent_ids = [a.id if hasattr(a, "id") else int(a) for a in agents]
+
             group.path = path
-            group.current_nodes = {agent: path[0] for agent in agents}
-            group.agents = agents
+            group.current_nodes = {agent_id: path[0] for agent_id in agent_ids}
+            group.agents = agent_ids
+
+            # Keep a stable copy for post-run metrics
+            group.initial_agent_ids = list(agent_ids)
+
             agent_groups[source] = group
 
         sim_cfg = SimulationConfig(
@@ -425,7 +464,7 @@ def _run_experiment_from_case(cfg: dict[str, Any], paths: RunPaths, case_id: str
             stairs_max_speed,
         )
 
-        # Use a fresh risk DB connection per mode (fine)
+        # Use a fresh risk DB connection per mode
         risk_db_conn_mode = sqlite3.connect(str(risk_db_file))
 
         try:
@@ -445,7 +484,12 @@ def _run_experiment_from_case(cfg: dict[str, Any], paths: RunPaths, case_id: str
         finally:
             risk_db_conn_mode.close()
 
-        # --- Write results ONLY if simulation succeeded ---
+        # Force JuPedSim objects to be released so the trajectory SQLite file is finalized
+        del sim_cfg
+        del simulation
+        gc.collect()
+
+        # --- Write results only if simulation succeeded ---
         case_name_mode = f"{case_id}_mode_{mode}"
 
         experiment_id = write_experiment(
@@ -463,14 +507,31 @@ def _run_experiment_from_case(cfg: dict[str, Any], paths: RunPaths, case_id: str
             algorithm = "Centrality" if getattr(group, "algorithm", 0) == 1 else "Efficient"
             awareness = float(getattr(group, "awareness_level", 0))
 
-            time_step_seconds = float(cfg.get("time_step_seconds", 0.03))
+            initial_agent_ids = [int(a) for a in getattr(group, "initial_agent_ids", group.agents)]
+
+            per_agent_times = _compute_times_from_trajectory_sqlite(
+                trajectory_db_file=trajectory_file,
+                agent_ids=initial_agent_ids,
+            )
+
             metrics = _compute_group_metrics(
                 group_path_df=group_path_df,
                 agent_area_conn=agent_area_conn,
                 group_id=group_id,
-                agent_ids=[int(a) for a in group.agents],
-                time_step_seconds=time_step_seconds,
-                every_nth_frame_simulation=every_nth_frame_simulation,
+                agent_ids=initial_agent_ids,
+                per_agent_times=per_agent_times,
+            )
+
+            log.info(
+                "Metrics preview | mode=%s group=%s agents=%d min=%.3f avg=%.3f median=%.3f p90=%.3f max=%.3f",
+                mode,
+                group_id,
+                len(initial_agent_ids),
+                metrics["min_time"],
+                metrics["avg_time"],
+                metrics["median_time"],
+                metrics["p90_time"],
+                metrics["max_time"],
             )
 
             write_experiment_metrics(
@@ -492,7 +553,16 @@ def _run_experiment_from_case(cfg: dict[str, Any], paths: RunPaths, case_id: str
                 max_time=metrics["max_time"],
             )
 
-    # Ensure results are written
+        # Persist mode results before moving to the next one
+        results_db_conn.commit()
+
+        # Close per-mode DB connections
+        agent_area_conn.close()
+        group_path_conn_mode.close()
+
+        log.info("Finished mode=%s", mode)
+
+    # Ensure final results are written
     results_db_conn.commit()
 
     experiments_csv = paths.artifacts_dir / "experiments.csv"
@@ -504,12 +574,10 @@ def _run_experiment_from_case(cfg: dict[str, Any], paths: RunPaths, case_id: str
     log.info("Exported CSV: %s", experiments_csv)
     log.info("Exported CSV: %s", metrics_csv)
 
-    # Close shared DBs
+    # Close shared DB connections
     paths_conn.close()
     risk_db_conn.close()
     results_db_conn.close()
-
-    log.info("Finished mode=%s", mode)
 
 def _deep_merge(base: dict, override: dict) -> dict:
     out = dict(base)
