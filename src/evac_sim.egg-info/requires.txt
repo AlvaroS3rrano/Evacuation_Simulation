@@ -1,9 +1,0 @@
-numpy
-PyYAML
-networkx
-jupedsim
-
-[dev]
-ruff
-black
-pytest
