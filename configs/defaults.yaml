@@ -1,1 +1,11 @@
 log_every_frames: 10
+
+# agent positioning
+distance_to_agents: 0.4
+distance_to_polygon: 0.5
+agent_position_seed: 45131502
+
+# jupedsim configuraion
+strength_neighbor_repulsion: 2.6
+range_neighbor_repulsion: 0.1
+range_geometry_repulsion: 0.05

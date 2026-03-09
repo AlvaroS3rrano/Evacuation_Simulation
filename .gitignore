@@ -1,16 +1,58 @@
-/data/sqlite
+# -----------------------------
+# Simulation outputs / artifacts
+# -----------------------------
+/runs/
+/results/
+/data/sqlite/
+
 *.db
 *.sqlite
-/results/images/*.png
+*.sqlite3
 
-# Python cache
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.svg
+
+# -----------------------------
+# Python
+# -----------------------------
 __pycache__/
-*.pyc
+*.py[cod]
 *.pyo
+*.pyd
+*.so
 
-# IDEs
-.idea/
+# Python environments
+.venv/
+venv/
+env/
+
+# Python packaging
+build/
+dist/
+*.egg-info/
+
+# -----------------------------
+# Jupyter
+# -----------------------------
+.ipynb_checkpoints/
+
+# -----------------------------
+# IDEs / editors
+# -----------------------------
 .vscode/
+.idea/
 *.iml
 
+# -----------------------------
+# OS files
+# -----------------------------
+.DS_Store
+Thumbs.db
 
+# -----------------------------
+# Logs
+# -----------------------------
+*.log
