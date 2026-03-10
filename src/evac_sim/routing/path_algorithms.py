@@ -1,5 +1,6 @@
 import itertools
 
+import math
 import networkx as nx
 from networkx.algorithms.simple_paths import shortest_simple_paths
 
@@ -36,10 +37,18 @@ def centrality_measures(G, all_paths):
     # 2) Score each path by multiplying the centralities of interior nodes
     scored_paths = []
     for path, cost in all_paths:
-        score = 1.0
-        # skip the first and last node (source and target)
-        for node in path[1:-1]:
-            score *= node_route_frequency.get(node, 0.0)
+        interior_nodes = path[1:-1]
+        k = len(interior_nodes)
+
+        score = 0.0
+        if k > 0:
+            log_sum = 0.0
+            for node in interior_nodes:
+                c = max(node_route_frequency.get(node, 0.0), 1e-12)
+                log_sum += math.log(c)
+
+            score = math.exp(log_sum / k)
+
         scored_paths.append((path, cost, score))
 
     return node_route_frequency, scored_paths
