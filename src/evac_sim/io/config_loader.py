@@ -5,6 +5,22 @@ from typing import Any
 
 log = logging.getLogger(__name__)
 
+def select_cases(
+    cases: dict[str, dict[str, Any]],
+    case_id: str | None = None,
+    environment: str | None = None,
+) -> dict[str, dict[str, Any]]:
+    selected: dict[str, dict[str, Any]] = {}
+
+    for cid, cfg in cases.items():
+        if case_id is not None and cid != case_id:
+            continue
+        if environment is not None and cfg.get("environment") != environment:
+            continue
+        selected[cid] = cfg
+
+    return selected
+
 def load_case(config_file: Path, case_id: str) -> dict[str, Any]:
     with config_file.open("r", encoding="utf-8") as f:
         all_configs = yaml.safe_load(f)

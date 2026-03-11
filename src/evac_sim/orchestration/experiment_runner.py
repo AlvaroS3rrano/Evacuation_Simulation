@@ -100,6 +100,7 @@ class ExperimentResources:
     modes: list[int]
     agent_positioning: AgentPositioningConfig
     jps_config: JuPedSimConfig
+    owns_results_db_conn: bool
 
 
 def build_modes(mode_type: int):
@@ -138,7 +139,12 @@ def allocate_positions(
 
     return positions
 
-def prepare_shared_resources(cfg: dict[str, Any], paths: RunPaths) -> ExperimentResources:
+def prepare_shared_resources(
+        cfg: dict[str, Any],
+        paths: RunPaths,
+        shared_results_db_conn: sqlite3.Connection | None = None,
+        shared_results_db_file: Path | None = None,
+) -> ExperimentResources:
     env = select_environment(cfg["environment"])
 
     env_name = env.name
@@ -176,15 +182,24 @@ def prepare_shared_resources(cfg: dict[str, Any], paths: RunPaths) -> Experiment
     starting_risks = [tuple(x) for x in (cfg.get("starting_risks", []) or [])]
     risk_overrides = [tuple(x) for x in (cfg.get("risk_overrides", []) or [])]
 
-    risk_db_file = paths.artifacts_dir / f"{env_name}_risks.db"
-    paths_db_file = paths.artifacts_dir / f"{env_name}_paths.db"
-    group_paths_db_file = paths.artifacts_dir / f"{env_name}_group_paths.db"
-    results_db_file = paths.artifacts_dir / f"{env_name}_results.db"
+    risk_db_file = paths.db_dir / f"{env_name}_risks.db"
+    paths_db_file = paths.db_dir / f"{env_name}_paths.db"
+    group_paths_db_file = paths.db_dir / f"{env_name}_group_paths.db"
 
     risk_db_conn = init_db_connection(risk_db_file, create_risk_table)
     paths_conn = init_db_connection(paths_db_file, create_paths_table)
     group_path_conn = init_db_connection(group_paths_db_file, create_group_path_table)
-    results_db_conn = init_db_connection(results_db_file, create_tables)
+
+    if shared_results_db_conn is not None:
+        results_db_conn = shared_results_db_conn
+        if shared_results_db_file is None:
+            raise ValueError("shared_results_db_file must be provided with shared_results_db_conn")
+        results_db_file = shared_results_db_file
+    else:
+        results_db_file = paths.db_dir / f"{env_name}_results.db"
+        results_db_conn = init_db_connection(results_db_file, create_tables)
+
+    owns_results_db_conn = shared_results_db_conn is None
 
     pol.set_targets(targets, env)
 
@@ -272,6 +287,7 @@ def prepare_shared_resources(cfg: dict[str, Any], paths: RunPaths) -> Experiment
         modes=modes,
         agent_positioning=agent_positioning,
         jps_config=jps_config,
+        owns_results_db_conn=owns_results_db_conn,
     )
 
 def build_agent_groups(
@@ -476,7 +492,7 @@ def run_single_mode(
         cfg.get("name", "unknown"),
     )
 
-    trajectory_file = paths.artifacts_dir / f"{resources.env_name}_mode_{mode}.sqlite"
+    trajectory_file = paths.db_dir / f"{resources.env_name}_mode_{mode}.sqlite"
 
     simulation = create_simulation(
         walkable_area=resources.walkable_area,
@@ -487,12 +503,12 @@ def run_single_mode(
         range_geometry_repulsion=resources.jps_config.range_geometry_repulsion,
     )
 
-    agent_area_db_file = paths.artifacts_dir / f"agent_area_{resources.env_name}_mode_{mode}.db"
+    agent_area_db_file = paths.db_dir / f"agent_area_{resources.env_name}_mode_{mode}.db"
     agent_area_conn = sqlite3.connect(str(agent_area_db_file))
     create_agent_area_table(agent_area_conn)
 
     group_paths_db_file_mode = (
-            paths.artifacts_dir / f"{resources.env_name}_group_paths_mode_{mode}.db"
+            paths.db_dir / f"{resources.env_name}_group_paths_mode_{mode}.db"
     )
     group_path_conn_mode = init_db_connection(
         group_paths_db_file_mode,
@@ -581,7 +597,7 @@ def run_single_mode(
         specific_areas=resources.specific_areas,
         risk_db_file=resources.risk_db_file,
         danger_frame=resources.danger_visualization_frame,
-        artifacts_dir=paths.artifacts_dir,
+        images_dir=paths.images_dir,
         env_name=resources.env_name,
         mode=mode,
     )
@@ -594,10 +610,10 @@ def run_single_mode(
 def export_final_results(
     *,
     results_db_file: Path,
-    artifacts_dir: Path,
+    csv_dir: Path,
 ) -> None:
-    experiments_csv = artifacts_dir / "experiments.csv"
-    metrics_csv = artifacts_dir / "experiment_metrics.csv"
+    experiments_csv = csv_dir / "experiments.csv"
+    metrics_csv = csv_dir / "experiment_metrics.csv"
 
     export_experiments_to_csv(str(results_db_file), str(experiments_csv))
     export_experiment_metrics_to_csv(str(results_db_file), str(metrics_csv))
@@ -607,11 +623,18 @@ def export_final_results(
 
 
 def run_experiment_from_case(
-    cfg: dict[str, Any],
-    paths: RunPaths,
-    case_id: str,
+        cfg: dict[str, Any],
+        paths: RunPaths,
+        case_id: str,
+        shared_results_db_conn: sqlite3.Connection | None = None,
+        shared_results_db_file: Path | None = None,
 ) -> None:
-    resources = prepare_shared_resources(cfg, paths)
+    resources = prepare_shared_resources(
+        cfg,
+        paths,
+        shared_results_db_conn,
+        shared_results_db_file,
+    )
 
     try:
         for mode in resources.modes:
@@ -625,12 +648,14 @@ def run_experiment_from_case(
 
         resources.results_db_conn.commit()
 
-        export_final_results(
-            results_db_file=resources.results_db_file,
-            artifacts_dir=paths.artifacts_dir,
-        )
+        if resources.owns_results_db_conn:
+            export_final_results(
+                results_db_file=resources.results_db_file,
+                csv_dir=paths.csv_dir,
+            )
     finally:
         resources.paths_conn.close()
         resources.risk_db_conn.close()
         resources.group_path_conn.close()
-        resources.results_db_conn.close()
+        if resources.owns_results_db_conn:
+            resources.results_db_conn.close()

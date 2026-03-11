@@ -293,7 +293,7 @@ def generate_mode_visual_artifacts(
     specific_areas: dict[Any, Any],
     risk_db_file: Path,
     danger_frame: int | None,
-    artifacts_dir: Path,
+    images_dir: Path,
     env_name: str,
     mode: int,
 ) -> None:
@@ -305,8 +305,8 @@ def generate_mode_visual_artifacts(
         len(trajectory_df),
     )
 
-    trajectory_png = artifacts_dir / f"{env_name}_mode_{mode}_trajectories.png"
-    density_png = artifacts_dir / f"{env_name}_mode_{mode}_density.png"
+    trajectory_png = images_dir / f"{env_name}_mode_{mode}_trajectories.png"
+    density_png = images_dir / f"{env_name}_mode_{mode}_density.png"
 
     risk_by_area = None
     if danger_frame is not None:
