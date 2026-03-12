@@ -25,6 +25,9 @@ def load_case(config_file: Path, case_id: str) -> dict[str, Any]:
     with config_file.open("r", encoding="utf-8") as f:
         all_configs = yaml.safe_load(f)
 
+    if not isinstance(all_configs, dict):
+        raise TypeError(f"Config '{config_file}' must be a mapping/dict in YAML")
+
     if case_id not in all_configs:
         available = ", ".join(sorted(all_configs.keys()))
         raise KeyError(f"case_id '{case_id}' not found in {config_file}. Available: {available}")
@@ -34,12 +37,13 @@ def load_case(config_file: Path, case_id: str) -> dict[str, Any]:
         raise TypeError(f"case '{case_id}' must be a mapping/dict in YAML")
     return cfg
 
-def deep_merge(base: dict, override: dict) -> dict:
-    out = dict(base)
+def deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
+    merged = dict(base)
     for k, v in override.items():
-        if isinstance(v, dict) and isinstance(out.get(k), dict):
-            out[k] = deep_merge(out[k], v)
+        if isinstance(v, dict) and isinstance(merged.get(k), dict):
+            merged[k] = deep_merge(merged[k], v)
         else:
-            out[k] = v
-    log.debug("Final config: %s", out)
-    return out
+            merged[k] = v
+
+    log.debug("Final config: %s", merged)
+    return merged

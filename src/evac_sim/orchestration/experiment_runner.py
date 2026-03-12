@@ -350,7 +350,7 @@ def build_agent_groups(
         group.path = path
         group.current_nodes = {agent_id: path[0] for agent_id in agent_ids}
         group.agents = agent_ids
-        group.initial_agent_ids = list(agent_ids)
+        group.initial_agents_ids = list(agent_ids)
 
         agent_groups[source] = group
 
@@ -428,13 +428,13 @@ def write_mode_results(
         algorithm = "Centrality" if getattr(group, "algorithm", 0) == 1 else "Efficient"
         awareness = float(getattr(group, "awareness_level", 0))
 
-        initial_agent_ids = [
+        initial_agents_ids = [
             int(a) for a in getattr(group, "initial_agent_ids", group.agents)
         ]
 
         per_agent_times = compute_times_from_trajectory_sqlite(
             trajectory_db_file=trajectory_file,
-            agent_ids=initial_agent_ids,
+            agent_ids=initial_agents_ids,
         )
 
         metrics = compute_group_metrics(
@@ -442,7 +442,7 @@ def write_mode_results(
             group_path_df=group_path_df,
             agent_area_conn=agent_area_conn,
             group_id=group_id,
-            agent_ids=initial_agent_ids,
+            agent_ids=initial_agents_ids,
             per_agent_times=per_agent_times,
         )
 
@@ -450,7 +450,7 @@ def write_mode_results(
             "Metrics preview | mode=%s group=%s agents=%d min=%.3f avg=%.3f median=%.3f p90=%.3f max=%.3f",
             mode,
             group_id,
-            len(initial_agent_ids),
+            len(initial_agents_ids),
             metrics["min_time"],
             metrics["avg_time"],
             metrics["median_time"],
@@ -539,14 +539,14 @@ def run_single_mode(
     )
 
     sim_cfg = SimulationConfig(
-        simulation,
-        resources.every_nth_frame_simulation,
-        resources.every_nth_frame_animation,
-        waypoints_ids,
-        exit_ids,
-        resources.gamma,
-        resources.normal_max_speed,
-        resources.stairs_max_speed,
+        simulation=simulation,
+        every_nth_frame_simulation=resources.every_nth_frame_simulation,
+        every_nth_frame_animation=resources.every_nth_frame_animation,
+        waypoints_ids=waypoints_ids,
+        exit_ids=exit_ids,
+        gamma=resources.gamma,
+        normal_max_speed=resources.normal_max_speed,
+        stairs_max_speed=resources.stairs_max_speed,
     )
 
     risk_db_conn_mode = sqlite3.connect(str(resources.risk_db_file))

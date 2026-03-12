@@ -92,7 +92,7 @@ def update_group_paths(
 
         # Compute an alternative path from the current node
         alt_path = compute_alternative_path(
-            sim_cfg.get_exit_ids_keys(),
+            sim_cfg.exit_names(),
             group,
             env_info,
             curr_node,

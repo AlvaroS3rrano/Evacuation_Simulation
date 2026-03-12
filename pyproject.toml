@@ -30,6 +30,7 @@ dev = [
   "ruff",
   "black",
   "pytest",
+  "pytest-cov",
 ]
 
 [tool.black]
@@ -41,3 +42,8 @@ target-version = "py39"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "B"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
+python_files = ["test_*.py"]

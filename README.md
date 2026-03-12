@@ -1,8 +1,12 @@
 # Evac-Sim - Evacuation Simulation Framework
 
 Simulation framework for pedestrian evacuation scenarios based on
-**JuPedSim**, including risk evaluation, path planning strategies, and
-interactive visualizations.
+**JuPedSim**, designed to support research on evacuation dynamics,
+risk propagation, and intelligent routing strategies.
+
+The framework enables the simulation of complex evacuation scenarios,
+analysis of agent behavior under different levels of environmental
+awareness, and systematic comparison of routing strategies.
 
 This project is developed in the context of academic research on
 evacuation dynamics and intelligent environments.
@@ -51,10 +55,6 @@ strategies.
     ├── configs/
     │ └── study.yaml
     │
-    ├── environments/
-    │ ├── environment.py
-    │ └── ...
-    │
     ├── Notebooks/
     │ └── experiments.ipynb
     │
@@ -69,19 +69,18 @@ strategies.
     │   ├── logs/
     │   │   └── run.log
     │   └── artifacts/
-    │       ├── experiments.csv
-    │       ├── experiment_metrics.csv
-    │       ├── *_risks.db
-    │       ├── *_paths.db
-    │       ├── *_group_paths_mode_X.db
-    │       ├── agent_area_*_mode_X.db
-    │       └── *_mode_X.sqlite
+    │       ├── images/
+    │       ├── db/
+    │       └── csv/
     │
     ├── src/
     │ └── evac_sim/
+    │   ├── analysis/
     │   ├── core/
     │   ├── db/
     │   ├── envs/
+    │   ├── io/
+    │   ├── orchestration/
     │   ├── risk/
     │   ├── routing/
     │   ├── simulation/
@@ -135,30 +134,59 @@ pip install -e .[dev]
 ## ▶️ Usage
 
 Experiments are defined in:
+````text
+configs/study.yaml
+````
 
-    configs/study.yaml
+#### Run a simulation:
 
-Run a simulation:
-
-``` bash
+```bash
 evac-sim run --config study.yaml --case corridor_case_1
 ```
 
-Verbose mode:
+#### Run all cases that share the same environment: 
+```bash 
+evac-sim run --config study.yaml --environment corridor 
+```
 
-``` bash
+#### Verbose execution:
+
+```bash
 evac-sim run --config study.yaml --case corridor_case_1 -v
 ```
 
-Custom output directory:
+Verbose batch execution:
 
-``` bash
-evac-sim run --config study.yaml --case corridor_case_1 --out-dir ./runs/test_run
+```bash
+evac-sim run --config study.yaml --environment corridor -v
 ```
 
-Each run generates:
+#### Custom output directory for a single run:
+````bash
+evac-sim run --config study.yaml --case corridor_case_1 --out-dir ./runs/test_run
+````
+#### Output structure
+Each single run generates:
+````text
+runs/<timestamp>_<case_name>/
+````
 
-    runs/<timestamp>_<case_name>/
+Batch execution generates:
+````text
+runs/<timestamp>_<environment>/
+├── batch_metadata.json
+├── combined/
+│   ├── results.db
+│   ├── experiments.csv
+│   └── experiment_metrics.csv
+└── cases/
+    ├── <case_name_1>/
+    ├── <case_name_2>/
+    └── ...
+````
+Each case inside a batch run stores its own configuration,
+metadata, logs, and artifacts in its corresponding subdirectory
+under `cases/`
 
 ------------------------------------------------------------------------
 
@@ -191,6 +219,8 @@ Then open one of the available notebooks, such as:
 > Note
 > The recommended and reproducible way to run simulations is via the CLI (evac-sim).
 > Notebooks are provided mainly for exploration, visualization, and analysis of results.
+
+------------------------------------------------------------------------
 
 ## ⚙️ Configuration
 
@@ -229,12 +259,16 @@ Main outputs:
 
 **Logs** - `logs/run.log`
 
+**Resolved configuration and metadata** - `config_resolved,yaml` - `metadata.json`
+
 **CSV summaries** - `experiments.csv` - `experiment_metrics.csv`
 
 **SQLite databases** - `*_risks.db` - `*_paths.db` -
 `*_group_paths_mode_X.db` - `agent_area_*_mode_X.db`
 
 **Trajectories** - `*_mode_X.sqlite`
+
+**Images and visual artifacts** - `artifacts/images/`
 
 ------------------------------------------------------------------------
 
