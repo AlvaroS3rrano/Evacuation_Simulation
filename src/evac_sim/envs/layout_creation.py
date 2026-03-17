@@ -1,376 +1,497 @@
+from __future__ import annotations
+
 import math
+from numbers import Integral
+from dataclasses import dataclass
+from typing import Iterable
+
+import networkx as nx
+from shapely.geometry import Point, Polygon, box
+from shapely.geometry.base import BaseGeometry
+from shapely.strtree import STRtree
 
 
-def get_waypoints(input_data):
+@dataclass(slots=True, frozen=True)
+class SquareCell:
+    cell_id: str
+    polygon: Polygon
+    center: tuple[float, float]
+    size: float
+    level: int
+
+@dataclass(slots=True)
+class BuiltGridLayout:
+    waypoints: dict[str, tuple[list[float], float]]
+    specific_areas: dict[str, BaseGeometry]
+    graph: nx.DiGraph
+    node_order: list[str]
+
+def _create_square(x: float, y: float, size: float) -> Polygon:
+    return box(x, y, x + size, y + size)
+
+
+def _square_center(x: float, y: float, size: float) -> tuple[float, float]:
+    half = size / 2.0
+    return (x + half, y + half)
+
+
+def _next_power_of_two_side(width: float, height: float) -> float:
+    side = max(width, height)
+    power = 1.0
+    while power < side:
+        power *= 2.0
+    return power
+
+
+def _subdivide_square(x: float, y: float, size: float) -> list[tuple[float, float, float]]:
+    half = size / 2.0
+    return [
+        (x, y, half),
+        (x + half, y, half),
+        (x, y + half, half),
+        (x + half, y + half, half),
+    ]
+
+
+def _should_accept_terminal_cell(
+    walkable_area: BaseGeometry,
+    square: Polygon,
+    center: tuple[float, float],
+    accept_partial_min_cells: bool,
+) -> bool:
+    if walkable_area.covers(square):
+        return True
+
+    if not accept_partial_min_cells:
+        return False
+
+    return walkable_area.covers(Point(center))
+
+
+def build_adaptive_square_cells(
+    walkable_area: BaseGeometry,
+    min_cell_size: float,
+    max_cell_size: float | None = None,
+    accept_partial_min_cells: bool = False,
+) -> dict[str, SquareCell]:
     """
-    Receives a dictionary where each value is a Polygon object.
-    Returns a new dictionary where each key is associated with a tuple:
-    ([x_center, y_center], 1.5)
+    Build an adaptive square decomposition of a walkable area.
+
+    Strategy:
+    - Start from the largest square that covers the walkable area bounds.
+    - Accept squares that are fully covered by the walkable area.
+    - Discard squares that do not intersect the walkable area.
+    - Subdivide partially intersecting squares until `min_cell_size` is reached.
+    - Optionally accept partial cells at the minimum size if their center lies inside.
+
+    Parameters
+    ----------
+    walkable_area:
+        Geometry representing the walkable area.
+    min_cell_size:
+        Minimum allowed square side length.
+    max_cell_size:
+        Optional maximum initial square size. If not provided, the smallest power-of-two
+        square covering the whole bounding box is used.
+    accept_partial_min_cells:
+        If True, partially intersecting cells at the minimum size are accepted when their
+        center is inside the walkable area.
+
+    Returns
+    -------
+    dict[str, SquareCell]
+        Dictionary of accepted square cells indexed by cell_id.
     """
-    output_data = {}
-    for key, polygon in input_data.items():
-        center = polygon.centroid
-        output_data[key] = ([center.x, center.y], 0.5)
-    return output_data
+    if min_cell_size <= 0:
+        raise ValueError("min_cell_size must be > 0")
+
+    minx, miny, maxx, maxy = walkable_area.bounds
+    width = maxx - minx
+    height = maxy - miny
+
+    if width == 0 or height == 0:
+        raise ValueError("walkable_area must have non-zero width and height")
+
+    root_size = _next_power_of_two_side(width, height)
+    if max_cell_size is not None:
+        if max_cell_size <= 0:
+            raise ValueError("max_cell_size must be > 0")
+        root_size = min(root_size, max_cell_size)
+        if root_size < min_cell_size:
+            raise ValueError("max_cell_size must be >= min_cell_size")
+
+    cells: dict[str, SquareCell] = {}
+    next_id = 1
+
+    stack: list[tuple[float, float, float, int]] = [(minx, miny, root_size, 0)]
+
+    while stack:
+        x, y, size, level = stack.pop()
+
+        square = _create_square(x, y, size)
+
+        if not walkable_area.intersects(square):
+            continue
+
+        center = _square_center(x, y, size)
+
+        if walkable_area.covers(square):
+            cell_id = str(next_id)
+            cells[cell_id] = SquareCell(
+                cell_id=cell_id,
+                polygon=square,
+                center=center,
+                size=size,
+                level=level,
+            )
+            next_id += 1
+            continue
+
+        if size <= min_cell_size:
+            if _should_accept_terminal_cell(
+                walkable_area=walkable_area,
+                square=square,
+                center=center,
+                accept_partial_min_cells=accept_partial_min_cells,
+            ):
+                cell_id = str(next_id)
+                cells[cell_id] = SquareCell(
+                    cell_id=cell_id,
+                    polygon=square,
+                    center=center,
+                    size=size,
+                    level=level,
+                )
+                next_id += 1
+            continue
+
+        for child_x, child_y, child_size in _subdivide_square(x, y, size):
+            stack.append((child_x, child_y, child_size, level + 1))
+
+    return cells
 
 
-def polygon_to_string(polygon):
+def get_waypoints_from_cells(
+    cells: dict[str, SquareCell],
+    radius: float | None = None,
+    radius_ratio: float = 0.25,
+) -> dict[str, tuple[list[float], float]]:
     """
-    Receives a Polygon object and returns a string with the format:
-    "Polygon([(x1, y1), (x2, y2), ..., (xn, yn)])"
-    The last point is omitted if it is equal to the first, since in the original input it is not repeated.
+    Build waypoints from the center of each square cell.
+
+    Parameters
+    ----------
+    cells:
+        Accepted square cells.
+    radius:
+        Fixed waypoint radius. If provided, it is used for every waypoint.
+    radius_ratio:
+        Used only when `radius` is None. The radius becomes `cell.size * radius_ratio`.
+
+    Returns
+    -------
+    dict[str, tuple[list[float], float]]
+        Mapping: cell_id -> ([x, y], radius)
     """
-    # Extract the coordinates of the exterior boundary
-    coords = list(polygon.exterior.coords)
-    # If the polygon is closed (the first point is repeated at the end), remove the last one
-    if coords[0] == coords[-1]:
-        coords = coords[:-1]
-    # Format each tuple as (x, y)
-    formatted_coords = ", ".join(f"({x}, {y})" for x, y in coords)
-    return f"Polygon([{formatted_coords}])"
+    if radius is not None and radius <= 0:
+        raise ValueError("radius must be > 0")
+
+    if radius is None and radius_ratio <= 0:
+        raise ValueError("radius_ratio must be > 0")
+
+    return {
+        cell_id: (
+            [cell.center[0], cell.center[1]],
+            radius if radius is not None else cell.size * radius_ratio,
+        )
+        for cell_id, cell in cells.items()
+    }
 
 
-def renumber_dictionary(input_data):
+def filter_cells_by_size(
+    cells: dict[str, SquareCell],
+    min_size: float | None = None,
+    max_size: float | None = None,
+) -> dict[str, SquareCell]:
+    result: dict[str, SquareCell] = {}
+
+    for cell_id, cell in cells.items():
+        if min_size is not None and cell.size < min_size:
+            continue
+        if max_size is not None and cell.size > max_size:
+            continue
+        result[cell_id] = cell
+
+    return result
+
+
+def iter_cell_polygons(cells: dict[str, SquareCell]) -> Iterable[Polygon]:
+    return (cell.polygon for cell in cells.values())
+
+def _build_walkable_mask(
+    walkable_area: BaseGeometry,
+    base_cell_size: float,
+    require_full_cell: bool = True,
+) -> tuple[list[list[bool]], float, float, int, int]:
+    minx, miny, maxx, maxy = walkable_area.bounds
+
+    rows = int((maxy - miny) / base_cell_size)
+    cols = int((maxx - minx) / base_cell_size)
+
+    if rows <= 0 or cols <= 0:
+        raise ValueError("Invalid grid size derived from walkable_area and base_cell_size")
+
+    mask = [[False for _ in range(cols)] for _ in range(rows)]
+
+    for row in range(rows):
+        for col in range(cols):
+            x = minx + col * base_cell_size
+            y = miny + row * base_cell_size
+            cell = _create_square(x, y, base_cell_size)
+
+            if require_full_cell:
+                mask[row][col] = walkable_area.covers(cell)
+            else:
+                center = Point(x + base_cell_size / 2.0, y + base_cell_size / 2.0)
+                mask[row][col] = walkable_area.covers(center)
+
+    return mask, minx, miny, rows, cols
+
+
+def _compute_max_square_dp(mask: list[list[bool]]) -> list[list[int]]:
+    rows = len(mask)
+    cols = len(mask[0]) if rows > 0 else 0
+
+    dp = [[0 for _ in range(cols)] for _ in range(rows)]
+
+    for row in range(rows - 1, -1, -1):
+        for col in range(cols - 1, -1, -1):
+            if not mask[row][col]:
+                dp[row][col] = 0
+            elif row == rows - 1 or col == cols - 1:
+                dp[row][col] = 1
+            else:
+                dp[row][col] = 1 + min(
+                    dp[row + 1][col],
+                    dp[row][col + 1],
+                    dp[row + 1][col + 1],
+                )
+    return dp
+
+
+def _mark_square_used(mask: list[list[bool]], top_row: int, left_col: int, side: int) -> None:
+    for r in range(top_row, top_row + side):
+        for c in range(left_col, left_col + side):
+            mask[r][c] = False
+
+
+def build_greedy_square_cells(
+    walkable_area: BaseGeometry,
+    base_cell_size: float,
+    min_square_size: float | None = None,
+    require_full_cell: bool = True,
+) -> dict[str, SquareCell]:
     """
-    Receives a dictionary with keys in string format and Polygon values.
-    Returns a new dictionary with keys renumbered sequentially (as strings)
-    while preserving the original format.
+    Build square cells by:
+    1. rasterizing the walkable area at `base_cell_size`
+    2. repeatedly selecting the largest available square of valid cells
+
+    This usually produces fewer nodes than a quadtree in long rectangular corridors.
     """
-    output_data = {}
-    for i, (_, value) in enumerate(input_data.items(), start=1):
-        output_data[str(i)] = value
-    return output_data
+    if base_cell_size <= 0:
+        raise ValueError("base_cell_size must be > 0")
 
+    if min_square_size is None:
+        min_square_size = base_cell_size
 
-def generate_edges(polygons_dict):
-    """
-    Generates a list of edges for a digraph.
-    Two nodes are considered connected (and an edge is generated in both directions)
-    if their areas (polygons) touch.
+    if min_square_size <= 0:
+        raise ValueError("min_square_size must be > 0")
 
-    Parameters:
-        polygons_dict (dict): Dictionary with keys (str) and Polygon values.
+    mask, minx, miny, rows, cols = _build_walkable_mask(
+        walkable_area=walkable_area,
+        base_cell_size=base_cell_size,
+        require_full_cell=require_full_cell,
+    )
 
-    Returns:
-        list: List of tuples (source, destination) representing the edges.
-    """
-    edges = []
-    # Convert the dictionary to a list of (id, polygon) to iterate over all pairs
-    nodes = list(polygons_dict.items())
+    min_side_cells = max(1, round(min_square_size / base_cell_size))
 
-    # Iterate over each pair of nodes
-    for i, (id1, poly1) in enumerate(nodes):
-        for j, (id2, poly2) in enumerate(nodes):
-            if id1 != id2:
-                # If the areas touch, they are considered connected
-                if poly1.touches(poly2):
-                    edges.append((id1, id2))
-    return edges
+    cells: dict[str, SquareCell] = {}
+    next_id = 1
 
+    while True:
+        dp = _compute_max_square_dp(mask)
 
-def generate_zero_values(dictionary):
-    """
-    Receives a dictionary and returns another where each key
-    is associated with the value 0.0.
+        best_row = -1
+        best_col = -1
+        best_side = 0
 
-    Example:
-        Input: {"A": <value>, "B": <value>, ...}
-        Output: {"A": 0.0, "B": 0.0, ...}
-    """
-    return {key: 0.0 for key in dictionary.keys()}
+        for row in range(rows):
+            for col in range(cols):
+                side = dp[row][col]
+                if side > best_side:
+                    best_side = side
+                    best_row = row
+                    best_col = col
 
+        if best_side < min_side_cells:
+            break
 
-def compute_distance(p1, p2):
+        x = minx + best_col * base_cell_size
+        y = miny + best_row * base_cell_size
+        size = best_side * base_cell_size
+
+        square = _create_square(x, y, size)
+        center = _square_center(x, y, size)
+
+        cell_id = str(next_id)
+        cells[cell_id] = SquareCell(
+            cell_id=cell_id,
+            polygon=square,
+            center=center,
+            size=size,
+            level=0,
+        )
+        next_id += 1
+
+        _mark_square_used(mask, best_row, best_col, best_side)
+
+    return cells
+
+def compute_distance(
+    p1: tuple[float, float],
+    p2: tuple[float, float],
+) -> float:
     return math.hypot(p1[0] - p2[0], p1[1] - p2[1])
 
 
-def get_edge_costs_from_waypoints(waypoints, edges):
-    costs = []
-    for start, end in edges:
-        start_coords = waypoints[start][0]
-        end_coords = waypoints[end][0]
-        distance = compute_distance(start_coords, end_coords)
-        costs.append((start, end, distance))
-    return costs
+def _share_edge(
+    polygon_a,
+    polygon_b,
+    min_shared_length: float = 1e-9,
+) -> bool:
+    intersection = polygon_a.boundary.intersection(polygon_b.boundary)
+
+    if intersection.is_empty:
+        return False
+
+    if intersection.geom_type in {"LineString", "MultiLineString"}:
+        return intersection.length > min_shared_length
+
+    return False
 
 
-from shapely.geometry import Polygon
+def build_bidirectional_weighted_edges(
+    cells: dict[str, SquareCell],
+    min_shared_length: float = 1e-9,
+) -> list[tuple[str, str, float]]:
+    if not cells:
+        return []
+
+    cell_items = list(cells.items())
+    cell_ids = [cell_id for cell_id, _ in cell_items]
+    polygons = [cell.polygon for _, cell in cell_items]
+
+    tree = STRtree(polygons)
+
+    edges: list[tuple[str, str, float]] = []
+    seen_undirected_pairs: set[tuple[str, str]] = set()
+
+    for i, (cell_id, cell) in enumerate(cell_items):
+        candidates = tree.query(cell.polygon)
+
+        for candidate in candidates:
+            if isinstance(candidate, Integral):
+                j = int(candidate)
+            else:
+                try:
+                    j = polygons.index(candidate)
+                except ValueError:
+                    continue
+
+            if i == j:
+                continue
+
+            other_id = cell_ids[j]
+            other_cell = cells[other_id]
+
+            pair = tuple(sorted((cell_id, other_id)))
+            if pair in seen_undirected_pairs:
+                continue
+
+            if not _share_edge(
+                cell.polygon,
+                other_cell.polygon,
+                min_shared_length=min_shared_length,
+            ):
+                continue
+
+            weight = compute_distance(cell.center, other_cell.center)
+
+            edges.append((cell_id, other_id, weight))
+            edges.append((other_id, cell_id, weight))
+            seen_undirected_pairs.add(pair)
+
+    return edges
+
+def _sort_cells_for_stable_ids(
+    cells: dict[str, SquareCell],
+) -> list[tuple[str, SquareCell]]:
+    return sorted(
+        cells.items(),
+        key=lambda item: (
+            round(item[1].center[1], 6),  # y
+            round(item[1].center[0], 6),  # x
+        ),
+    )
 
 
-def split_and_format(polygon, n):
-    """
-    Splits a horizontal rectangular polygon into `n` parts and prints them in your desired format.
-    """
-    minx, miny, maxx, maxy = polygon.bounds
-    total_width = maxx - minx
-    segment_width = total_width / n
-    segments = {}
+def build_grid_layout(
+    cells: dict[str, SquareCell],
+    radius: float | None = None,
+    radius_ratio: float = 0.25,
+    node_defaults: dict | None = None,
+    edge_attribute_name: str = "cost",
+) -> BuiltGridLayout:
+    if node_defaults is None:
+        node_defaults = {
+            "risk": 0.0,
+            "blocked": False,
+            "is_stairs": False,
+            "floor": 0,
+        }
 
-    for i in range(n):
-        x1 = round(minx + i * segment_width, 4)
-        x2 = round(x1 + segment_width, 4)
-        new_poly = Polygon([(x1, miny), (x1, maxy), (x2, maxy), (x2, miny)])
-        segments[str(i + 1)] = new_poly
+    sorted_cells = _sort_cells_for_stable_ids(cells)
 
-    # Print in desired format
-    for key, poly in segments.items():
-        coords = ", ".join(
-            [f"({round(x, 4)}, {round(y, 4)})" for x, y in poly.exterior.coords[:-1]]
-        )  # skip closing point
-        print(f"'{key}': Polygon([{coords}]),")
+    id_map: dict[str, str] = {}
+    node_order: list[str] = []
+    specific_areas: dict[str, BaseGeometry] = {}
+    waypoints: dict[str, tuple[list[float], float]] = {}
 
+    for idx, (old_cell_id, cell) in enumerate(sorted_cells, start=1):
+        new_id = str(idx)
+        id_map[old_cell_id] = new_id
+        node_order.append(new_id)
 
-def split_vertically(polygon, n):
-    """
-    Splits a rectangular polygon vertically into `n` parts (preserving width).
-    """
-    minx, miny, maxx, maxy = polygon.bounds
-    total_height = maxy - miny
-    segment_height = total_height / n
-    segments = {}
+        specific_areas[new_id] = cell.polygon
 
-    for i in range(n):
-        y1 = round(miny + i * segment_height, 4)
-        y2 = round(y1 + segment_height, 4)
-        new_poly = Polygon([(minx, y1), (minx, y2), (maxx, y2), (maxx, y1)])
-        segments[str(i + 1)] = new_poly
+        waypoint_radius = radius if radius is not None else cell.size * radius_ratio
+        waypoints[new_id] = ([cell.center[0], cell.center[1]], waypoint_radius)
 
-    for key, poly in segments.items():
-        coords = ", ".join(
-            [f"({round(x, 4)}, {round(y, 4)})" for x, y in poly.exterior.coords[:-1]]
-        )
-        print(f"'{key}': Polygon([{coords}]),")
+    raw_edges = build_bidirectional_weighted_edges(cells)
 
+    graph = nx.DiGraph()
 
-# '53': Polygon([(11, 25), (13, 25), (13, 26), (11, 26)]),
-n = 2
-pl = 5
-mode = 2
-fr = 0 + pl
-sr = 5 + pl
-c1 = 0
-c2 = 5
+    for node_id in node_order:
+        graph.add_node(node_id, **node_defaults)
 
-distribution_polygons = {
-    "226": Polygon([(5, 17), (3, 17), (3, 19), (5, 19)]),
-    "227": Polygon([(25, 19), (27, 19), (27, 17), (25, 17)]),
-}
+    for source_old, target_old, weight in raw_edges:
+        source_new = id_map[source_old]
+        target_new = id_map[target_old]
+        graph.add_edge(source_new, target_new, **{edge_attribute_name: weight})
 
-waypoints = {}
-
-original_polygon = Polygon([(24.0, 14.0), (24.0, 18.0), (26.0, 18.0), (26.0, 14.0)])
-edges = [
-    ("1", "2"),
-    ("2", "1"),
-    ("2", "3"),
-    ("3", "2"),
-    ("3", "4"),
-    ("3", "59"),
-    ("3", "68"),
-    ("4", "3"),
-    ("4", "5"),
-    ("4", "6"),
-    ("4", "58"),
-    ("5", "4"),
-    ("6", "4"),
-    ("6", "7"),
-    ("6", "45"),
-    ("7", "6"),
-    ("7", "8"),
-    ("7", "13"),
-    ("8", "7"),
-    ("8", "9"),
-    ("9", "8"),
-    ("9", "10"),
-    ("9", "11"),
-    ("10", "9"),
-    ("11", "9"),
-    ("11", "12"),
-    ("12", "11"),
-    ("12", "13"),
-    ("13", "12"),
-    ("13", "14"),
-    ("13", "70"),
-    ("14", "13"),
-    ("14", "15"),
-    ("14", "16"),
-    ("14", "17"),
-    ("14", "18"),
-    ("15", "14"),
-    ("15", "16"),
-    ("15", "19"),
-    ("16", "14"),
-    ("16", "15"),
-    ("16", "25"),
-    ("17", "14"),
-    ("18", "14"),
-    ("19", "15"),
-    ("19", "21"),
-    ("19", "22"),
-    ("20", "21"),
-    ("20", "27"),
-    ("21", "19"),
-    ("21", "20"),
-    ("21", "22"),
-    ("21", "28"),
-    ("22", "19"),
-    ("22", "21"),
-    ("22", "23"),
-    ("23", "22"),
-    ("24", "25"),
-    ("24", "43"),
-    ("25", "16"),
-    ("25", "24"),
-    ("25", "26"),
-    ("25", "31"),
-    ("26", "25"),
-    ("26", "27"),
-    ("27", "20"),
-    ("27", "26"),
-    ("28", "21"),
-    ("28", "29"),
-    ("29", "28"),
-    ("29", "30"),
-    ("30", "29"),
-    ("30", "33"),
-    ("31", "25"),
-    ("31", "32"),
-    ("32", "31"),
-    ("32", "33"),
-    ("33", "30"),
-    ("33", "32"),
-    ("33", "34"),
-    ("34", "33"),
-    ("34", "35"),
-    ("34", "38"),
-    ("35", "34"),
-    ("36", "37"),
-    ("36", "41"),
-    ("37", "36"),
-    ("37", "38"),
-    ("38", "34"),
-    ("38", "37"),
-    ("39", "40"),
-    ("39", "44"),
-    ("40", "39"),
-    ("40", "41"),
-    ("40", "47"),
-    ("41", "36"),
-    ("41", "40"),
-    ("42", "43"),
-    ("42", "70"),
-    ("43", "24"),
-    ("43", "42"),
-    ("43", "44"),
-    ("43", "45"),
-    ("44", "39"),
-    ("44", "43"),
-    ("45", "6"),
-    ("45", "43"),
-    ("45", "44"),
-    ("45", "46"),
-    ("45", "52"),
-    ("46", "45"),
-    ("46", "47"),
-    ("47", "40"),
-    ("47", "46"),
-    ("47", "48"),
-    ("48", "47"),
-    ("48", "49"),
-    ("49", "48"),
-    ("49", "50"),
-    ("49", "51"),
-    ("49", "54"),
-    ("49", "63"),
-    ("50", "49"),
-    ("50", "51"),
-    ("51", "49"),
-    ("51", "50"),
-    ("52", "45"),
-    ("52", "53"),
-    ("53", "52"),
-    ("53", "54"),
-    ("53", "56"),
-    ("54", "49"),
-    ("54", "53"),
-    ("55", "56"),
-    ("55", "58"),
-    ("56", "53"),
-    ("56", "55"),
-    ("56", "57"),
-    ("57", "56"),
-    ("57", "62"),
-    ("58", "4"),
-    ("58", "55"),
-    ("58", "59"),
-    ("59", "3"),
-    ("59", "58"),
-    ("59", "61"),
-    ("60", "61"),
-    ("60", "64"),
-    ("61", "59"),
-    ("61", "60"),
-    ("61", "62"),
-    ("61", "63"),
-    ("62", "57"),
-    ("62", "59"),
-    ("62", "62"),
-    ("62", "63"),
-    ("63", "49"),
-    ("63", "61"),
-    ("64", "60"),
-    ("64", "71"),
-    ("64", "67"),
-    ("65", "71"),
-    ("66", "67"),
-    ("66", "68"),
-    ("67", "64"),
-    ("67", "66"),
-    ("68", "3"),
-    ("68", "66"),
-    ("68", "69"),
-    ("69", "68"),
-    ("70", "7"),
-    ("70", "13"),
-    ("70", "42"),
-    ("71", "64"),
-    ("71", "65"),
-]
-if mode == 0:  # vertical
-    for i in range(n):
-        print(f"'{1+i}': Polygon([({c1},{fr}), ({c2}, {fr}), ({c2}, {sr}), ({c1}, {sr})]),")
-        fr += pl
-        sr += pl
-elif mode == 1:  # horizontal
-    for i in range(n):
-        print(f"'{2+i}': Polygon([({fr}, {c1}), ({sr}, {c1}), ({sr}, {c2}), ({fr}, {c2})]),")
-        fr += pl
-        sr += pl
-elif mode == 2:
-    result = get_waypoints(distribution_polygons)
-    for key, value in result.items():
-        print(f"'{key}': {value},")
-elif mode == 3:
-    renumbered_dictionary = renumber_dictionary(distribution_polygons)
-    # Print the renumbered dictionary
-    for key, polygon in renumbered_dictionary.items():
-        print(f"'{key}': {polygon_to_string(polygon)},")
-elif mode == 4:
-    edges = generate_edges(distribution_polygons)
-    print("edges = [")
-    for edge in edges:
-        print(f"    {edge},")
-    print("]")
-elif mode == 5:
-    zero_values = generate_zero_values(distribution_polygons)
-    # Print in the desired format
-    for key, value in zero_values.items():
-        print(f'"{key}": {value},')
-elif mode == 6:
-    costs = get_edge_costs_from_waypoints(waypoints, edges)
-    for cost in costs:
-        print(cost, ",")
-elif mode == 7:
-    split_and_format(original_polygon, n)
-elif mode == 8:
-    split_vertically(original_polygon, n)
+    return BuiltGridLayout(
+        waypoints=waypoints,
+        specific_areas=specific_areas,
+        graph=graph,
+        node_order=node_order,
+    )
