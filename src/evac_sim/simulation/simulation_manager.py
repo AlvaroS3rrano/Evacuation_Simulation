@@ -148,15 +148,18 @@ def update_group_paths(
 
 
 def record_group_path_data(
-    gr_pth_conn, frame: int, group_id: int, group: AgentGroup, risks: dict
+    connection,
+    *,
+    case_name: str,
+    mode: int,
+    frame: int,
+    group_id: str,
+    group: AgentGroup,
+    risks: dict,
 ) -> None:
-    """
-    Compute risk estimates and record dynamic path-choice data for a group at a given frame.
-    """
     algorithm = "Centrality" if group.algorithm == 1 else "Efficient"
     awareness = "High" if group.awareness_level == 1 else "Low"
 
-    # Determine current area as the furthest node reached along the group's path
     max_idx = -1
     current_area = None
     for aid in group.agents:
@@ -174,69 +177,70 @@ def record_group_path_data(
     if current_area is None and group.agents:
         current_area = group.current_nodes.get(group.agents[0])
 
-    # Remaining path from current area
-    if max_idx >= 0:
-        next_path = group.path[max_idx:]
-    else:
-        next_path = group.path
-
-    # Risk estimates over remaining path
+    next_path = group.path[max_idx:] if max_idx >= 0 else group.path
     risk_values = [risks.get(area, 0.0) for area in next_path]
-    est_risk_mean = mean(risk_values) if risk_values else 0.0
-    est_risk_max = max(risk_values) if risk_values else 0.0
-    est_risk_min = min(risk_values) if risk_values else 0.0
-    est_risk_var = pvariance(risk_values) if len(risk_values) > 1 else 0.0
-
-    # Instantaneous risk at current area
-    risk_now = risks.get(current_area, 0.0) if current_area is not None else 0.0
 
     insert_group_decision(
-        gr_pth_conn,
-        frame,
-        group_id,
-        algorithm,
-        awareness,
-        current_area,
-        next_path,
-        est_risk_mean,
-        est_risk_max,
-        est_risk_min,
-        est_risk_var,
-        risk_now,
+        connection,
+        case_name=case_name,
+        mode=mode,
+        frame=frame,
+        group_id=str(group_id),
+        algorithm=algorithm,
+        awareness=awareness,
+        current_area=current_area,
+        next_path=next_path,
+        est_risk_mean=mean(risk_values) if risk_values else 0.0,
+        est_risk_max=max(risk_values) if risk_values else 0.0,
+        est_risk_min=min(risk_values) if risk_values else 0.0,
+        est_risk_var=pvariance(risk_values) if len(risk_values) > 1 else 0.0,
+        risk_now=risks.get(current_area, 0.0) if current_area is not None else 0.0,
     )
 
 
 def process_frame(
-    sim_cfg, groups: dict, env_info, conn, area_conn, gr_pth_conn, frame: int, threshold: float
+    sim_cfg,
+    groups: dict,
+    env_info,
+    conn,
+    *,
+    case_name: str,
+    mode: int,
+    frame: int,
+    threshold: float,
 ) -> None:
     """
     Compute current nodes, log agent areas, adjust speeds, update paths for each group,
     and record path-choice data.
     """
-    risks = get_risk_levels_by_frame(conn, frame)
+    risks = get_risk_levels_by_frame(conn, case_name, frame)
 
     for group_id, group in groups.items():
         try:
             compute_current_nodes(sim_cfg, group, frame)
-            # Keep only agents still present in the simulation (evacuated agents disappear)
-            active_ids = {a.id for a in sim_cfg.simulation.agents()}
 
+            active_ids = {a.id for a in sim_cfg.simulation.agents()}
             group.agents = [aid for aid in group.agents if aid in active_ids]
-            group.current_nodes = {aid: n for aid, n in group.current_nodes.items() if aid in active_ids}
+            group.current_nodes = {
+                aid: n for aid, n in group.current_nodes.items() if aid in active_ids
+            }
 
             if not group.agents:
-                # Nothing to log/update for this group at this frame
                 continue
 
             agent_areas = {
-                agent_id: (
-                    current_area,
-                    risks.get(current_area, 0.0),
-                )
+                agent_id: (current_area, risks.get(current_area, 0.0))
                 for agent_id, current_area in group.current_nodes.items()
             }
 
-            insert_agent_areas(area_conn, frame, agent_areas)
+            insert_agent_areas(
+                conn,
+                case_name=case_name,
+                mode=mode,
+                frame=frame,
+                agent_areas=agent_areas,
+            )
+
             update_agent_speed_on_stairs(env_info.graph, sim_cfg, group)
 
             group = update_group_paths(
@@ -249,7 +253,16 @@ def process_frame(
                 group_id=group_id,
             )
 
-            record_group_path_data(gr_pth_conn, frame, group_id, group, risks)
+            record_group_path_data(
+                conn,
+                case_name=case_name,
+                mode=mode,
+                frame=frame,
+                group_id=str(group_id),
+                group=group,
+                risks=risks,
+            )
+
             groups[group_id] = group
 
         except Exception:
@@ -263,7 +276,15 @@ def process_frame(
 
 
 def run_agent_simulation(
-    sim_cfg, log_every_frames: int,  agent_groups: dict, env_info, conn, area_conn, gr_pth_conn, threshold: float
+    sim_cfg,
+    log_every_frames: int,
+    agent_groups: dict,
+    env_info,
+    conn,
+    *,
+    case_name: str,
+    mode: int,
+    threshold: float,
 ) -> None:
     """
     Advance the simulation and periodically process agent movements and path updates.
@@ -271,14 +292,21 @@ def run_agent_simulation(
     sim = sim_cfg.simulation
     logger.info("Simulation start | agents=%d", sim.agent_count())
 
-    # Initial processing at frame 0
     if sim.agent_count() > 0:
-        process_frame(sim_cfg, agent_groups, env_info, conn, area_conn, gr_pth_conn, 0, threshold)
+        process_frame(
+            sim_cfg,
+            agent_groups,
+            env_info,
+            conn,
+            case_name=case_name,
+            mode=mode,
+            frame=0,
+            threshold=threshold,
+        )
 
     last_log_frame = -1
-    LOG_EVERY_FRAMES = log_every_frames
-
     frame = 0
+
     while sim.agent_count() > 0:
         sim.iterate()
         iteration = sim.iteration_count()
@@ -288,15 +316,20 @@ def run_agent_simulation(
 
         frame = iteration // sim_cfg.every_nth_frame_simulation
 
-        # Progress logging (throttled)
-        if frame % LOG_EVERY_FRAMES == 0 and frame != last_log_frame:
+        if frame % log_every_frames == 0 and frame != last_log_frame:
             last_log_frame = frame
             logger.info("Progress | frame=%d | agents=%d", frame, sim.agent_count())
 
-        # Process full logic at animation frames
         if frame % sim_cfg.every_nth_frame_animation == 0:
             process_frame(
-                sim_cfg, agent_groups, env_info, conn, area_conn, gr_pth_conn, frame, threshold
+                sim_cfg,
+                agent_groups,
+                env_info,
+                conn,
+                case_name=case_name,
+                mode=mode,
+                frame=frame,
+                threshold=threshold,
             )
 
     logger.info("Simulation end | last_frame=%d", frame)

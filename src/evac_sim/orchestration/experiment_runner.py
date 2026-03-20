@@ -16,11 +16,19 @@ from evac_sim.core.environment_info import EnvironmentInfo
 from evac_sim.core.risk_simulation_values import RiskSimulationValues
 from evac_sim.core.simulation_config import SimulationConfig
 
-from evac_sim.db.schema import create_risk_table, create_group_decisions_table, create_paths_table, create_agent_area_table, create_experiments_tables
+from evac_sim.db.schema import create_simulation_tables
 from evac_sim.db.repositories.risk import get_risk_levels_by_frame
 from evac_sim.db.repositories.group_decisions import get_group_decisions_dataframe
-from evac_sim.db.repositories.experiments import upsert_experiment, upsert_experiment_metrics, ExperimentMetrics, ExperimentConfig
-from evac_sim.db.exporters.experiments_csv import export_experiments_to_csv, export_experiment_metrics_to_csv
+from evac_sim.db.repositories.experiments import (
+    upsert_experiment,
+    upsert_experiment_metrics,
+    ExperimentMetrics,
+    ExperimentConfig,
+)
+from evac_sim.db.exporters.experiments_csv import (
+    export_experiment_metrics_to_csv,
+    export_experiments_to_csv,
+)
 
 import evac_sim.envs.environment as pol
 from evac_sim.envs.journey_configuration import set_journeys
@@ -43,6 +51,7 @@ from evac_sim.viz.plots import generate_mode_visual_artifacts
 
 log = logging.getLogger(__name__)
 
+
 @dataclass(frozen=True)
 class AgentPositioningConfig:
     distance_to_agents: float
@@ -55,6 +64,7 @@ class JuPedSimConfig:
     strength_neighbor_repulsion: float
     range_neighbor_repulsion: float
     range_geometry_repulsion: float
+
 
 @dataclass(frozen=True)
 class ExperimentResources:
@@ -70,12 +80,8 @@ class ExperimentResources:
     env_info: EnvironmentInfo
     positions: dict[str, np.ndarray]
     risk_first_frame: dict[Any, float]
-    risk_db_file: Path
-    results_db_file: Path
-    risk_db_conn: sqlite3.Connection
-    paths_conn: sqlite3.Connection
-    group_path_conn: sqlite3.Connection
-    results_db_conn: sqlite3.Connection
+    simulation_db_file: Path
+    simulation_conn: sqlite3.Connection
     danger_visualization_frame: int | None
     risk_seed: int
     risk_threshold: float
@@ -88,31 +94,31 @@ class ExperimentResources:
     modes: list[int]
     agent_positioning: AgentPositioningConfig
     jps_config: JuPedSimConfig
-    owns_results_db_conn: bool
+    owns_simulation_conn: bool
 
 
-def build_modes(mode_type: int):
+def build_modes(mode_type: int) -> list[int]:
     mode_indices = {
         0: [0, 1, 2, 3],
         1: [0, 1],
         2: [0, 1],
         3: [2, 3],
-        4: [2]
+        4: [2],
     }
 
     if mode_type not in mode_indices:
         raise ValueError(f"Unsupported mode_type: {mode_type}")
     return mode_indices[mode_type]
 
-def allocate_positions(
-        *,
-        sources:list[Any],
-        total_agents: list[int],
-        specific_areas: dict[Any, Any],
-        distance_to_agents: float,
-        distance_to_polygon: float,
-        seed: int
 
+def allocate_positions(
+    *,
+    sources: list[Any],
+    total_agents: list[int],
+    specific_areas: dict[Any, Any],
+    distance_to_agents: float,
+    distance_to_polygon: float,
+    seed: int,
 ) -> dict[str, np.ndarray]:
     positions: dict[str, np.ndarray] = {}
 
@@ -127,11 +133,13 @@ def allocate_positions(
 
     return positions
 
+
 def prepare_shared_resources(
-        cfg: dict[str, Any],
-        paths: RunPaths,
-        shared_results_db_conn: sqlite3.Connection | None = None,
-        shared_results_db_file: Path | None = None,
+    cfg: dict[str, Any],
+    paths: RunPaths,
+    case_name: str,
+    shared_simulation_conn: sqlite3.Connection | None = None,
+    shared_simulation_db_file: Path | None = None,
 ) -> ExperimentResources:
     env = select_environment(cfg["environment"])
 
@@ -177,24 +185,21 @@ def prepare_shared_resources(
     starting_risks = [tuple(x) for x in (cfg.get("starting_risks", []) or [])]
     risk_overrides = [tuple(x) for x in (cfg.get("risk_overrides", []) or [])]
 
-    risk_db_file = paths.db_dir / f"{env_name}_risks.db"
-    paths_db_file = paths.db_dir / f"{env_name}_paths.db"
-    group_paths_db_file = paths.db_dir / f"{env_name}_group_paths.db"
-
-    risk_db_conn = init_db_connection(risk_db_file, create_risk_table)
-    paths_conn = init_db_connection(paths_db_file, create_paths_table)
-    group_path_conn = init_db_connection(group_paths_db_file, create_group_decisions_table)
-
-    if shared_results_db_conn is not None:
-        results_db_conn = shared_results_db_conn
-        if shared_results_db_file is None:
-            raise ValueError("shared_results_db_file must be provided with shared_results_db_conn")
-        results_db_file = shared_results_db_file
+    if shared_simulation_conn is not None:
+        simulation_conn = shared_simulation_conn
+        if shared_simulation_db_file is None:
+            raise ValueError(
+                "shared_simulation_db_file must be provided with shared_simulation_conn"
+            )
+        simulation_db_file = shared_simulation_db_file
     else:
-        results_db_file = paths.db_dir / f"{env_name}_results.db"
-        results_db_conn = init_db_connection(results_db_file, create_experiments_tables)
+        simulation_db_file = paths.db_dir / "simulation.db"
+        simulation_conn = init_db_connection(
+            simulation_db_file,
+            create_simulation_tables,
+        )
 
-    owns_results_db_conn = shared_results_db_conn is None
+    owns_simulation_conn = shared_simulation_conn is None
 
     pol.set_targets(targets, env)
 
@@ -252,12 +257,13 @@ def prepare_shared_resources(
         every_nth_frame_animation,
         risk_graph,
         targets,
-        risk_db_conn,
+        simulation_conn,
         risk_seed,
+        case_name=case_name,
     )
-    risk_first_frame = get_risk_levels_by_frame(risk_db_conn, 0)
+    risk_first_frame = get_risk_levels_by_frame(simulation_conn, case_name, 0)
 
-    env_info = EnvironmentInfo(graph, paths_conn, floor_number=env.floor_number)
+    env_info = EnvironmentInfo(graph, simulation_conn, floor_number=env.floor_number)
     if env.floor_number > 1:
         env_info.floors = env.floors
         env_info.floor_connecting_nodes = env.floor_connecting_nodes
@@ -275,12 +281,8 @@ def prepare_shared_resources(
         env_info=env_info,
         positions=positions,
         risk_first_frame=risk_first_frame,
-        risk_db_file=risk_db_file,
-        results_db_file=results_db_file,
-        risk_db_conn=risk_db_conn,
-        paths_conn=paths_conn,
-        group_path_conn=group_path_conn,
-        results_db_conn=results_db_conn,
+        simulation_db_file=simulation_db_file,
+        simulation_conn=simulation_conn,
         danger_visualization_frame=danger_visualization_frame,
         risk_seed=risk_seed,
         risk_threshold=risk_threshold,
@@ -293,8 +295,9 @@ def prepare_shared_resources(
         modes=modes,
         agent_positioning=agent_positioning,
         jps_config=jps_config,
-        owns_results_db_conn=owns_results_db_conn,
+        owns_simulation_conn=owns_simulation_conn,
     )
+
 
 def build_agent_groups(
     *,
@@ -362,6 +365,7 @@ def build_agent_groups(
 
     return agent_groups
 
+
 def create_simulation(
     *,
     walkable_area: Any,
@@ -402,19 +406,18 @@ def create_stages(
 
     return exit_ids, waypoints_ids
 
+
 def write_mode_results(
     *,
     case_id: str,
     mode: int,
     graph: Any,
-    results_db_conn: sqlite3.Connection,
+    simulation_conn: sqlite3.Connection,
     trajectory_file: Path,
     risk_seed: int,
     targets: list[Any],
     sources: list[Any],
     total_agents: list[int],
-    group_path_conn_mode: sqlite3.Connection,
-    agent_area_conn: sqlite3.Connection,
     agent_groups: dict[str, AgentGroup],
 ) -> None:
     case_name_mode = f"{case_id}_mode_{mode}"
@@ -428,11 +431,15 @@ def write_mode_results(
     )
 
     experiment_id = upsert_experiment(
-        results_db_conn,
+        simulation_conn,
         experiment,
     )
 
-    group_path_df = get_group_decisions_dataframe(group_path_conn_mode)
+    group_path_df = get_group_decisions_dataframe(
+        simulation_conn,
+        case_id,
+        mode,
+    )
 
     for group_id, group in agent_groups.items():
         algorithm = "Centrality" if getattr(group, "algorithm", 0) == 1 else "Efficient"
@@ -450,7 +457,9 @@ def write_mode_results(
         metrics = compute_group_metrics(
             graph=graph,
             group_path_df=group_path_df,
-            agent_area_conn=agent_area_conn,
+            agent_area_conn=simulation_conn,
+            case_name=case_id,
+            mode=mode,
             group_id=group_id,
             agent_ids=initial_agents_ids,
             per_agent_times=per_agent_times,
@@ -486,17 +495,18 @@ def write_mode_results(
         )
 
         upsert_experiment_metrics(
-            results_db_conn,
-            experiment_metrics
+            simulation_conn,
+            experiment_metrics,
         )
 
+
 def run_single_mode(
-        *,
-        cfg: dict[str, Any],
-        case_id: str,
-        mode: int,
-        paths: RunPaths,
-        resources: ExperimentResources,
+    *,
+    cfg: dict[str, Any],
+    case_id: str,
+    mode: int,
+    paths: RunPaths,
+    resources: ExperimentResources,
 ) -> None:
     log.info(
         "Mode start | mode=%s env=%s case=%s",
@@ -514,18 +524,6 @@ def run_single_mode(
         strength_neighbor_repulsion=resources.jps_config.strength_neighbor_repulsion,
         range_neighbor_repulsion=resources.jps_config.range_neighbor_repulsion,
         range_geometry_repulsion=resources.jps_config.range_geometry_repulsion,
-    )
-
-    agent_area_db_file = paths.db_dir / f"agent_area_{resources.env_name}_mode_{mode}.db"
-    agent_area_conn = sqlite3.connect(str(agent_area_db_file))
-    create_agent_area_table(agent_area_conn)
-
-    group_paths_db_file_mode = (
-            paths.db_dir / f"{resources.env_name}_group_paths_mode_{mode}.db"
-    )
-    group_path_conn_mode = init_db_connection(
-        group_paths_db_file_mode,
-        create_group_decisions_table,
     )
 
     exit_ids, waypoints_ids = create_stages(
@@ -562,24 +560,20 @@ def run_single_mode(
         stairs_max_speed=resources.stairs_max_speed,
     )
 
-    risk_db_conn_mode = sqlite3.connect(str(resources.risk_db_file))
-
     try:
         run_agent_simulation(
             sim_cfg,
             cfg.get("log_every_frames", 10),
             agent_groups,
             resources.env_info,
-            risk_db_conn_mode,
-            agent_area_conn,
-            group_path_conn_mode,
+            resources.simulation_conn,
+            case_name=case_id,
+            mode=mode,
             threshold=resources.risk_threshold,
         )
     except Exception:
         log.exception("Simulation failed | mode=%s", mode)
         raise
-    finally:
-        risk_db_conn_mode.close()
 
     del sim_cfg
     del simulation
@@ -589,18 +583,16 @@ def run_single_mode(
         case_id=case_id,
         mode=mode,
         graph=resources.graph,
-        results_db_conn=resources.results_db_conn,
+        simulation_conn=resources.simulation_conn,
         trajectory_file=trajectory_file,
         risk_seed=resources.risk_seed,
         targets=resources.targets,
         sources=resources.sources,
         total_agents=resources.total_agents,
-        group_path_conn_mode=group_path_conn_mode,
-        agent_area_conn=agent_area_conn,
         agent_groups=agent_groups,
     )
 
-    resources.results_db_conn.commit()
+    resources.simulation_conn.commit()
 
     generate_mode_visual_artifacts(
         trajectory_file=trajectory_file,
@@ -608,45 +600,45 @@ def run_single_mode(
         waypoints=resources.waypoints,
         target_nodes=resources.targets,
         specific_areas=resources.specific_areas,
-        risk_db_file=resources.risk_db_file,
+        risk_db_file=resources.simulation_db_file,
+        case_name=case_id,
         danger_frame=resources.danger_visualization_frame,
         images_dir=paths.images_dir,
         env_name=resources.env_name,
         mode=mode,
     )
 
-    agent_area_conn.close()
-    group_path_conn_mode.close()
-
     log.info("Finished mode=%s", mode)
+
 
 def export_final_results(
     *,
-    results_db_file: Path,
+    simulation_db_file: Path,
     csv_dir: Path,
 ) -> None:
     experiments_csv = csv_dir / "experiments.csv"
     metrics_csv = csv_dir / "experiment_metrics.csv"
 
-    export_experiments_to_csv(str(results_db_file), str(experiments_csv))
-    export_experiment_metrics_to_csv(str(results_db_file), str(metrics_csv))
+    export_experiments_to_csv(str(simulation_db_file), str(experiments_csv))
+    export_experiment_metrics_to_csv(str(simulation_db_file), str(metrics_csv))
 
     log.info("Exported CSV: %s", experiments_csv)
     log.info("Exported CSV: %s", metrics_csv)
 
 
 def run_experiment_from_case(
-        cfg: dict[str, Any],
-        paths: RunPaths,
-        case_id: str,
-        shared_results_db_conn: sqlite3.Connection | None = None,
-        shared_results_db_file: Path | None = None,
+    cfg: dict[str, Any],
+    paths: RunPaths,
+    case_id: str,
+    shared_simulation_conn: sqlite3.Connection | None = None,
+    shared_simulation_db_file: Path | None = None,
 ) -> None:
     resources = prepare_shared_resources(
         cfg,
         paths,
-        shared_results_db_conn,
-        shared_results_db_file,
+        case_id,
+        shared_simulation_conn,
+        shared_simulation_db_file,
     )
 
     try:
@@ -659,16 +651,13 @@ def run_experiment_from_case(
                 resources=resources,
             )
 
-        resources.results_db_conn.commit()
+        resources.simulation_conn.commit()
 
-        if resources.owns_results_db_conn:
+        if resources.owns_simulation_conn:
             export_final_results(
-                results_db_file=resources.results_db_file,
+                simulation_db_file=resources.simulation_db_file,
                 csv_dir=paths.csv_dir,
             )
     finally:
-        resources.paths_conn.close()
-        resources.risk_db_conn.close()
-        resources.group_path_conn.close()
-        if resources.owns_results_db_conn:
-            resources.results_db_conn.close()
+        if resources.owns_simulation_conn:
+            resources.simulation_conn.close()

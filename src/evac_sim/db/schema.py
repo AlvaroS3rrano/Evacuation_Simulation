@@ -1,24 +1,33 @@
 import sqlite3
 
-def create_risk_table(connection: sqlite3.Connection, force_reset: bool = False):
+
+def create_risk_table(connection: sqlite3.Connection, force_reset: bool = False) -> None:
     try:
         with connection:
             if force_reset:
-                connection.execute("DROP TABLE IF EXISTS risk")
+                connection.execute("DROP TABLE IF EXISTS risk_data")
 
             connection.execute(
                 """
-                CREATE TABLE IF NOT EXISTS risk_data
-                (
+                CREATE TABLE IF NOT EXISTS risk_data (
+                    case_name TEXT NOT NULL,
                     frame INTEGER NOT NULL,
                     area TEXT NOT NULL,
                     risk_level REAL NOT NULL,
-                    PRIMARY KEY( frame, area )
-                    )
+                    PRIMARY KEY (case_name, frame, area)
+                )
+                """
+            )
+
+            connection.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_risk_case_frame
+                ON risk_data(case_name, frame)
                 """
             )
     except sqlite3.Error as e:
         raise RuntimeError(f"Error creating risk_data table: {e}")
+
 
 def create_group_decisions_table(
     connection: sqlite3.Connection,
@@ -32,8 +41,10 @@ def create_group_decisions_table(
             connection.execute(
                 """
                 CREATE TABLE IF NOT EXISTS group_path_data (
+                    case_name TEXT NOT NULL,
+                    mode INTEGER NOT NULL,
                     frame INTEGER NOT NULL,
-                    group_id INTEGER NOT NULL,
+                    group_id TEXT NOT NULL,
                     algorithm TEXT NOT NULL,
                     awareness TEXT NOT NULL,
                     current_area TEXT NOT NULL,
@@ -43,21 +54,22 @@ def create_group_decisions_table(
                     est_risk_min REAL NOT NULL,
                     est_risk_var REAL NOT NULL,
                     risk_now REAL NOT NULL,
-                    PRIMARY KEY (frame, group_id, algorithm, awareness)
+                    PRIMARY KEY (case_name, mode, frame, group_id)
                 )
                 """
             )
 
             connection.execute(
                 """
-                CREATE INDEX IF NOT EXISTS idx_group_path_frame
-                ON group_path_data(frame)
+                CREATE INDEX IF NOT EXISTS idx_group_path_case_mode_frame
+                ON group_path_data(case_name, mode, frame)
                 """
             )
     except sqlite3.Error as e:
         raise RuntimeError(f"Error creating group_path_data table: {e}")
 
-def create_paths_table(connection, force_reset=False):
+
+def create_paths_table(connection: sqlite3.Connection, force_reset: bool = False) -> None:
     with connection:
         if force_reset:
             connection.execute("DROP TABLE IF EXISTS paths")
@@ -83,7 +95,8 @@ def create_paths_table(connection, force_reset=False):
             """
         )
 
-def create_agent_area_table(connection, force_reset=False):
+
+def create_agent_area_table(connection: sqlite3.Connection, force_reset: bool = False) -> None:
     with connection:
         if force_reset:
             connection.execute("DROP TABLE IF EXISTS agent_area_data")
@@ -91,28 +104,31 @@ def create_agent_area_table(connection, force_reset=False):
         connection.execute(
             """
             CREATE TABLE IF NOT EXISTS agent_area_data (
+                case_name TEXT NOT NULL,
+                mode INTEGER NOT NULL,
                 frame INTEGER NOT NULL,
                 agent_id INTEGER NOT NULL,
                 area TEXT NOT NULL,
                 risk_level REAL NOT NULL,
-                PRIMARY KEY (frame, agent_id)
+                PRIMARY KEY (case_name, mode, frame, agent_id)
             )
             """
         )
 
         connection.execute(
             """
-            CREATE INDEX IF NOT EXISTS idx_agent_area_frame
-            ON agent_area_data(frame)
+            CREATE INDEX IF NOT EXISTS idx_agent_area_case_mode_frame
+            ON agent_area_data(case_name, mode, frame)
             """
         )
 
         connection.execute(
             """
-            CREATE INDEX IF NOT EXISTS idx_agent_area_agent
-            ON agent_area_data(agent_id)
+            CREATE INDEX IF NOT EXISTS idx_agent_area_case_mode_agent
+            ON agent_area_data(case_name, mode, agent_id)
             """
         )
+
 
 def create_experiments_tables(
     connection: sqlite3.Connection,
@@ -168,3 +184,14 @@ def create_experiments_tables(
             )
     except sqlite3.Error as e:
         raise RuntimeError(f"Error creating experiment tables: {e}")
+
+
+def create_simulation_tables(
+    connection: sqlite3.Connection,
+    force_reset: bool = False,
+) -> None:
+    create_risk_table(connection, force_reset=force_reset)
+    create_group_decisions_table(connection, force_reset=force_reset)
+    create_paths_table(connection, force_reset=force_reset)
+    create_agent_area_table(connection, force_reset=force_reset)
+    create_experiments_tables(connection, force_reset=force_reset)

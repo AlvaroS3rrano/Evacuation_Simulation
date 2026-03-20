@@ -51,7 +51,7 @@ representative_case:
   mode_type: 0
   master_seed: 233
   risk_iterations: 7000
-  risk_increase_chance: 0.05
+  risk_increase_chance: 0.001
   starting_risks:
     - ["8", 1.0]
   risk_overrides:

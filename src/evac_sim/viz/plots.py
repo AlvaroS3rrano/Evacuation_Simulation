@@ -292,6 +292,7 @@ def generate_mode_visual_artifacts(
     target_nodes: list[Any],
     specific_areas: dict[Any, Any],
     risk_db_file: Path,
+    case_name: str,
     danger_frame: int | None,
     images_dir: Path,
     env_name: str,
@@ -312,7 +313,7 @@ def generate_mode_visual_artifacts(
     if danger_frame is not None:
         risk_conn = sqlite3.connect(str(risk_db_file))
         try:
-            risk_by_area = get_risk_levels_by_frame(risk_conn, int(danger_frame))
+            risk_by_area = get_risk_levels_by_frame(risk_conn, case_name, int(danger_frame))
         finally:
             risk_conn.close()
 

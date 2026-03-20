@@ -39,6 +39,8 @@ def compute_group_metrics(
     graph: nx.Graph,
     group_path_df: pd.DataFrame,
     agent_area_conn: sqlite3.Connection,
+    case_name: str,
+    mode: int,
     group_id: Any,
     agent_ids: list[int],
     per_agent_times: list[float],
@@ -59,7 +61,12 @@ def compute_group_metrics(
         avg_path_cost = 0.0
 
     cumulative_risk_exposure = float(
-        get_average_normalized_risk_exposure_by_group(agent_area_conn, agent_ids)
+        get_average_normalized_risk_exposure_by_group(
+            agent_area_conn,
+            case_name,
+            mode,
+            agent_ids,
+        )
     )
 
     if per_agent_times:
