@@ -6,6 +6,7 @@ import sqlite3
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+import random
 
 import jupedsim as jps
 import numpy as np
@@ -24,6 +25,7 @@ from evac_sim.db.exporters.experiments_csv import export_experiments_to_csv, exp
 import evac_sim.envs.environment as pol
 from evac_sim.envs.journey_configuration import set_journeys
 from evac_sim.risk.risk_simulation import simulate_risk
+from evac_sim.risk.risk_validation import validate_risk_inputs
 from evac_sim.routing.decision_policies import compute_alternative_path
 from evac_sim.simulation.simulation_manager import (
     run_agent_simulation,
@@ -140,13 +142,20 @@ def prepare_shared_resources(
     sources = cfg["sources"]
     total_agents = cfg["agents"]
     waypoints = env.waypoints
-    graph = env.graph
+    graph = env.graph.copy()
+    risk_graph = graph.copy()
     specific_areas = env.specific_areas
 
     mode_type = int(cfg.get("mode_type", 0))
     modes = build_modes(mode_type)
 
-    risk_seed = int(cfg["risk_seed"])
+    master_seed = cfg.get("master_seed", 42)
+
+    master_rng = random.Random(master_seed)
+
+    risk_seed = master_rng.randint(0, 2 ** 32 - 1)
+    agent_seed = master_rng.randint(0, 2 ** 32 - 1)
+
     risk_iterations = int(cfg["risk_iterations"])
     risk_increase_chance = float(cfg["risk_increase_chance"])
     propagation_threshold = float(cfg["propagation_threshold"])
@@ -191,12 +200,11 @@ def prepare_shared_resources(
 
     distance_to_agents = cfg.get("distance_to_agents", None)
     distance_to_polygon = cfg.get("distance_to_polygon", None)
-    agent_position_seed = cfg.get("agent_position_seed", None)
 
     agent_positioning = AgentPositioningConfig(
         distance_to_agents=distance_to_agents,
         distance_to_polygon=distance_to_polygon,
-        agent_position_seed=agent_position_seed,
+        agent_position_seed=agent_seed,
     )
 
     positions = allocate_positions(
@@ -226,11 +234,23 @@ def prepare_shared_resources(
         risk_overrides,
     )
 
+    validate_risk_inputs(
+        graph=risk_graph,
+        exits=targets,
+        risk_iterations=risk_iterations,
+        every_nth_frame=every_nth_frame_animation,
+        increase_chance=risk_increase_chance,
+        propagation_threshold=propagation_threshold,
+        risk_threshold=risk_threshold,
+        starting_risks=starting_risks,
+        risk_overrides=risk_overrides,
+    )
+
     log.info("Simulating risks: iterations=%s seed=%s", risk_iterations, risk_seed)
     simulate_risk(
         risk_values,
         every_nth_frame_animation,
-        graph,
+        risk_graph,
         targets,
         risk_db_conn,
         risk_seed,
@@ -419,7 +439,7 @@ def write_mode_results(
         awareness = float(getattr(group, "awareness_level", 0))
 
         initial_agents_ids = [
-            int(a) for a in getattr(group, "initial_agent_ids", group.agents)
+            int(a) for a in getattr(group, "initial_agents_ids", group.agents)
         ]
 
         per_agent_times = compute_times_from_trajectory_sqlite(
