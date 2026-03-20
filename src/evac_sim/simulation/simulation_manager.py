@@ -6,9 +6,9 @@ from statistics import mean, pvariance
 import jupedsim as jps
 
 from evac_sim.core.agent_group import AgentGroup
-from evac_sim.db.agent_area_db_manager import write_agent_area
-from evac_sim.db.danger_sim_db_manager import get_risk_levels_by_frame
-from evac_sim.db.group_path_db_manager import write_group_path_data
+from evac_sim.db.repositories.agent_area import insert_agent_areas
+from evac_sim.db.repositories.risk import get_risk_levels_by_frame
+from evac_sim.db.repositories.group_decisions import insert_group_decision
 from evac_sim.envs.journey_configuration import set_journeys
 from evac_sim.routing.decision_policies import compute_alternative_path
 from evac_sim.routing.utils import is_sublist
@@ -190,7 +190,7 @@ def record_group_path_data(
     # Instantaneous risk at current area
     risk_now = risks.get(current_area, 0.0) if current_area is not None else 0.0
 
-    write_group_path_data(
+    insert_group_decision(
         gr_pth_conn,
         frame,
         group_id,
@@ -228,7 +228,15 @@ def process_frame(
                 # Nothing to log/update for this group at this frame
                 continue
 
-            write_agent_area(area_conn, frame, group.agents, group.current_nodes, risks)
+            agent_areas = {
+                agent_id: (
+                    current_area,
+                    risks.get(current_area, 0.0),
+                )
+                for agent_id, current_area in group.current_nodes.items()
+            }
+
+            insert_agent_areas(area_conn, frame, agent_areas)
             update_agent_speed_on_stairs(env_info.graph, sim_cfg, group)
 
             group = update_group_paths(

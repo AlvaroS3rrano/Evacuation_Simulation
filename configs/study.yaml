@@ -1,3 +1,23 @@
+temp:
+  environment: "mall"
+  sources: []
+  agents: []
+  targets: []
+  mode_type: 1
+  risk_seed: 233
+  risk_iterations: 7000
+  risk_increase_chance: 0.05
+  starting_risks:
+  risk_overrides:
+  risk_threshold: 0.5
+  propagation_threshold: 0.5
+  gamma: 0.2
+  stairs_max_speed: 0.6
+  normal_max_speed: 1.2
+  every_nth_frame_simulation: 3
+  every_nth_frame_animation: 50
+  danger_visualization_frame: 2200
+
 example_case:
   environment: "cruise_ship"
   sources: ["82", "83"]

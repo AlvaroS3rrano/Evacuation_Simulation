@@ -16,8 +16,8 @@ from evac_sim.io.config_loader import deep_merge, select_cases
 from evac_sim.io.logging_setup import setup_run_logging
 from evac_sim.orchestration.experiment_runner import run_experiment_from_case
 from evac_sim.db.sqlite_utils import init_db_connection
-from evac_sim.db.simulation_results_db_manager import (
-    create_tables,
+from evac_sim.db.schema import create_experiments_tables
+from evac_sim.db.exporters.experiments_csv import (
     export_experiment_metrics_to_csv,
     export_experiments_to_csv,
 )
@@ -142,7 +142,7 @@ def run_from_yaml(
     }
 
     combined_results_db = batch_paths.combined_dir / "results.db"
-    results_db_conn = init_db_connection(combined_results_db, create_tables)
+    results_db_conn = init_db_connection(combined_results_db, create_experiments_tables)
 
     (batch_paths.batch_dir / "batch_metadata.json").write_text(
         json.dumps(batch_metadata, indent=2),

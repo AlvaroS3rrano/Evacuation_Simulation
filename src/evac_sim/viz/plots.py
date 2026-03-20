@@ -16,7 +16,7 @@ from matplotlib.colors import LinearSegmentedColormap
 log = logging.getLogger(__name__)
 
 from evac_sim.db.sqlite_utils import read_trajectory_dataframe
-from evac_sim.db.danger_sim_db_manager import get_risk_levels_by_frame
+from evac_sim.db.repositories.risk import get_risk_levels_by_frame
 
 def _draw_polygon_outline(ax: plt.Axes, poly: Polygon, *, edgecolor: str = "black", linewidth: float = 1.0, alpha: float = 1.0) -> None:
     x, y = poly.exterior.xy

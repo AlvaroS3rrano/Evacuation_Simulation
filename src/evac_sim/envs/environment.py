@@ -52,7 +52,6 @@ def remove_obstacles_from_areas(
         for name, area in specific_areas.items()
     }
 
-
 def set_targets(target_ids: Sequence[str], env: Environment) -> None:
     for target_id in target_ids:
         env.waypoints.pop(target_id, None)

@@ -2,7 +2,7 @@ import json
 
 import pandas as pd
 
-from evac_sim.db.paths_db_manager import insert_path
+from evac_sim.db.repositories.path_cache import upsert_path
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Imports from your project
@@ -86,7 +86,7 @@ def getAlternativePathsForNode(
             )
 
             for path, cost, betweenness in computed:
-                insert_path(paths_connection, current_node, target, cost, path, betweenness)
+                upsert_path(paths_connection, current_node, target, cost, path, betweenness)
 
             all_paths.extend(computed)
 

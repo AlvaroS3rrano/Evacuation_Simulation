@@ -15,25 +15,11 @@ from evac_sim.core.environment_info import EnvironmentInfo
 from evac_sim.core.risk_simulation_values import RiskSimulationValues
 from evac_sim.core.simulation_config import SimulationConfig
 
-from evac_sim.db.agent_area_db_manager import (
-    create_agent_area_table,
-)
-from evac_sim.db.danger_sim_db_manager import (
-    create_risk_table,
-    get_risk_levels_by_frame,
-)
-from evac_sim.db.group_path_db_manager import (
-    create_group_path_table,
-    read_group_path_data,
-)
-from evac_sim.db.paths_db_manager import create_paths_table
-from evac_sim.db.simulation_results_db_manager import (
-    create_tables,
-    export_experiment_metrics_to_csv,
-    export_experiments_to_csv,
-    write_experiment,
-    write_experiment_metrics,
-)
+from evac_sim.db.schema import create_risk_table, create_group_decisions_table, create_paths_table, create_agent_area_table, create_experiments_tables
+from evac_sim.db.repositories.risk import get_risk_levels_by_frame
+from evac_sim.db.repositories.group_decisions import get_group_decisions_dataframe
+from evac_sim.db.repositories.experiments import upsert_experiment, upsert_experiment_metrics, ExperimentMetrics, ExperimentConfig
+from evac_sim.db.exporters.experiments_csv import export_experiments_to_csv, export_experiment_metrics_to_csv
 
 import evac_sim.envs.environment as pol
 from evac_sim.envs.journey_configuration import set_journeys
@@ -188,7 +174,7 @@ def prepare_shared_resources(
 
     risk_db_conn = init_db_connection(risk_db_file, create_risk_table)
     paths_conn = init_db_connection(paths_db_file, create_paths_table)
-    group_path_conn = init_db_connection(group_paths_db_file, create_group_path_table)
+    group_path_conn = init_db_connection(group_paths_db_file, create_group_decisions_table)
 
     if shared_results_db_conn is not None:
         results_db_conn = shared_results_db_conn
@@ -197,7 +183,7 @@ def prepare_shared_resources(
         results_db_file = shared_results_db_file
     else:
         results_db_file = paths.db_dir / f"{env_name}_results.db"
-        results_db_conn = init_db_connection(results_db_file, create_tables)
+        results_db_conn = init_db_connection(results_db_file, create_experiments_tables)
 
     owns_results_db_conn = shared_results_db_conn is None
 
@@ -413,8 +399,7 @@ def write_mode_results(
 ) -> None:
     case_name_mode = f"{case_id}_mode_{mode}"
 
-    experiment_id = write_experiment(
-        results_db_conn,
+    experiment = ExperimentConfig(
         case_name=case_name_mode,
         risk_nodes=targets,
         source_nodes=sources,
@@ -422,7 +407,12 @@ def write_mode_results(
         random_seed=risk_seed,
     )
 
-    group_path_df = read_group_path_data(group_path_conn_mode)
+    experiment_id = upsert_experiment(
+        results_db_conn,
+        experiment,
+    )
+
+    group_path_df = get_group_decisions_dataframe(group_path_conn_mode)
 
     for group_id, group in agent_groups.items():
         algorithm = "Centrality" if getattr(group, "algorithm", 0) == 1 else "Efficient"
@@ -458,10 +448,8 @@ def write_mode_results(
             metrics["max_time"],
         )
 
-        write_experiment_metrics(
-            results_db_conn,
+        experiment_metrics = ExperimentMetrics(
             experiment_id=experiment_id,
-            case_name=case_name_mode,
             agent_group_id=str(group_id),
             algorithm=algorithm,
             awareness=awareness,
@@ -475,6 +463,11 @@ def write_mode_results(
             p90_time=metrics["p90_time"],
             min_time=metrics["min_time"],
             max_time=metrics["max_time"],
+        )
+
+        upsert_experiment_metrics(
+            results_db_conn,
+            experiment_metrics
         )
 
 def run_single_mode(
@@ -512,7 +505,7 @@ def run_single_mode(
     )
     group_path_conn_mode = init_db_connection(
         group_paths_db_file_mode,
-        create_group_path_table,
+        create_group_decisions_table,
     )
 
     exit_ids, waypoints_ids = create_stages(

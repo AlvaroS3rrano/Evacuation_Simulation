@@ -4,9 +4,8 @@ import sqlite3
 from typing import Any
 import networkx as nx
 
-from evac_sim.db.agent_area_db_manager import (
-    get_average_normalized_risk_exposure_by_group,
-)
+from evac_sim.db.repositories.agent_area import get_average_normalized_risk_exposure_by_group
+
 
 def p90(values: list[float]) -> float:
     if not values:

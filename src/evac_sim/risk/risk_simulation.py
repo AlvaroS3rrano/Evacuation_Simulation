@@ -2,7 +2,7 @@ import random
 
 import networkx as nx
 
-from evac_sim.db.danger_sim_db_manager import *
+from evac_sim.db.repositories.risk import insert_risk_levels
 
 
 def update_risk(G: nx.DiGraph, increase_chance=0.2, propagation_threshold=0.5):
@@ -110,7 +110,7 @@ def simulate_risk(risk_sim_values, every_nth_frame, G, exits, connection, seed=N
 
             # Save the initial risk levels of all nodes before any updates
             try:
-                write_risk_levels(connection, 0, {node: G.nodes[node]["risk"] for node in G.nodes})
+                insert_risk_levels(connection, 0, {node: G.nodes[node]["risk"] for node in G.nodes})
             except Exception as e:
                 print(f"Error writing initial risks: {e}")
             continue
@@ -129,7 +129,7 @@ def simulate_risk(risk_sim_values, every_nth_frame, G, exits, connection, seed=N
                         G.nodes[exit_node]["risk"] = 0
 
                 # Save the updated risk levels for the current frame
-                write_risk_levels(
+                insert_risk_levels(
                     connection, frame, {node: G.nodes[node]["risk"] for node in G.nodes}
                 )
             except Exception as e:
