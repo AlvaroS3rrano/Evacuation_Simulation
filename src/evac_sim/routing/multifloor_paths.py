@@ -1,15 +1,7 @@
-# multifloor_paths.py
-
 from operator import itemgetter
 
-# ──────────────────────────────────────────────────────────────────────────────
-# Imports from the project
-# ──────────────────────────────────────────────────────────────────────────────
+from .path_algorithms import centrality_measures
 from .path_cache import _get_cached_segments_from_connector, getAlternativePathsForNode
-
-# ──────────────────────────────────────────────────────────────────────────────
-# Basic floor / connector helpers
-# ──────────────────────────────────────────────────────────────────────────────
 
 
 def _get_exits_on_floor(EnvInf, exits, floor):
@@ -18,7 +10,7 @@ def _get_exits_on_floor(EnvInf, exits, floor):
 
 
 def _is_connector(EnvInf, node, floor_from, floor_to):
-    """Return True if `node` is a connector between `floor_from` and `floor_to`."""
+    """Return True if node connects two floors."""
     return node in EnvInf.floor_connecting_nodes.get((floor_from, floor_to), [])
 
 
@@ -28,12 +20,12 @@ def _segment_end_floor(EnvInf, seg):
 
 
 def _get_graph_for_floor(EnvInf, floor: int):
-    """Return the floor graph if available; otherwise return the global graph."""
+    """Return the graph for a floor or the global graph."""
     return EnvInf.floors[floor] if EnvInf.floors is not None else EnvInf.graph
 
 
 def _build_base_targets(EnvInf, exits, current_floor: int):
-    """Return exits on the same floor plus connectors up/down from the current floor."""
+    """Return same-floor exits and adjacent-floor connectors."""
     exits_same_floor = _get_exits_on_floor(EnvInf, exits, current_floor)
     targets = list(exits_same_floor)
 
@@ -47,13 +39,7 @@ def _build_base_targets(EnvInf, exits, current_floor: int):
 
 def _vertical_dir_from_last(EnvInf, last_node, current_floor, exits_set):
     """
-    Determine vertical movement direction implied by the last node of a segment.
-
-    Returns:
-        0 if already at an exit,
-        -1 if node connects downward,
-        +1 if node connects upward,
-        None otherwise.
+    Return the vertical direction implied by the last node.
     """
     if last_node in exits_set:
         return 0
@@ -66,67 +52,39 @@ def _vertical_dir_from_last(EnvInf, last_node, current_floor, exits_set):
     return None
 
 
-# ──────────────────────────────────────────────────────────────────────────────
-# Multi-floor stitching helpers
-# ──────────────────────────────────────────────────────────────────────────────
-
-
 def _init_complete_and_frontier(EnvInf, alternative_paths, current_floor: int, exits_set):
     """
-    Split initial candidate path segments into:
-      - complete: segments that already end at an exit
-      - frontier: segments that end at a connector (i.e., require multi-floor expansion)
-
-    The frontier keeps additional metadata needed for iterative expansion:
-        (segment, cost, betweenness, direction, floor_at_end)
-
-    Args:
-        EnvInf: Environment info containing the global graph.
-        alternative_paths: Iterable of tuples (segment, cost, betweenness).
-        current_floor (int): Floor where the routing starts (kept for API symmetry).
-        exits_set (set): Set of exit nodes for fast membership checks.
-
-    Returns:
-        tuple:
-            complete (list[tuple]): List of (segment, cost, betweenness) that already reach an exit.
-            frontier (list[tuple]): List of (segment, cost, betweenness, direction, floor_at_end) to expand further.
+    Split initial paths into complete paths and expandable frontier states.
     """
     complete = []
-    frontier = []  # (seg, cost, betw, dir, floor_at_end)
+    frontier = []  # (segment, cost, direction, floor_at_end)
 
-    for seg, c, b in alternative_paths:
+    for seg, c, _ in alternative_paths:
         if not seg:
             continue
 
         last = seg[-1]
         last_floor = EnvInf.graph.nodes[last]["floor"]
-
-        # Determine whether the segment ends at an exit (0) or at a vertical connector (-1 / +1)
         d = _vertical_dir_from_last(EnvInf, last, last_floor, exits_set)
 
         if d == 0:
-            complete.append((seg, c, b))
+            complete.append((seg, c))
         elif d in (-1, +1):
-            frontier.append((seg, c, b, d, last_floor))
+            frontier.append((seg, c, d, last_floor))
 
     return complete, frontier
 
 
 def _precompute_exits_by_floor(EnvInf, exits):
     """
-    Precompute exits grouped by floor to avoid repeated filtering.
-    Returns {floor: exits_on_that_floor}.
+    Group exits by floor.
     """
     return {f: _get_exits_on_floor(EnvInf, exits, f) for f in range(EnvInf.floor_number)}
 
 
 def _build_targets_for_next_floor(EnvInf, exits_by_floor, next_floor: int, d: int):
     """
-    Build routing targets for the next floor during multi-floor expansion.
-
-    Targets include:
-      - exits on the next floor
-      - connectors that continue moving in the same vertical direction (monotone constraint)
+    Build targets for the next floor during expansion.
     """
     targets = list(exits_by_floor[next_floor])
 
@@ -139,7 +97,7 @@ def _build_targets_for_next_floor(EnvInf, exits_by_floor, next_floor: int, d: in
 
 def _can_concatenate_without_cycle(seg, seg2):
     """
-    Return True if concatenating `seg + seg2[1:]` does not introduce repeated nodes.
+    Return True if seg + seg2[1:] does not repeat nodes.
     """
     seg_set = set(seg)
     tail = seg2[1:]
@@ -156,21 +114,16 @@ def _expand_frontier_once(
     visited_states,
 ):
     """
-    Perform one expansion step of the frontier in the multi-floor routing process.
-
-    Returns:
-        (complete, new_frontier)
+    Expand one step of the multi-floor frontier.
     """
     complete = []
     new_frontier = []
 
-    for seg, c, b, d, floor_at_end in frontier:
+    for seg, c, d, floor_at_end in frontier:
         if not seg:
             continue
 
         connector = seg[-1]
-
-        # Avoid re-expanding the same connector state (helps prevent combinatorial blow-up)
         state = (connector, floor_at_end, d)
         if state in visited_states:
             continue
@@ -180,10 +133,8 @@ def _expand_frontier_once(
         if next_floor < 0 or next_floor >= EnvInf.floor_number:
             continue
 
-        # Targets on the next floor: exits + monotone-direction connectors
         targets = _build_targets_for_next_floor(EnvInf, exits_by_floor, next_floor, d)
 
-        # Retrieve possible segments from this connector on the next floor (cached if available)
         segments2 = _get_cached_segments_from_connector(
             EnvInf, connector, next_floor, targets, gamma, blocked_nodes
         )
@@ -191,42 +142,32 @@ def _expand_frontier_once(
         if not segments2:
             continue
 
-        for seg2, c2, b2 in segments2:
+        for seg2, c2, _ in segments2:
             if not seg2:
                 continue
             if not _can_concatenate_without_cycle(seg, seg2):
                 continue
 
-            # Concatenate (skip duplicate connector node at seg2[0])
             full = seg + seg2[1:]
             cc = c + c2
-            bb = b + b2
             last2 = full[-1]
 
-            # If we reached an exit, store as complete
             if last2 in exits_set:
-                complete.append((full, cc, bb))
+                complete.append((full, cc))
                 continue
 
-            # Otherwise, check if we can keep expanding in the same vertical direction
             last2_floor = EnvInf.graph.nodes[last2]["floor"]
             d2 = _vertical_dir_from_last(EnvInf, last2, last2_floor, exits_set)
 
-            # Enforce monotone vertical direction
             if d2 == d:
-                new_frontier.append((full, cc, bb, d, last2_floor))
+                new_frontier.append((full, cc, d, last2_floor))
 
     return complete, new_frontier
 
 
-# ──────────────────────────────────────────────────────────────────────────────
-# Post-processing helpers (filtering + sorting)
-# ──────────────────────────────────────────────────────────────────────────────
-
-
 def _filter_complete_by_gamma(complete, gamma: float):
     """
-    Keep only paths whose cost <= min_cost * (1 + gamma).
+    Keep only paths within the gamma cost tolerance.
     """
     if not complete:
         return complete
@@ -234,42 +175,38 @@ def _filter_complete_by_gamma(complete, gamma: float):
     min_cost = min(complete, key=itemgetter(1))[1]
     max_allowed = min_cost * (1 + gamma)
 
-    if any(c > max_allowed for _, c, _ in complete):
+    if any(c > max_allowed for _, c in complete):
         complete = [t for t in complete if t[1] <= max_allowed]
 
     return complete
 
 
+def _rescore_complete_paths(EnvInf, complete):
+    """
+    Recompute centrality scores on the final candidate path set.
+    """
+    if not complete:
+        return []
+
+    _, rescored = centrality_measures(EnvInf.graph, complete)
+    return rescored
+
+
 def _sort_complete(complete, algo: int):
     """
-    Sort complete paths:
-      - algo == 0: cost ascending
-      - algo == 1: betweenness descending
+    Sort complete paths by the active routing objective.
     """
-    complete.sort(
-        key=itemgetter(1) if algo == 0 else itemgetter(2),
-        reverse=(algo == 1),
-    )
+    if algo == 0:
+        complete.sort(key=lambda t: (float(t[1]), tuple(t[0])))
+    else:
+        complete.sort(key=lambda t: (-float(t[2]), float(t[1]), tuple(t[0])))
+
     return complete
-
-
-# ──────────────────────────────────────────────────────────────────────────────
-# Public API
-# ──────────────────────────────────────────────────────────────────────────────
 
 
 def getPosiblePaths(EnvInf, current_node, exits, gamma, algo, *, blocked_nodes=None):
     """
-    Compute feasible evacuation paths from `current_node` to any exit, optionally avoiding blocked nodes.
-
-    Steps:
-      1) Retrieve in-floor segments to exits and connectors.
-      2) Expand segments across floors via connectors while enforcing monotone vertical movement.
-      3) Filter complete paths by cost tolerance (gamma).
-      4) Sort paths by routing objective (efficient vs centrality).
-
-    Returns:
-        list[list]: Paths as lists of nodes.
+    Compute feasible paths from the current node to any exit.
     """
     if blocked_nodes is None:
         blocked_nodes = []
@@ -310,6 +247,7 @@ def getPosiblePaths(EnvInf, current_node, exits, gamma, algo, *, blocked_nodes=N
         complete.extend(newly_complete)
 
     complete = _filter_complete_by_gamma(complete, gamma)
+    complete = _rescore_complete_paths(EnvInf, complete)
     complete = _sort_complete(complete, algo)
 
     return [p for p, _, _ in complete]
@@ -317,37 +255,24 @@ def getPosiblePaths(EnvInf, current_node, exits, gamma, algo, *, blocked_nodes=N
 
 def getTargetsForCurrentNode(EnvInf, current_node, current_floor, exits):
     """
-    Build the list of routing targets available from the current node on the current floor.
-
-    Targets include:
-      - exits located on the current floor
-      - connectors to the floor below (down)
-      - connectors to the floor above (up)
-    The current node itself is excluded from connector targets.
-
-    Returns:
-        list: Deduplicated list of targets.
+    Build the list of routing targets on the current floor.
     """
     targets = set()
 
-    # Exits on the current floor
     for e in exits:
         if EnvInf.graph.nodes[e]["floor"] == current_floor:
             targets.add(e)
 
-    # Down connectors
     down_floor = current_floor - 1
     if (current_floor, down_floor) in EnvInf.floor_connecting_nodes:
         for n in EnvInf.floor_connecting_nodes[(current_floor, down_floor)]:
             if n != current_node:
                 targets.add(n)
 
-    # Up connectors
     up_floor = current_floor + 1
     if (current_floor, up_floor) in EnvInf.floor_connecting_nodes:
         for n in EnvInf.floor_connecting_nodes[(current_floor, up_floor)]:
-            for n in EnvInf.floor_connecting_nodes[(current_floor, up_floor)]:
-                if n != current_node:
-                    targets.add(n)
+            if n != current_node:
+                targets.add(n)
 
     return list(targets)

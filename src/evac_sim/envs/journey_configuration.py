@@ -15,6 +15,12 @@ def create_journeys_for_simulation(
     journeys: list[tuple[jps.JourneyDescription, list[str]]] = []
 
     for path in paths:
+        if path is None:
+            continue
+
+        if not isinstance(path, (list, tuple)):
+            continue
+
         if len(path) < 2:
             continue
 

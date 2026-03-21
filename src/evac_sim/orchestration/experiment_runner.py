@@ -340,6 +340,17 @@ def build_agent_groups(
             risk_per_node=risk_first_frame,
             gamma=gamma,
         )
+        log.warning("Initial path for source=%s -> %s", source, path)
+
+        if path is None:
+            raise ValueError(
+                f"No initial path found for source={source} in mode={mode}"
+            )
+
+        if not isinstance(path, (list, tuple)) or len(path) < 2:
+            raise ValueError(
+                f"Invalid initial path for source={source}: {path}"
+            )
 
         journeys_ids = set_journeys(simulation, source, [path], waypoints_ids, exit_ids)
         journey_id, best_path_source = journeys_ids[source][0]
