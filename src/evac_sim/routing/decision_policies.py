@@ -21,12 +21,12 @@ def handle_blocked_node_in_path(best_path, agent_group) -> None:
         agent_group.blocked_nodes = blocked_nodes
 
 
-def _get_possible_paths_with_fallback(EnvInf, current_node, exits, gamma, algo, blocked_nodes):
+def _get_possible_paths_with_fallback(env_info, current_node, exits, gamma, algo, blocked_nodes):
     """
     Get feasible paths, retrying without blocked nodes if needed.
     """
     paths = getPosiblePaths(
-        EnvInf,
+        env_info,
         current_node,
         exits,
         gamma,
@@ -36,7 +36,7 @@ def _get_possible_paths_with_fallback(EnvInf, current_node, exits, gamma, algo, 
 
     if not paths:
         paths = getPosiblePaths(
-            EnvInf,
+            env_info,
             current_node,
             exits,
             gamma,
@@ -65,7 +65,7 @@ def compute_low_awareness_alternative_path(
     next_node,
     current_node,
     agent_group,
-    EnvInf,
+    env_info,
     gamma,
     risk_threshold,
 ):
@@ -88,10 +88,10 @@ def compute_low_awareness_alternative_path(
         blocked_nodes.append(next_node)
         agent_group.blocked_nodes = blocked_nodes
 
-    update_all_graph_risks(EnvInf, risk_per_node)
+    update_all_graph_risks(env_info, risk_per_node)
 
     alternative_paths = _get_possible_paths_with_fallback(
-        EnvInf=EnvInf,
+        env_info=env_info,
         current_node=current_node,
         exits=exits,
         gamma=gamma,
@@ -101,13 +101,43 @@ def compute_low_awareness_alternative_path(
 
     return _select_path_by_active_strategy(alternative_paths, agent_group)
 
+def compute_initial_path(
+    exits,
+    agent_group,
+    env_info,
+    source_node,
+    risk_per_node=None,
+    gamma=0.4,
+):
+    """
+    Compute the initial evacuation path for a group before the simulation starts.
+
+    Unlike compute_alternative_path(), this function does not depend on an
+    already existing path or on next_node, because it is used during group
+    initialization.
+    """
+    blocked_nodes = getattr(agent_group, "blocked_nodes", [])
+
+    if risk_per_node is not None:
+        update_all_graph_risks(env_info, risk_per_node)
+
+    alternative_paths = _get_possible_paths_with_fallback(
+        env_info=env_info,
+        current_node=source_node,
+        exits=exits,
+        gamma=gamma,
+        algo=agent_group.algorithm,
+        blocked_nodes=blocked_nodes,
+    )
+
+    return _select_path_by_active_strategy(alternative_paths, agent_group)
 
 def compute_high_awareness_alternative_path(
     exits,
     risk_per_node,
     current_node,
     agent_group,
-    EnvInf,
+    env_info,
     gamma,
     risk_threshold,
 ):
@@ -139,10 +169,10 @@ def compute_high_awareness_alternative_path(
         return None
 
     agent_group.blocked_nodes = blocked_nodes
-    update_all_graph_risks(EnvInf, risk_per_node)
+    update_all_graph_risks(env_info, risk_per_node)
 
     alternative_paths = _get_possible_paths_with_fallback(
-        EnvInf=EnvInf,
+        env_info=env_info,
         current_node=current_node,
         exits=exits,
         gamma=gamma,
@@ -156,7 +186,7 @@ def compute_high_awareness_alternative_path(
 def compute_alternative_path(
     exits,
     agent_group,
-    EnvInf,
+    env_info,
     current_node=None,
     next_node=None,
     risk_per_node=None,
@@ -179,7 +209,7 @@ def compute_alternative_path(
             next_node=next_node,
             current_node=current_node,
             agent_group=agent_group,
-            EnvInf=EnvInf,
+            env_info=env_info,
             gamma=gamma,
             risk_threshold=risk_threshold,
         )
@@ -190,7 +220,7 @@ def compute_alternative_path(
             risk_per_node=risk_per_node,
             current_node=current_node,
             agent_group=agent_group,
-            EnvInf=EnvInf,
+            env_info=env_info,
             gamma=gamma,
             risk_threshold=risk_threshold,
         )

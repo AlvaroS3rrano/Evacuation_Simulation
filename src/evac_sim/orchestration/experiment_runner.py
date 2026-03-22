@@ -34,7 +34,7 @@ import evac_sim.envs.environment as pol
 from evac_sim.envs.journey_configuration import set_journeys
 from evac_sim.risk.risk_simulation import simulate_risk
 from evac_sim.risk.risk_validation import validate_risk_inputs
-from evac_sim.routing.decision_policies import compute_alternative_path
+from evac_sim.routing.decision_policies import compute_initial_path
 from evac_sim.simulation.simulation_manager import (
     run_agent_simulation,
     set_agents_in_simulation,
@@ -182,8 +182,18 @@ def prepare_shared_resources(
     if danger_visualization_frame is not None:
         danger_visualization_frame = int(danger_visualization_frame)
 
-    starting_risks = [tuple(x) for x in (cfg.get("starting_risks", []) or [])]
-    risk_overrides = [tuple(x) for x in (cfg.get("risk_overrides", []) or [])]
+    starting_risks_raw = cfg.get("starting_risks", []) or []
+    risk_overrides_raw = cfg.get("risk_overrides", []) or []
+
+    starting_risks = [
+        (str(node_id), float(risk))
+        for node_id, risk in starting_risks_raw
+    ]
+
+    risk_overrides = [
+        (int(frame), str(node_id), float(risk))
+        for frame, node_id, risk in risk_overrides_raw
+    ]
 
     if shared_simulation_conn is not None:
         simulation_conn = shared_simulation_conn
@@ -332,7 +342,7 @@ def build_agent_groups(
                 awareness_levels_per_group[mode],
             )
 
-        path = compute_alternative_path(
+        path = compute_initial_path(
             targets,
             group,
             env_info,

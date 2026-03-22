@@ -4,7 +4,11 @@ import pandas as pd
 
 from evac_sim.db.repositories.path_cache import upsert_path
 
-from .path_algorithms import centrality_measures, collect_k_shortest_paths
+from .path_algorithms import (
+    centrality_measures,
+    collect_k_shortest_paths,
+    compute_efficient_paths,
+)
 from .utils import collect_unblocked_paths
 
 
@@ -78,6 +82,7 @@ def getAlternativePathsForNode(
             all_paths.extend(computed)
 
     all_paths = collect_unblocked_paths(all_paths, blocked_nodes)
+    all_paths = compute_efficient_paths(all_paths, gamma)
 
     return _rescore_paths_for_current_candidate_set(currentG, all_paths)
 

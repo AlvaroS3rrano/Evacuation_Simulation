@@ -1,17 +1,22 @@
-temp:
-  environment: "mall"
-  sources: []
-  agents: []
-  targets: []
-  mode_type: 1
-  risk_seed: 233
+debug_case:
+  environment: "cruise_ship"
+  sources: ["82"]
+  agents: [5]
+  targets: ["163", "164"]
+  mode_type: 0
+  master_seed: 233
   risk_iterations: 7000
-  risk_increase_chance: 0.05
+  risk_increase_chance: 0.00001
   starting_risks:
+    - ["8", 1.0]
   risk_overrides:
+    - [2200, "153", 0.6]
+    - [2200, "225", 1.0]
+    - [2200, "224", 1.0]
+    - [2200, "201", 0.6]
   risk_threshold: 0.5
   propagation_threshold: 0.5
-  gamma: 0.2
+  gamma: 0.3
   stairs_max_speed: 0.6
   normal_max_speed: 1.2
   every_nth_frame_simulation: 3
@@ -76,7 +81,7 @@ representative_case_theme_park:
   mode_type: 0
   master_seed: 2468
   risk_iterations: 7000
-  risk_increase_chance: 0.01
+  risk_increase_chance: 0.0001
   starting_risks:
     - [ "67", 1.0 ]
     - [ "54", 1.0 ]
