@@ -47,7 +47,7 @@ def centrality_measures(G, all_paths):
     return node_centrality, scored_paths
 
 
-def collect_k_shortest_paths(G: nx.DiGraph, source, targets, k=50):
+def collect_k_shortest_paths(G: nx.DiGraph, source, targets, k=15):
     """
     Collect up to k simple minimum-cost paths from the source to each target
     and score them using the current candidate path set.

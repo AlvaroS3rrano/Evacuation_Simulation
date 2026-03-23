@@ -14,8 +14,8 @@ log = logging.getLogger(__name__)
 class RiskStepConfig:
     increase_chance: float
     propagation_threshold: float
-    random_increment_min: float = 0.01
-    random_increment_max: float = 0.1
+    random_increment_min: float = 0.05
+    random_increment_max: float = 0.2
     direct_decay: float = 3.0
     second_decay: float = 9.0
     precision: int | None = None

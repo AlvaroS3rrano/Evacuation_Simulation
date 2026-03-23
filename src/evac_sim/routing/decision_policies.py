@@ -1,5 +1,5 @@
 from .graph_risk import update_all_graph_risks
-from .multifloor_paths import getPosiblePaths
+from .multifloor_paths import get_posible_paths
 
 
 def handle_blocked_node_in_path(best_path, agent_group) -> None:
@@ -25,7 +25,7 @@ def _get_possible_paths_with_fallback(env_info, current_node, exits, gamma, algo
     """
     Get feasible paths, retrying without blocked nodes if needed.
     """
-    paths = getPosiblePaths(
+    paths = get_posible_paths(
         env_info,
         current_node,
         exits,
@@ -35,7 +35,7 @@ def _get_possible_paths_with_fallback(env_info, current_node, exits, gamma, algo
     )
 
     if not paths:
-        paths = getPosiblePaths(
+        paths = get_posible_paths(
             env_info,
             current_node,
             exits,
@@ -49,7 +49,7 @@ def _get_possible_paths_with_fallback(env_info, current_node, exits, gamma, algo
 
 def _select_path_by_active_strategy(alternative_paths, agent_group):
     """
-    Return the first path from the ordered candidate list.
+    Select the first path from an already sorted candidate list.
     """
     if not alternative_paths:
         return None
@@ -58,6 +58,36 @@ def _select_path_by_active_strategy(alternative_paths, agent_group):
     handle_blocked_node_in_path(best_path, agent_group)
     return best_path
 
+def compute_initial_path(
+    exits,
+    agent_group,
+    env_info,
+    source_node,
+    risk_per_node=None,
+    gamma=0.4,
+):
+    """
+    Compute the initial evacuation path for a group before the simulation starts.
+
+    Unlike compute_alternative_path(), this function does not depend on an
+    already existing path or on next_node, because it is used during group
+    initialization.
+    """
+    blocked_nodes = getattr(agent_group, "blocked_nodes", [])
+
+    if risk_per_node is not None:
+        update_all_graph_risks(env_info, risk_per_node)
+
+    alternative_paths = _get_possible_paths_with_fallback(
+        env_info=env_info,
+        current_node=source_node,
+        exits=exits,
+        gamma=gamma,
+        algo=agent_group.algorithm,
+        blocked_nodes=blocked_nodes,
+    )
+
+    return _select_path_by_active_strategy(alternative_paths, agent_group)
 
 def compute_low_awareness_alternative_path(
     exits,
@@ -93,37 +123,6 @@ def compute_low_awareness_alternative_path(
     alternative_paths = _get_possible_paths_with_fallback(
         env_info=env_info,
         current_node=current_node,
-        exits=exits,
-        gamma=gamma,
-        algo=agent_group.algorithm,
-        blocked_nodes=blocked_nodes,
-    )
-
-    return _select_path_by_active_strategy(alternative_paths, agent_group)
-
-def compute_initial_path(
-    exits,
-    agent_group,
-    env_info,
-    source_node,
-    risk_per_node=None,
-    gamma=0.4,
-):
-    """
-    Compute the initial evacuation path for a group before the simulation starts.
-
-    Unlike compute_alternative_path(), this function does not depend on an
-    already existing path or on next_node, because it is used during group
-    initialization.
-    """
-    blocked_nodes = getattr(agent_group, "blocked_nodes", [])
-
-    if risk_per_node is not None:
-        update_all_graph_risks(env_info, risk_per_node)
-
-    alternative_paths = _get_possible_paths_with_fallback(
-        env_info=env_info,
-        current_node=source_node,
         exits=exits,
         gamma=gamma,
         algo=agent_group.algorithm,

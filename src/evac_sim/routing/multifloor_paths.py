@@ -1,7 +1,7 @@
 from operator import itemgetter
 
 from .path_algorithms import centrality_measures
-from .path_cache import _get_cached_segments_from_connector, getAlternativePathsForNode
+from .path_cache import _get_cached_segments_from_connector, get_alternative_paths_for_node
 
 
 def _get_exits_on_floor(EnvInf, exits, floor):
@@ -204,7 +204,7 @@ def _sort_complete(complete, algo: int):
     return complete
 
 
-def getPosiblePaths(EnvInf, current_node, exits, gamma, algo, *, blocked_nodes=None):
+def get_posible_paths(EnvInf, current_node, exits, gamma, algo, *, blocked_nodes=None):
     """
     Compute feasible paths from the current node to any exit.
     """
@@ -218,13 +218,15 @@ def getPosiblePaths(EnvInf, current_node, exits, gamma, algo, *, blocked_nodes=N
 
     base_targets = _build_base_targets(EnvInf, exits, current_floor)
 
-    alternative_paths = getAlternativePathsForNode(
+    alternative_paths = get_alternative_paths_for_node(
         current_node,
         base_targets,
         gamma,
         Gcur,
         EnvInf.paths_connection,
         blocked_nodes=blocked_nodes,
+        apply_block_filter=True,
+        apply_gamma_filter=False,
     )
 
     complete, frontier = _init_complete_and_frontier(

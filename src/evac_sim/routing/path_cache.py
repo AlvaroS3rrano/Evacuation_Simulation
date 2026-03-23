@@ -32,11 +32,20 @@ def _rescore_paths_for_current_candidate_set(currentG, paths):
     )
 
 
-def getAlternativePathsForNode(
-    current_node, targets, gamma, currentG, paths_connection, *, blocked_nodes=None
+def get_alternative_paths_for_node(
+        current_node,
+        targets,
+        gamma,
+        currentG,
+        paths_connection,
+        *,
+        blocked_nodes=None,
+        apply_block_filter=True,
+        apply_gamma_filter=True,
 ):
     """
     Retrieve or compute alternative paths from a source node to one or more targets.
+    Optionally skip blocked-node filtering and/or gamma filtering.
     """
     if blocked_nodes is None:
         blocked_nodes = []
@@ -81,8 +90,11 @@ def getAlternativePathsForNode(
 
             all_paths.extend(computed)
 
-    all_paths = collect_unblocked_paths(all_paths, blocked_nodes)
-    all_paths = compute_efficient_paths(all_paths, gamma)
+    if apply_block_filter:
+        all_paths = collect_unblocked_paths(all_paths, blocked_nodes)
+
+    if apply_gamma_filter:
+        all_paths = compute_efficient_paths(all_paths, gamma)
 
     return _rescore_paths_for_current_candidate_set(currentG, all_paths)
 
@@ -120,13 +132,15 @@ def _get_cached_segments_from_connector(
     if cache_key not in EnvInf.floor_paths[next_floor]:
         Gnext = EnvInf.floors[next_floor] if EnvInf.floors is not None else EnvInf.graph
 
-        EnvInf.floor_paths[next_floor][cache_key] = getAlternativePathsForNode(
+        EnvInf.floor_paths[next_floor][cache_key] = get_alternative_paths_for_node(
             connector,
             targets,
             gamma,
             Gnext,
             EnvInf.paths_connection,
             blocked_nodes=blocked_nodes,
+            apply_block_filter=True,
+            apply_gamma_filter=False,
         )
 
     return EnvInf.floor_paths[next_floor].get(cache_key, [])
@@ -143,7 +157,7 @@ def updateFloorPaths(EnvInf, current_floor, sources, targets, gamma, *, blocked_
 
     all_floor_paths = {}
     for source in sources:
-        alternative_paths = getAlternativePathsForNode(
+        alternative_paths = get_alternative_paths_for_node(
             source,
             targets,
             gamma,

@@ -10,13 +10,19 @@ def upsert_path(
     path: list[str],
     betweenness: float | None = None,
 ):
+    path_json = json.dumps(path)
+
     with connection:
         connection.execute(
             """
-            INSERT OR REPLACE INTO paths (source, target, cost, path, betweenness)
+            INSERT INTO paths (source, target, cost, path, betweenness)
             VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(source, target, path)
+            DO UPDATE SET
+                cost = excluded.cost,
+                betweenness = excluded.betweenness
             """,
-            (source, target, cost, json.dumps(path), betweenness),
+            (source, target, cost, path_json, betweenness),
         )
 
 
@@ -46,6 +52,32 @@ def get_path(
         "path": json.loads(path_json),
         "betweenness": betweenness,
     }
+
+def get_paths(
+    connection: sqlite3.Connection,
+    source: str,
+    target: str,
+):
+    cursor = connection.cursor()
+
+    rows = cursor.execute(
+        """
+        SELECT cost, path, betweenness
+        FROM paths
+        WHERE source = ? AND target = ?
+        ORDER BY cost ASC, betweenness DESC, path ASC
+        """,
+        (source, target),
+    ).fetchall()
+
+    return [
+        {
+            "cost": cost,
+            "path": json.loads(path_json),
+            "betweenness": betweenness,
+        }
+        for cost, path_json, betweenness in rows
+    ]
 
 
 def find_paths_containing_node(

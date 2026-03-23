@@ -127,7 +127,7 @@ def test_low_awareness_only_reacts_to_next_node(monkeypatch):
         fake_update_all_graph_risks,
     )
     monkeypatch.setattr(
-        "evac_sim.routing.decision_policies.getPosiblePaths",
+        "evac_sim.routing.decision_policies.get_posible_paths",
         fake_get_possible_paths,
     )
 
@@ -139,7 +139,7 @@ def test_low_awareness_only_reacts_to_next_node(monkeypatch):
         next_node="B",
         current_node="A",
         agent_group=group,
-        EnvInf=env,
+        env_info=env,
         gamma=0.4,
         risk_threshold=0.5,
     )
@@ -164,7 +164,7 @@ def test_high_awareness_reacts_to_any_remaining_unsafe_node(monkeypatch):
         fake_update_all_graph_risks,
     )
     monkeypatch.setattr(
-        "evac_sim.routing.decision_policies.getPosiblePaths",
+        "evac_sim.routing.decision_policies.get_posible_paths",
         fake_get_possible_paths,
     )
 
@@ -175,7 +175,7 @@ def test_high_awareness_reacts_to_any_remaining_unsafe_node(monkeypatch):
         risk_per_node=risk_per_node,
         current_node="A",
         agent_group=group,
-        EnvInf=env,
+        env_info=env,
         gamma=0.4,
         risk_threshold=0.5,
     )
