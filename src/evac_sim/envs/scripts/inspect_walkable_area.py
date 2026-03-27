@@ -13,7 +13,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--env",
-        default="management_building_basement",
+        default="management_building_floor_0",
         help="Environment name",
     )
     return parser.parse_args()
