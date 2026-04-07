@@ -212,7 +212,7 @@ def main() -> None:
             accept_partial_min_cells=args.accept_partial_min_cells,
         )
 
-    edges = build_bidirectional_weighted_edges(cells)
+    edges = build_bidirectional_weighted_edges(cells, walkable_area=geometry)
     print(f"Directed weighted edges generated: {len(edges)}")
     print(f"Undirected connections generated: {len(edges) // 2}")
 

@@ -45,6 +45,7 @@ def main() -> None:
             "is_stairs": False,
             "floor": 0,
         },
+        walkable_area=env.walkable_area,
     )
 
     print(f"Generated nodes: {len(layout.node_order)}")

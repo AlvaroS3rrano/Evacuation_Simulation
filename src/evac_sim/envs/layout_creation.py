@@ -4,9 +4,10 @@ import math
 from numbers import Integral
 from dataclasses import dataclass
 from typing import Iterable
+from itertools import combinations
 
 import networkx as nx
-from shapely.geometry import Point, Polygon, box
+from shapely.geometry import Point, Polygon, box, MultiPolygon, GeometryCollection, LineString
 from shapely.geometry.base import BaseGeometry
 from shapely.strtree import STRtree
 
@@ -25,6 +26,32 @@ class BuiltGridLayout:
     specific_areas: dict[str, BaseGeometry]
     graph: nx.DiGraph
     node_order: list[str]
+
+def _extract_valid_polygon(geometry: BaseGeometry) -> Polygon | None:
+    if geometry.is_empty:
+        return None
+
+    if isinstance(geometry, Polygon):
+        return geometry if geometry.area > 0 else None
+
+    if isinstance(geometry, MultiPolygon):
+        polygons = [geom for geom in geometry.geoms if isinstance(geom, Polygon) and geom.area > 0]
+        if not polygons:
+            return None
+        return max(polygons, key=lambda p: p.area)
+
+    if isinstance(geometry, GeometryCollection):
+        polygons = [geom for geom in geometry.geoms if isinstance(geom, Polygon) and geom.area > 0]
+        if not polygons:
+            return None
+        return max(polygons, key=lambda p: p.area)
+
+    return None
+
+
+def _clip_cell_to_walkable_area(square: Polygon, walkable_area: BaseGeometry) -> Polygon | None:
+    clipped = square.intersection(walkable_area)
+    return _extract_valid_polygon(clipped)
 
 def _create_square(x: float, y: float, size: float) -> Polygon:
     return box(x, y, x + size, y + size)
@@ -67,6 +94,15 @@ def _should_accept_terminal_cell(
 
     return walkable_area.covers(Point(center))
 
+def _can_connect_through_walkable_area(
+    cell_a: SquareCell,
+    cell_b: SquareCell,
+    walkable_area: BaseGeometry,
+    tolerance: float = 1e-9,
+) -> bool:
+    line = LineString([cell_a.center, cell_b.center])
+    buffered = line.buffer(tolerance)
+    return walkable_area.covers(line) or walkable_area.covers(buffered)
 
 def build_adaptive_square_cells(
     walkable_area: BaseGeometry,
@@ -136,11 +172,14 @@ def build_adaptive_square_cells(
         center = _square_center(x, y, size)
 
         if walkable_area.covers(square):
+            clipped = square
+            clipped_center = (clipped.centroid.x, clipped.centroid.y)
+
             cell_id = str(next_id)
             cells[cell_id] = SquareCell(
                 cell_id=cell_id,
-                polygon=square,
-                center=center,
+                polygon=clipped,
+                center=clipped_center,
                 size=size,
                 level=level,
             )
@@ -149,20 +188,24 @@ def build_adaptive_square_cells(
 
         if size <= min_cell_size:
             if _should_accept_terminal_cell(
-                walkable_area=walkable_area,
-                square=square,
-                center=center,
-                accept_partial_min_cells=accept_partial_min_cells,
-            ):
-                cell_id = str(next_id)
-                cells[cell_id] = SquareCell(
-                    cell_id=cell_id,
-                    polygon=square,
+                    walkable_area=walkable_area,
+                    square=square,
                     center=center,
-                    size=size,
-                    level=level,
-                )
-                next_id += 1
+                    accept_partial_min_cells=accept_partial_min_cells,
+            ):
+                clipped = _clip_cell_to_walkable_area(square, walkable_area)
+                if clipped is not None:
+                    clipped_center = (clipped.centroid.x, clipped.centroid.y)
+
+                    cell_id = str(next_id)
+                    cells[cell_id] = SquareCell(
+                        cell_id=cell_id,
+                        polygon=clipped,
+                        center=clipped_center,
+                        size=size,
+                        level=level,
+                    )
+                    next_id += 1
             continue
 
         for child_x, child_y, child_size in _subdivide_square(x, y, size):
@@ -232,16 +275,18 @@ def _build_walkable_mask(
     walkable_area: BaseGeometry,
     base_cell_size: float,
     require_full_cell: bool = True,
+    min_intersection_ratio: float = 0.0,
 ) -> tuple[list[list[bool]], float, float, int, int]:
     minx, miny, maxx, maxy = walkable_area.bounds
 
-    rows = int((maxy - miny) / base_cell_size)
-    cols = int((maxx - minx) / base_cell_size)
+    rows = math.ceil((maxy - miny) / base_cell_size)
+    cols = math.ceil((maxx - minx) / base_cell_size)
 
     if rows <= 0 or cols <= 0:
         raise ValueError("Invalid grid size derived from walkable_area and base_cell_size")
 
     mask = [[False for _ in range(cols)] for _ in range(rows)]
+    full_area = base_cell_size * base_cell_size
 
     for row in range(rows):
         for col in range(cols):
@@ -252,8 +297,12 @@ def _build_walkable_mask(
             if require_full_cell:
                 mask[row][col] = walkable_area.covers(cell)
             else:
-                center = Point(x + base_cell_size / 2.0, y + base_cell_size / 2.0)
-                mask[row][col] = walkable_area.covers(center)
+                inter = cell.intersection(walkable_area)
+                if not inter.is_empty and inter.area > 0:
+                    ratio = inter.area / full_area
+                    mask[row][col] = ratio >= min_intersection_ratio
+                else:
+                    mask[row][col] = False
 
     return mask, minx, miny, rows, cols
 
@@ -311,6 +360,7 @@ def build_greedy_square_cells(
         walkable_area=walkable_area,
         base_cell_size=base_cell_size,
         require_full_cell=require_full_cell,
+        min_intersection_ratio=0.01 if not require_full_cell else 1.0,
     )
 
     min_side_cells = max(1, round(min_square_size / base_cell_size))
@@ -341,12 +391,18 @@ def build_greedy_square_cells(
         size = best_side * base_cell_size
 
         square = _create_square(x, y, size)
-        center = _square_center(x, y, size)
+        clipped = _clip_cell_to_walkable_area(square, walkable_area)
+
+        if clipped is None:
+            _mark_square_used(mask, best_row, best_col, best_side)
+            continue
+
+        center = (clipped.centroid.x, clipped.centroid.y)
 
         cell_id = str(next_id)
         cells[cell_id] = SquareCell(
             cell_id=cell_id,
-            polygon=square,
+            polygon=clipped,
             center=center,
             size=size,
             level=0,
@@ -364,24 +420,98 @@ def compute_distance(
     return math.hypot(p1[0] - p2[0], p1[1] - p2[1])
 
 
-def _share_edge(
-    polygon_a,
-    polygon_b,
+def _are_neighbor_cells(
+    polygon_a: BaseGeometry,
+    polygon_b: BaseGeometry,
     min_shared_length: float = 1e-9,
+    distance_tolerance: float = 1e-9,
 ) -> bool:
-    intersection = polygon_a.boundary.intersection(polygon_b.boundary)
-
-    if intersection.is_empty:
+    if polygon_a.is_empty or polygon_b.is_empty:
         return False
 
-    if intersection.geom_type in {"LineString", "MultiLineString"}:
-        return intersection.length > min_shared_length
+    boundary_intersection = polygon_a.boundary.intersection(polygon_b.boundary)
+    if not boundary_intersection.is_empty:
+        if boundary_intersection.geom_type in {"LineString", "MultiLineString"}:
+            if boundary_intersection.length > min_shared_length:
+                return True
+
+    if polygon_a.distance(polygon_b) <= distance_tolerance:
+        return True
+
+    if polygon_a.touches(polygon_b):
+        return True
+
+    if polygon_a.intersects(polygon_b):
+        intersection = polygon_a.intersection(polygon_b)
+        if not intersection.is_empty and intersection.area > 0:
+            return True
 
     return False
 
+def ensure_graph_connectivity(
+    cells: dict[str, SquareCell],
+    edges: list[tuple[str, str, float]],
+    walkable_area: BaseGeometry,
+) -> list[tuple[str, str, float]]:
+    if not cells:
+        return edges
+
+    undirected = nx.Graph()
+    for cell_id in cells:
+        undirected.add_node(cell_id)
+
+    for source, target, weight in edges:
+        undirected.add_edge(source, target, weight=weight)
+
+    components = list(nx.connected_components(undirected))
+    if len(components) <= 1:
+        return edges
+
+    edge_map: set[tuple[str, str]] = {(s, t) for s, t, _ in edges}
+    new_edges = list(edges)
+
+    while True:
+        components = list(nx.connected_components(undirected))
+        if len(components) <= 1:
+            break
+
+        best_pair = None
+        best_distance = float("inf")
+
+        for comp_a, comp_b in combinations(components, 2):
+            for node_a in comp_a:
+                for node_b in comp_b:
+                    cell_a = cells[node_a]
+                    cell_b = cells[node_b]
+
+                    if not _can_connect_through_walkable_area(cell_a, cell_b, walkable_area):
+                        continue
+
+                    dist = compute_distance(cell_a.center, cell_b.center)
+                    if dist < best_distance:
+                        best_distance = dist
+                        best_pair = (node_a, node_b, dist)
+
+        if best_pair is None:
+            break
+
+        a, b, w = best_pair
+
+        if (a, b) not in edge_map:
+            new_edges.append((a, b, w))
+            edge_map.add((a, b))
+
+        if (b, a) not in edge_map:
+            new_edges.append((b, a, w))
+            edge_map.add((b, a))
+
+        undirected.add_edge(a, b, weight=w)
+
+    return new_edges
 
 def build_bidirectional_weighted_edges(
     cells: dict[str, SquareCell],
+    walkable_area: BaseGeometry | None = None,
     min_shared_length: float = 1e-9,
 ) -> list[tuple[str, str, float]]:
     if not cells:
@@ -418,10 +548,10 @@ def build_bidirectional_weighted_edges(
             if pair in seen_undirected_pairs:
                 continue
 
-            if not _share_edge(
-                cell.polygon,
-                other_cell.polygon,
-                min_shared_length=min_shared_length,
+            if not _are_neighbor_cells(
+                    cell.polygon,
+                    other_cell.polygon,
+                    min_shared_length=min_shared_length,
             ):
                 continue
 
@@ -430,6 +560,9 @@ def build_bidirectional_weighted_edges(
             edges.append((cell_id, other_id, weight))
             edges.append((other_id, cell_id, weight))
             seen_undirected_pairs.add(pair)
+
+    if walkable_area is not None:
+        edges = ensure_graph_connectivity(cells, edges, walkable_area)
 
     return edges
 
@@ -447,6 +580,7 @@ def _sort_cells_for_stable_ids(
 
 def build_grid_layout(
     cells: dict[str, SquareCell],
+    walkable_area: BaseGeometry | None = None,
     radius: float | None = None,
     radius_ratio: float = 0.25,
     node_defaults: dict | None = None,
@@ -477,7 +611,7 @@ def build_grid_layout(
         waypoint_radius = radius if radius is not None else cell.size * radius_ratio
         waypoints[new_id] = ([cell.center[0], cell.center[1]], waypoint_radius)
 
-    raw_edges = build_bidirectional_weighted_edges(cells)
+    raw_edges = build_bidirectional_weighted_edges(cells, walkable_area=walkable_area)
 
     graph = nx.DiGraph()
 
@@ -495,3 +629,4 @@ def build_grid_layout(
         graph=graph,
         node_order=node_order,
     )
+
