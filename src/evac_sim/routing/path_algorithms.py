@@ -74,8 +74,7 @@ def collect_k_shortest_paths(G: nx.DiGraph, source, targets, k=15):
         except nx.NetworkXNoPath:
             continue
 
-    _, scored_paths = centrality_measures(G, all_paths)
-    return scored_paths
+    return all_paths
 
 
 def collect_unblocked_paths(paths, blocked_nodes):

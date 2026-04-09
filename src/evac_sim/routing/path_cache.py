@@ -1,8 +1,4 @@
-import json
-
-import pandas as pd
-
-from evac_sim.db.repositories.path_cache import upsert_path
+from evac_sim.db.repositories.path_cache import upsert_path, get_paths
 
 from .path_algorithms import (
     centrality_measures,
@@ -11,42 +7,38 @@ from .path_algorithms import (
 )
 from .utils import collect_unblocked_paths
 
-
-def _rescore_paths_for_current_candidate_set(currentG, paths):
-    """
-    Recompute path scores on the current candidate set.
-    """
-    if not paths:
-        return []
-
-    raw_paths = [(path, cost) for path, cost, _ in paths]
-    _, rescored_paths = centrality_measures(currentG, raw_paths)
-
+def _sort_paths(paths):
     return sorted(
-        rescored_paths,
+        paths,
         key=lambda t: (
-            float(t[1]),
-            -float(t[2]),
+            float(t[1]),     # cost
+            -float(t[2]),    # centrality
             tuple(t[0]),
         ),
     )
 
+def process_candidate_paths(paths, *, blocked_nodes=None, gamma=None, G=None):
+    if blocked_nodes:
+        paths = collect_unblocked_paths(paths, blocked_nodes)
+
+    if gamma is not None:
+        paths = compute_efficient_paths(paths, gamma)
+
+    _, paths = centrality_measures(G, paths)
+
+    return _sort_paths(paths)
 
 def get_alternative_paths_for_node(
-        current_node,
-        targets,
-        gamma,
-        currentG,
-        paths_connection,
-        *,
-        blocked_nodes=None,
-        apply_block_filter=True,
-        apply_gamma_filter=True,
+    current_node,
+    targets,
+    gamma,
+    currentG,
+    paths_connection,
+    *,
+    blocked_nodes=None,
+    apply_block_filter=True,
+    apply_gamma_filter=True,
 ):
-    """
-    Retrieve or compute alternative paths from a source node to one or more targets.
-    Optionally skip blocked-node filtering and/or gamma filtering.
-    """
     if blocked_nodes is None:
         blocked_nodes = []
 
@@ -56,47 +48,31 @@ def get_alternative_paths_for_node(
     all_paths = []
 
     for target in targets:
-        query = (
-            "SELECT path, cost, betweenness "
-            "FROM paths "
-            "WHERE source = ? AND target = ? "
-            "ORDER BY cost ASC, betweenness DESC, path ASC"
-        )
-        paths_df = pd.read_sql_query(query, paths_connection, params=[current_node, target])
+        paths = get_paths(paths_connection, current_node, target)
 
-        if not paths_df.empty:
+        if paths:
             all_paths.extend(
-                [
-                    (json.loads(path), cost, betweenness)
-                    for path, cost, betweenness in zip(
-                        paths_df["path"], paths_df["cost"], paths_df["betweenness"]
-                    )
-                ]
+                [(p["path"], p["cost"]) for p in paths]
             )
         else:
             computed = collect_k_shortest_paths(currentG, current_node, [target])
 
             computed = sorted(
                 computed,
-                key=lambda t: (
-                    float(t[1]),
-                    -float(t[2]),
-                    tuple(t[0]),
-                ),
+                key=lambda t: (float(t[1]), tuple(t[0])),
             )
 
-            for path, cost, betweenness in computed:
-                upsert_path(paths_connection, current_node, target, cost, path, betweenness)
+            for path, cost in computed:
+                upsert_path(paths_connection, current_node, target, cost, path)
 
             all_paths.extend(computed)
 
-    if apply_block_filter:
-        all_paths = collect_unblocked_paths(all_paths, blocked_nodes)
-
-    if apply_gamma_filter:
-        all_paths = compute_efficient_paths(all_paths, gamma)
-
-    return _rescore_paths_for_current_candidate_set(currentG, all_paths)
+    return process_candidate_paths(
+        all_paths,
+        blocked_nodes=blocked_nodes if apply_block_filter else None,
+        gamma=gamma if apply_gamma_filter else None,
+        G=currentG,
+    )
 
 
 def _ensure_floor_cache(EnvInf, floor: int) -> None:

@@ -35,10 +35,10 @@ representative_case:
   starting_risks:
     - ["8", 1.0]
   risk_overrides:
-    - [2200, "153", 0.6]
-    - [2200, "225", 1.0]
-    - [2200, "224", 1.0]
-    - [2200, "201", 0.6]
+    - [1600, "153", 0.6]
+    - [1600, "225", 1.0]
+    - [1600, "224", 1.0]
+    - [1600, "201", 0.6]
   risk_threshold: 0.5
   propagation_threshold: 0.5
   gamma: 0.3

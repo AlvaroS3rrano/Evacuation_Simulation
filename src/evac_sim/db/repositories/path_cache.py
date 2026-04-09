@@ -8,21 +8,19 @@ def upsert_path(
     target: str,
     cost: float,
     path: list[str],
-    betweenness: float | None = None,
 ):
     path_json = json.dumps(path)
 
     with connection:
         connection.execute(
             """
-            INSERT INTO paths (source, target, cost, path, betweenness)
-            VALUES (?, ?, ?, ?, ?)
+            INSERT INTO paths (source, target, cost, path)
+            VALUES (?, ?, ?, ?)
             ON CONFLICT(source, target, path)
             DO UPDATE SET
-                cost = excluded.cost,
-                betweenness = excluded.betweenness
+                cost = excluded.cost
             """,
-            (source, target, cost, path_json, betweenness),
+            (source, target, cost, path_json),
         )
 
 
@@ -35,7 +33,7 @@ def get_path(
 
     row = cursor.execute(
         """
-        SELECT cost, path, betweenness
+        SELECT cost, path
         FROM paths
         WHERE source = ? AND target = ?
         """,
@@ -45,12 +43,11 @@ def get_path(
     if row is None:
         return None
 
-    cost, path_json, betweenness = row
+    cost, path_json = row
 
     return {
         "cost": cost,
         "path": json.loads(path_json),
-        "betweenness": betweenness,
     }
 
 def get_paths(
@@ -62,10 +59,10 @@ def get_paths(
 
     rows = cursor.execute(
         """
-        SELECT cost, path, betweenness
+        SELECT cost, path
         FROM paths
         WHERE source = ? AND target = ?
-        ORDER BY cost ASC, betweenness DESC, path ASC
+        ORDER BY cost ASC, path ASC
         """,
         (source, target),
     ).fetchall()
@@ -74,9 +71,8 @@ def get_paths(
         {
             "cost": cost,
             "path": json.loads(path_json),
-            "betweenness": betweenness,
         }
-        for cost, path_json, betweenness in rows
+        for cost, path_json in rows
     ]
 
 

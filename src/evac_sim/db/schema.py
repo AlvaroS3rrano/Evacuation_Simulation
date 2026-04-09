@@ -82,7 +82,6 @@ def create_paths_table(connection: sqlite3.Connection, force_reset: bool = False
                 target TEXT NOT NULL,
                 cost REAL NOT NULL,
                 path TEXT NOT NULL,
-                betweenness REAL,
                 UNIQUE(source, target, path)
             )
             """
