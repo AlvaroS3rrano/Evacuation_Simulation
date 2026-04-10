@@ -6,6 +6,7 @@ from collections import Counter
 import matplotlib.pyplot as plt
 import pedpy
 from matplotlib.patches import Circle
+from shapely.geometry import Polygon
 
 from evac_sim.envs.environment_factory import select_environment
 from evac_sim.envs.layout_creation import (
@@ -72,6 +73,7 @@ def draw_cell(
             fontsize=7,
         )
 
+
 def draw_edges(ax, cells: dict[str, SquareCell], edges: list[tuple[str, str, float]]) -> None:
     drawn_pairs: set[tuple[str, str]] = set()
 
@@ -91,7 +93,8 @@ def draw_edges(ax, cells: dict[str, SquareCell], edges: list[tuple[str, str, flo
         )
         drawn_pairs.add(pair)
 
-def print_cell_statistics(cells) -> None:
+
+def print_cell_statistics(cells: dict[str, SquareCell]) -> None:
     size_counter = Counter()
     level_counter = Counter()
 
@@ -106,6 +109,128 @@ def print_cell_statistics(cells) -> None:
     print("Cell statistics by level:")
     for level in sorted(level_counter):
         print(f"  level={level}: {level_counter[level]}")
+
+
+def print_waypoints_python(waypoints: dict[str, tuple[list[float], float]]) -> None:
+    print("waypoints = {")
+    for key in sorted(waypoints, key=lambda x: int(x) if x.isdigit() else x):
+        point, radius = waypoints[key]
+        print(f'    "{key}": ({point}, {radius}),')
+    print("}")
+
+
+def print_edges_python(edges: list[tuple[str, str, float]]) -> None:
+    print("edges = [")
+    for source, target, weight in edges:
+        print(f'    ("{source}", "{target}", {weight}),')
+    print("]")
+
+
+def print_specific_areas_python(cells: dict[str, SquareCell]) -> None:
+    print("specific_areas = {")
+
+    for key in sorted(cells, key=lambda x: int(x) if x.isdigit() else x):
+        polygon = cells[key].polygon
+
+        if not isinstance(polygon, Polygon):
+            print(f'    "{key}": {polygon.wkt},')
+            continue
+
+        coords = list(polygon.exterior.coords)[:-1]
+
+        coords_str = ", ".join(
+            f"({int(x) if float(x).is_integer() else x}, {int(y) if float(y).is_integer() else y})"
+            for x, y in coords
+        )
+
+        print(f'    "{key}": Polygon([{coords_str}]),')
+
+    print("}")
+
+
+def print_layout_summary(
+    args: argparse.Namespace,
+    cells: dict[str, SquareCell],
+    edges: list[tuple[str, str, float]],
+    waypoints: dict[str, tuple[list[float], float]],
+) -> None:
+    print(f"Environment: {args.env}")
+    print(f"Strategy: {args.method}")
+    print(f"Minimum cell size: {args.min_cell_size}")
+
+    if args.method == "greedy":
+        print(f"Greedy minimum square size: {args.greedy_min_square_size}")
+        print(f"Greedy require full cell: {not args.greedy_center_within}")
+    else:
+        print(f"Maximum cell size: {args.max_cell_size}")
+        print(f"Accept partial min cells: {args.accept_partial_min_cells}")
+
+    print(f"Cells generated: {len(cells)}")
+    print(f"Waypoints generated: {len(waypoints)}")
+    print(f"Directed weighted edges generated: {len(edges)}")
+    print(f"Undirected connections generated: {len(edges) // 2}")
+    print_cell_statistics(cells)
+
+
+def build_cells_from_args(
+    args: argparse.Namespace,
+    geometry,
+) -> dict[str, SquareCell]:
+    if args.method == "greedy":
+        return build_greedy_square_cells(
+            walkable_area=geometry,
+            base_cell_size=args.min_cell_size,
+            min_square_size=args.greedy_min_square_size,
+            require_full_cell=not args.greedy_center_within,
+        )
+
+    return build_adaptive_square_cells(
+        walkable_area=geometry,
+        min_cell_size=args.min_cell_size,
+        max_cell_size=args.max_cell_size,
+        accept_partial_min_cells=args.accept_partial_min_cells,
+    )
+
+
+def plot_layout(
+    walkable_area,
+    cells: dict[str, SquareCell],
+    edges: list[tuple[str, str, float]],
+    waypoints: dict[str, tuple[list[float], float]],
+    args: argparse.Namespace,
+) -> None:
+    fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(24, 16))
+    ax.set_aspect("equal")
+
+    pedpy.plot_walkable_area(walkable_area=walkable_area, axes=ax)
+
+    for cell_id, cell in cells.items():
+        draw_cell(
+            ax=ax,
+            polygon=cell.polygon,
+            cell_id=cell_id,
+            show_cell_id=args.show_cell_id,
+            show_cell_size=args.show_cell_size,
+            cell_size=cell.size,
+        )
+
+    draw_edges(ax, cells, edges)
+
+    for waypoint_id, (point, distance) in waypoints.items():
+        draw_waypoint(
+            ax=ax,
+            waypoint=point,
+            distance=distance,
+            idx=waypoint_id,
+            show_index=args.show_waypoint_index,
+        )
+
+    ax.set_title(
+        f"Square decomposition - env={args.env}, method={args.method}, "
+        f"min_cell_size={args.min_cell_size}, cells={len(cells)}"
+    )
+    plt.tight_layout()
+    plt.show()
 
 
 def parse_args() -> argparse.Namespace:
@@ -187,6 +312,36 @@ def parse_args() -> argparse.Namespace:
         help="Show the side length of each cell",
     )
 
+    parser.add_argument(
+        "--no-plot",
+        action="store_true",
+        help="Do not display the plot",
+    )
+
+    parser.add_argument(
+        "--print-summary",
+        action="store_true",
+        help="Print layout summary information",
+    )
+
+    parser.add_argument(
+        "--print-waypoints",
+        action="store_true",
+        help="Print waypoints as Python dictionary",
+    )
+
+    parser.add_argument(
+        "--print-edges",
+        action="store_true",
+        help="Print edges as Python list",
+    )
+
+    parser.add_argument(
+        "--print-specific-areas",
+        action="store_true",
+        help="Print cell polygons as Python dictionary",
+    )
+
     return parser.parse_args()
 
 
@@ -197,24 +352,9 @@ def main() -> None:
     walkable_area = env.walkable_area
     geometry = walkable_area.polygon
 
-    if args.method == "greedy":
-        cells = build_greedy_square_cells(
-            walkable_area=geometry,
-            base_cell_size=args.min_cell_size,
-            min_square_size=args.greedy_min_square_size,
-            require_full_cell=not args.greedy_center_within,
-        )
-    else:
-        cells = build_adaptive_square_cells(
-            walkable_area=geometry,
-            min_cell_size=args.min_cell_size,
-            max_cell_size=args.max_cell_size,
-            accept_partial_min_cells=args.accept_partial_min_cells,
-        )
+    cells = build_cells_from_args(args, geometry)
 
     edges = build_bidirectional_weighted_edges(cells, walkable_area=geometry)
-    print(f"Directed weighted edges generated: {len(edges)}")
-    print(f"Undirected connections generated: {len(edges) // 2}")
 
     waypoints = get_waypoints_from_cells(
         cells,
@@ -222,53 +362,30 @@ def main() -> None:
         radius_ratio=args.radius_ratio,
     )
 
-    print(f"Environment: {args.env}")
-    print(f"Strategy: {args.method}")
-    print(f"Minimum cell size: {args.min_cell_size}")
-
-    if args.method == "greedy":
-        print(f"Greedy minimum square size: {args.greedy_min_square_size}")
-        print(f"Greedy require full cell: {not args.greedy_center_within}")
-    else:
-        print(f"Maximum cell size: {args.max_cell_size}")
-        print(f"Accept partial min cells: {args.accept_partial_min_cells}")
-
-    print(f"Cells generated: {len(cells)}")
-    print(f"Waypoints generated: {len(waypoints)}")
-    print_cell_statistics(cells)
-
-    fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(24, 16))
-    ax.set_aspect("equal")
-
-    pedpy.plot_walkable_area(walkable_area=walkable_area, axes=ax)
-
-    for cell_id, cell in cells.items():
-        draw_cell(
-            ax=ax,
-            polygon=cell.polygon,
-            cell_id=cell_id,
-            show_cell_id=args.show_cell_id,
-            show_cell_size=args.show_cell_size,
-            cell_size=cell.size,
-        )
-
-    draw_edges(ax, cells, edges)
-
-    for waypoint_id, (point, distance) in waypoints.items():
-        draw_waypoint(
-            ax=ax,
-            waypoint=point,
-            distance=distance,
-            idx=waypoint_id,
-            show_index=args.show_waypoint_index,
-        )
-
-    ax.set_title(
-        f"Square decomposition - env={args.env}, method={args.method}, "
-        f"min_cell_size={args.min_cell_size}, cells={len(cells)}"
+    should_print_summary = args.print_summary or (
+        not args.print_waypoints and not args.print_edges and not args.print_specific_areas
     )
-    plt.tight_layout()
-    plt.show()
+
+    if should_print_summary:
+        print_layout_summary(args, cells, edges, waypoints)
+
+    if args.print_waypoints:
+        print_waypoints_python(waypoints)
+
+    if args.print_edges:
+        print_edges_python(edges)
+
+    if args.print_specific_areas:
+        print_specific_areas_python(cells)
+
+    if not args.no_plot:
+        plot_layout(
+            walkable_area=walkable_area,
+            cells=cells,
+            edges=edges,
+            waypoints=waypoints,
+            args=args,
+        )
 
 
 if __name__ == "__main__":

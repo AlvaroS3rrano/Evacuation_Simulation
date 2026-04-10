@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from shapely.geometry import Polygon
+
 from evac_sim.envs.environment_factory import select_environment
 from evac_sim.envs.layout_creation import (
     build_greedy_square_cells,
@@ -13,12 +15,16 @@ def print_specific_areas_python(specific_areas) -> None:
     for key in sorted(specific_areas, key=lambda x: int(x)):
         polygon = specific_areas[key]
 
-        coords = list(polygon.exterior.coords)
+        if not isinstance(polygon, Polygon):
+            print(f'    "{key}": {polygon.wkt},')
+            continue
 
-        coords = coords[:-1]
+        coords = list(polygon.exterior.coords)[:-1]
 
         coords_str = ", ".join(
-            f"({int(x) if x.is_integer() else x}, {int(y) if y.is_integer() else y})" for x, y in coords)
+            f"({int(x) if float(x).is_integer() else x}, {int(y) if float(y).is_integer() else y})"
+            for x, y in coords
+        )
 
         print(f'    "{key}": Polygon([{coords_str}]),')
 
@@ -26,13 +32,14 @@ def print_specific_areas_python(specific_areas) -> None:
 
 
 def main() -> None:
-    env = select_environment("corridor")
+    env = select_environment("management_building_basement")
+    walkable_geometry = env.walkable_area.polygon
 
     cells = build_greedy_square_cells(
-        walkable_area=env.walkable_area.polygon,
+        walkable_area=walkable_geometry,
         base_cell_size=1.0,
         min_square_size=None,
-        require_full_cell=True,
+        require_full_cell=False,  # mejor para cubrir más área
     )
 
     layout = build_grid_layout(
@@ -45,7 +52,7 @@ def main() -> None:
             "is_stairs": False,
             "floor": 0,
         },
-        walkable_area=env.walkable_area,
+        walkable_area=walkable_geometry,
     )
 
     print(f"Generated nodes: {len(layout.node_order)}")
@@ -53,11 +60,14 @@ def main() -> None:
     print(f"Generated specific areas: {len(layout.specific_areas)}")
     print(f"Generated graph edges: {layout.graph.number_of_edges()}")
 
+    print("\nWaypoints:")
     for node_id in layout.node_order:
-        print(f"\"{node_id}\": {layout.waypoints[node_id]}")
+        print(f'"{node_id}": {layout.waypoints[node_id]}')
 
+    print("\nEdges:")
     print(list(layout.graph.edges(data=True)))
 
+    print("\nSpecific areas:")
     print_specific_areas_python(layout.specific_areas)
 
 
