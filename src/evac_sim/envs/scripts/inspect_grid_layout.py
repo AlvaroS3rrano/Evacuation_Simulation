@@ -18,16 +18,30 @@ from evac_sim.envs.layout_creation import (
 )
 
 
-def draw_waypoint(ax, waypoint, distance, idx, show_index: bool = True) -> None:
+def draw_waypoint(
+    ax,
+    waypoint,
+    distance,
+    idx,
+    show_node_id: bool = True,
+    node_label_color: str = "darkred",
+) -> None:
     ax.plot(waypoint[0], waypoint[1], "ro")
-    if show_index:
+
+    if show_node_id:
         ax.annotate(
             f"{idx}",
             (waypoint[0], waypoint[1]),
             textcoords="offset points",
-            xytext=(5, -5),
+            xytext=(0, 10),  # 👈 ahora está encima
             ha="center",
+            va="bottom",  # 👈 anclado hacia arriba
+            fontsize=8,
+            fontweight="bold",
+            bbox=dict(boxstyle="round,pad=0.2", fc="white", ec="none", alpha=0.8),
+            zorder=10,  # 👈 para que quede por encima de todo
         )
+
     circle = Circle(
         (waypoint[0], waypoint[1]),
         distance,
@@ -47,7 +61,7 @@ def draw_cell(
     cell_size: float | None = None,
 ) -> None:
     x, y = polygon.exterior.xy
-    ax.plot(x, y, linewidth=0.6)
+    ax.plot(x, y, linewidth=0.7, color="black", alpha=0.8, zorder=2)
 
     centroid = polygon.centroid
 
@@ -60,6 +74,9 @@ def draw_cell(
             ha="center",
             va="center",
             fontsize=7,
+            color="navy",
+            bbox=dict(boxstyle="round,pad=0.15", fc="white", ec="none", alpha=0.7),
+            zorder=3,
         )
 
     if show_cell_size and cell_size is not None:
@@ -67,17 +84,25 @@ def draw_cell(
             f"{cell_size:g}",
             (centroid.x, centroid.y),
             textcoords="offset points",
-            xytext=(0, -10),
+            xytext=(0, -12),
             ha="center",
             va="center",
             fontsize=7,
+            color="dimgray",
+            bbox=dict(boxstyle="round,pad=0.1", fc="white", ec="none", alpha=0.7),
+            zorder=3,
         )
 
 
-def draw_edges(ax, cells: dict[str, SquareCell], edges: list[tuple[str, str, float]]) -> None:
+def draw_edges(
+    ax,
+    cells: dict[str, SquareCell],
+    edges: list[tuple[str, str, float]],
+    show_edge_weights: bool = False,
+) -> None:
     drawn_pairs: set[tuple[str, str]] = set()
 
-    for source, target, _ in edges:
+    for source, target, weight in edges:
         pair = tuple(sorted((source, target)))
         if pair in drawn_pairs:
             continue
@@ -88,9 +113,28 @@ def draw_edges(ax, cells: dict[str, SquareCell], edges: list[tuple[str, str, flo
         ax.plot(
             [p1[0], p2[0]],
             [p1[1], p2[1]],
-            linewidth=0.5,
+            linewidth=0.6,
             alpha=0.5,
+            color="gray",
+            zorder=1,
         )
+
+        if show_edge_weights:
+            mx = (p1[0] + p2[0]) / 2
+            my = (p1[1] + p2[1]) / 2
+            ax.annotate(
+                f"{weight:.2f}",
+                (mx, my),
+                textcoords="offset points",
+                xytext=(0, 0),
+                ha="center",
+                va="center",
+                fontsize=6,
+                color="darkgreen",
+                bbox=dict(boxstyle="round,pad=0.1", fc="white", ec="none", alpha=0.7),
+                zorder=2,
+            )
+
         drawn_pairs.add(pair)
 
 
@@ -137,7 +181,6 @@ def print_specific_areas_python(cells: dict[str, SquareCell]) -> None:
             continue
 
         coords = list(polygon.exterior.coords)[:-1]
-
         coords_str = ", ".join(
             f"({int(x) if float(x).is_integer() else x}, {int(y) if float(y).is_integer() else y})"
             for x, y in coords
@@ -166,7 +209,7 @@ def print_layout_summary(
         print(f"Accept partial min cells: {args.accept_partial_min_cells}")
 
     print(f"Cells generated: {len(cells)}")
-    print(f"Waypoints generated: {len(waypoints)}")
+    print(f"Waypoints/nodes generated: {len(waypoints)}")
     print(f"Directed weighted edges generated: {len(edges)}")
     print(f"Undirected connections generated: {len(edges) // 2}")
     print_cell_statistics(cells)
@@ -204,6 +247,7 @@ def plot_layout(
 
     pedpy.plot_walkable_area(walkable_area=walkable_area, axes=ax)
 
+    # specific areas / cells
     for cell_id, cell in cells.items():
         draw_cell(
             ax=ax,
@@ -214,20 +258,22 @@ def plot_layout(
             cell_size=cell.size,
         )
 
-    draw_edges(ax, cells, edges)
+    # graph edges
+    draw_edges(ax, cells, edges, show_edge_weights=args.show_edge_weights)
 
-    for waypoint_id, (point, distance) in waypoints.items():
+    # graph nodes = waypoints
+    for node_id, (point, distance) in waypoints.items():
         draw_waypoint(
             ax=ax,
             waypoint=point,
             distance=distance,
-            idx=waypoint_id,
-            show_index=args.show_waypoint_index,
+            idx=node_id,
+            show_node_id=args.show_node_id,
         )
 
     ax.set_title(
-        f"Square decomposition - env={args.env}, method={args.method}, "
-        f"min_cell_size={args.min_cell_size}, cells={len(cells)}"
+        f"Grid layout / graph inspection - env={args.env}, method={args.method}, "
+        f"min_cell_size={args.min_cell_size}, cells={len(cells)}, nodes={len(waypoints)}"
     )
     plt.tight_layout()
     plt.show()
@@ -235,7 +281,7 @@ def plot_layout(
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Inspect square cell decomposition over an environment"
+        description="Inspect grid layout: walkable area, specific areas, waypoints/nodes and edges"
     )
     parser.add_argument("--env", default="corridor", help="Environment name")
 
@@ -295,21 +341,27 @@ def parse_args() -> argparse.Namespace:
     )
 
     parser.add_argument(
-        "--show-waypoint-index",
+        "--show-node-id",
         action="store_true",
-        help="Show waypoint ids next to waypoint centers",
+        help="Show graph node ids next to waypoint centers",
     )
 
     parser.add_argument(
         "--show-cell-id",
         action="store_true",
-        help="Show cell ids at the center of each cell",
+        help="Show cell/specific area ids at the center of each cell",
     )
 
     parser.add_argument(
         "--show-cell-size",
         action="store_true",
         help="Show the side length of each cell",
+    )
+
+    parser.add_argument(
+        "--show-edge-weights",
+        action="store_true",
+        help="Show edge weights",
     )
 
     parser.add_argument(
@@ -327,7 +379,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--print-waypoints",
         action="store_true",
-        help="Print waypoints as Python dictionary",
+        help="Print waypoints/nodes as Python dictionary",
     )
 
     parser.add_argument(
