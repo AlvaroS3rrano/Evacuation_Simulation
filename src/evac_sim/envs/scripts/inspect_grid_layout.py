@@ -17,6 +17,13 @@ from evac_sim.envs.layout_creation import (
     build_bidirectional_weighted_edges,
 )
 
+def _get_cell_center(cell_or_polygon):
+    if hasattr(cell_or_polygon, "center"):
+        return cell_or_polygon.center
+
+    polygon = getattr(cell_or_polygon, "polygon", cell_or_polygon)
+    centroid = polygon.centroid
+    return (centroid.x, centroid.y)
 
 def draw_waypoint(
     ax,
@@ -107,8 +114,8 @@ def draw_edges(
         if pair in drawn_pairs:
             continue
 
-        p1 = cells[source].center
-        p2 = cells[target].center
+        p1 = _get_cell_center(cells[source])
+        p2 = _get_cell_center(cells[target])
 
         ax.plot(
             [p1[0], p2[0]],
@@ -138,13 +145,27 @@ def draw_edges(
         drawn_pairs.add(pair)
 
 
-def print_cell_statistics(cells: dict[str, SquareCell]) -> None:
+def print_cell_statistics(cells) -> None:
     size_counter = Counter()
     level_counter = Counter()
 
+    has_structured_cells = False
+
     for cell in cells.values():
-        size_counter[cell.size] += 1
-        level_counter[cell.level] += 1
+        size = getattr(cell, "size", None)
+        level = getattr(cell, "level", None)
+
+        if size is not None:
+            size_counter[size] += 1
+            has_structured_cells = True
+
+        if level is not None:
+            level_counter[level] += 1
+            has_structured_cells = True
+
+    if not has_structured_cells:
+        print("Cell statistics are not available for current layout source.")
+        return
 
     print("Cell statistics by size:")
     for size in sorted(size_counter):
@@ -170,11 +191,13 @@ def print_edges_python(edges: list[tuple[str, str, float]]) -> None:
     print("]")
 
 
-def print_specific_areas_python(cells: dict[str, SquareCell]) -> None:
+def print_specific_areas_python(cells) -> None:
     print("specific_areas = {")
 
-    for key in sorted(cells, key=lambda x: int(x) if x.isdigit() else x):
-        polygon = cells[key].polygon
+    for key in sorted(cells, key=lambda x: int(x) if str(x).isdigit() else str(x)):
+        cell_or_polygon = cells[key]
+
+        polygon = getattr(cell_or_polygon, "polygon", cell_or_polygon)
 
         if not isinstance(polygon, Polygon):
             print(f'    "{key}": {polygon.wkt},')
@@ -189,7 +212,6 @@ def print_specific_areas_python(cells: dict[str, SquareCell]) -> None:
         print(f'    "{key}": Polygon([{coords_str}]),')
 
     print("}")
-
 
 def print_layout_summary(
     args: argparse.Namespace,
@@ -234,10 +256,27 @@ def build_cells_from_args(
         accept_partial_min_cells=args.accept_partial_min_cells,
     )
 
+def _build_plot_title(
+    args: argparse.Namespace,
+    cells,
+    waypoints: dict[str, tuple[list[float], float]],
+    edges: list[tuple[str, str, float]],
+) -> str:
+    if args.layout_source == "current":
+        return (
+            f"Current layout inspection - env={args.env}, "
+            f"areas={len(cells)}, nodes={len(waypoints)}, edges={len(edges)}"
+        )
+
+    return (
+        f"Grid layout / graph inspection - env={args.env}, method={args.method}, "
+        f"min_cell_size={args.min_cell_size}, cells={len(cells)}, "
+        f"nodes={len(waypoints)}, edges={len(edges)}"
+    )
 
 def plot_layout(
     walkable_area,
-    cells: dict[str, SquareCell],
+    cells,
     edges: list[tuple[str, str, float]],
     waypoints: dict[str, tuple[list[float], float]],
     args: argparse.Namespace,
@@ -249,13 +288,16 @@ def plot_layout(
 
     # specific areas / cells
     for cell_id, cell in cells.items():
+        polygon = getattr(cell, "polygon", cell)
+        cell_size = getattr(cell, "size", None)
+
         draw_cell(
             ax=ax,
-            polygon=cell.polygon,
+            polygon=polygon,
             cell_id=cell_id,
             show_cell_id=args.show_cell_id,
             show_cell_size=args.show_cell_size,
-            cell_size=cell.size,
+            cell_size=cell_size,
         )
 
     # graph edges
@@ -271,12 +313,49 @@ def plot_layout(
             show_node_id=args.show_node_id,
         )
 
-    ax.set_title(
-        f"Grid layout / graph inspection - env={args.env}, method={args.method}, "
-        f"min_cell_size={args.min_cell_size}, cells={len(cells)}, nodes={len(waypoints)}"
-    )
+    ax.set_title(_build_plot_title(args, cells, waypoints, edges))
+
     plt.tight_layout()
     plt.show()
+
+def _load_layout_from_environment_data(environment_data):
+
+    G = environment_data.graph
+    if G is None:
+        raise ValueError("environment_data is missing required key: 'graph'")
+
+    try:
+        edges = list(G.edges(data="cost"))
+    except AttributeError:
+        raise TypeError(
+            "environment_data['graph'] must be a networkx graph with an .edges() method"
+        )
+
+    waypoints = environment_data.waypoints
+    if waypoints is None:
+        raise ValueError("environment_data is missing required key: 'waypoints'")
+
+    if not isinstance(waypoints, dict):
+        raise TypeError(
+            f"'waypoints' must be a dict, got {type(waypoints).__name__}"
+        )
+
+    cells = environment_data.specific_areas
+    if cells is None:
+        raise ValueError("environment_data is missing required key: 'specific_areas'")
+
+    if not isinstance(cells, dict):
+        raise TypeError(
+            f"'specific_areas' must be a dict, got {type(cells).__name__}"
+        )
+
+    if len(cells) == 0:
+        raise ValueError("'specific_areas' is empty")
+
+    if len(edges) == 0:
+        raise ValueError("Graph has no edges")
+
+    return waypoints, edges, cells
 
 
 def parse_args() -> argparse.Namespace:
@@ -291,6 +370,13 @@ def parse_args() -> argparse.Namespace:
         default="greedy",
         choices=["greedy", "quadtree"],
         help="Cell generation strategy",
+    )
+
+    parser.add_argument(
+        "--layout-source",
+        choices=["computed", "current"],
+        default="computed",
+        help="Source of the grid layout: 'computed' (default) or 'current' (from environment_data)",
     )
 
     parser.add_argument(
@@ -402,17 +488,21 @@ def main() -> None:
 
     env = select_environment(args.env)
     walkable_area = env.walkable_area
+
     geometry = walkable_area.polygon
 
-    cells = build_cells_from_args(args, geometry)
+    if args.layout_source == "computed":
+        cells = build_cells_from_args(args, geometry)
 
-    edges = build_bidirectional_weighted_edges(cells, walkable_area=geometry)
+        edges = build_bidirectional_weighted_edges(cells, walkable_area=geometry)
 
-    waypoints = get_waypoints_from_cells(
-        cells,
-        radius=args.radius,
-        radius_ratio=args.radius_ratio,
-    )
+        waypoints = get_waypoints_from_cells(
+            cells,
+            radius=args.radius,
+            radius_ratio=args.radius_ratio,
+        )
+    elif args.layout_source == "current":
+        waypoints, edges, cells = _load_layout_from_environment_data(env)
 
     should_print_summary = args.print_summary or (
         not args.print_waypoints and not args.print_edges and not args.print_specific_areas
