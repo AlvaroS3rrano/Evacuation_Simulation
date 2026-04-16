@@ -4,9 +4,9 @@ example_case:
   agents: [5, 5]
   targets: ["163", "164"]
   mode_type: 1
-  risk_seed: 233
+  master_seed: 233
   risk_iterations: 7000
-  risk_increase_chance: 0.05
+  risk_increase_chance: 0.005 #0.05
   starting_risks:
     - ["8", 1.0]
   risk_overrides:
@@ -21,6 +21,7 @@ example_case:
   normal_max_speed: 1.2
   every_nth_frame_simulation: 3
   every_nth_frame_animation: 50
+  danger_visualization_frame: 2500
 
 representative_case:
   environment: "cruise_ship"
@@ -28,16 +29,16 @@ representative_case:
   agents: [5, 5, 6, 6, 10]
   targets: ["163", "164"]
   mode_type: 0
-  risk_seed: 233
+  master_seed: 233
   risk_iterations: 7000
-  risk_increase_chance: 0.05
+  risk_increase_chance: 0.001
   starting_risks:
     - ["8", 1.0]
   risk_overrides:
-    - [2200, "153", 0.6]
-    - [2200, "225", 1.0]
-    - [2200, "224", 1.0]
-    - [2200, "201", 0.6]
+    - [1600, "153", 0.6]
+    - [1600, "225", 1.0]
+    - [1600, "224", 1.0]
+    - [1600, "201", 0.6]
   risk_threshold: 0.5
   propagation_threshold: 0.5
   gamma: 0.3
@@ -45,6 +46,7 @@ representative_case:
   normal_max_speed: 1.2
   every_nth_frame_simulation: 3
   every_nth_frame_animation: 50
+  danger_visualization_frame: 2200
 
 representative_case_theme_park:
   environment: "theme_park"
@@ -52,9 +54,9 @@ representative_case_theme_park:
   agents: [ 13, 7, 6, 4 ]
   targets: [ "65", "23" ]
   mode_type: 0
-  risk_seed: 2468
+  master_seed: 2468
   risk_iterations: 7000
-  risk_increase_chance: 0.01
+  risk_increase_chance: 0.0001
   starting_risks:
     - [ "67", 1.0 ]
     - [ "54", 1.0 ]
@@ -69,6 +71,7 @@ representative_case_theme_park:
   normal_max_speed: 1.2
   every_nth_frame_simulation: 3
   every_nth_frame_animation: 50
+  danger_visualization_frame: 2200
 
 ######## CORRIDOR CASES ############
 
@@ -78,7 +81,7 @@ corridor_case_1:
   agents: [5]
   targets: ["1", "14"]
   mode_type: 0
-  risk_seed: 1001
+  master_seed: 1001
   risk_iterations: 2000
   risk_increase_chance: 0.05
   starting_risks:
@@ -90,6 +93,7 @@ corridor_case_1:
   normal_max_speed: 1.2
   every_nth_frame_simulation: 3
   every_nth_frame_animation: 50
+  danger_visualization_frame: 500
 
 corridor_case_2:
   environment: "corridor"
@@ -97,7 +101,7 @@ corridor_case_2:
   agents: [10]
   targets: ["1"]
   mode_type: 0
-  risk_seed: 1002
+  master_seed: 1002
   risk_iterations: 2000
   risk_increase_chance: 0.05
   starting_risks:
@@ -109,6 +113,7 @@ corridor_case_2:
   normal_max_speed: 1.2
   every_nth_frame_simulation: 3
   every_nth_frame_animation: 50
+  danger_visualization_frame: 500
 
 corridor_case_3:
   environment: "corridor"
@@ -116,7 +121,7 @@ corridor_case_3:
   agents: [20]
   targets: ["1"]
   mode_type: 0
-  risk_seed: 1003
+  master_seed: 1003
   risk_iterations: 2500
   risk_increase_chance: 0.06
   starting_risks:
@@ -129,6 +134,7 @@ corridor_case_3:
   normal_max_speed: 1.2
   every_nth_frame_simulation: 3
   every_nth_frame_animation: 50
+  danger_visualization_frame: 500
 
 corridor_case_4:
   environment: "corridor"
@@ -136,7 +142,7 @@ corridor_case_4:
   agents: [30]
   targets: ["1", "14"]
   mode_type: 0
-  risk_seed: 1004
+  master_seed: 1004
   risk_iterations: 3000
   risk_increase_chance: 0.05
   starting_risks:
@@ -150,6 +156,7 @@ corridor_case_4:
   normal_max_speed: 1.2
   every_nth_frame_simulation: 3
   every_nth_frame_animation: 50
+  danger_visualization_frame: 500
 
 corridor_case_5:
   environment: "corridor"
@@ -157,7 +164,7 @@ corridor_case_5:
   agents: [15]
   targets: ["14"]
   mode_type: 0
-  risk_seed: 1005
+  master_seed: 1005
   risk_iterations: 2000
   risk_increase_chance: 0.04
   starting_risks:
@@ -170,6 +177,7 @@ corridor_case_5:
   normal_max_speed: 1.2
   every_nth_frame_simulation: 3
   every_nth_frame_animation: 50
+  danger_visualization_frame: 500
 
 corridor_case_6:
   environment: "corridor"
@@ -177,7 +185,7 @@ corridor_case_6:
   agents: [25]
   targets: ["1"]
   mode_type: 0
-  risk_seed: 1006
+  master_seed: 1006
   risk_iterations: 2500
   risk_increase_chance: 0.06
   starting_risks:
@@ -191,6 +199,7 @@ corridor_case_6:
   normal_max_speed: 1.2
   every_nth_frame_simulation: 3
   every_nth_frame_animation: 50
+  danger_visualization_frame: 500
 
 corridor_case_7:
   environment: "corridor"
@@ -198,7 +207,7 @@ corridor_case_7:
   agents: [10, 10, 10]
   targets: ["1", "14"]
   mode_type: 0
-  risk_seed: 1007
+  master_seed: 1007
   risk_iterations: 3000
   risk_increase_chance: 0.05
   starting_risks:
@@ -210,6 +219,8 @@ corridor_case_7:
   normal_max_speed: 1.2
   every_nth_frame_simulation: 3
   every_nth_frame_animation: 50
+  danger_visualization_frame: 500
+
 
 corridor_case_8:
   environment: "corridor"
@@ -217,7 +228,7 @@ corridor_case_8:
   agents: [40]
   targets: ["14", "1"]
   mode_type: 0
-  risk_seed: 1008
+  master_seed: 1008
   risk_iterations: 3500
   risk_increase_chance: 0.07
   starting_risks:
@@ -232,6 +243,8 @@ corridor_case_8:
   normal_max_speed: 1.2
   every_nth_frame_simulation: 3
   every_nth_frame_animation: 50
+  danger_visualization_frame: 500
+
 
 corridor_case_9:
   environment: "corridor"
@@ -239,7 +252,7 @@ corridor_case_9:
   agents: [50]
   targets: ["1"]
   mode_type: 0
-  risk_seed: 1009
+  master_seed: 1009
   risk_iterations: 4000
   risk_increase_chance: 0.08
   starting_risks:
@@ -254,6 +267,8 @@ corridor_case_9:
   normal_max_speed: 1.2
   every_nth_frame_simulation: 3
   every_nth_frame_animation: 50
+  danger_visualization_frame: 500
+
 
 corridor_case_10:
   environment: "corridor"
@@ -261,7 +276,7 @@ corridor_case_10:
   agents: [20, 20]
   targets: ["1", "14"]
   mode_type: 0
-  risk_seed: 1010
+  master_seed: 1010
   risk_iterations: 5000
   risk_increase_chance: 0.1
   starting_risks:
@@ -275,6 +290,8 @@ corridor_case_10:
   normal_max_speed: 1.2
   every_nth_frame_simulation: 3
   every_nth_frame_animation: 50
+  danger_visualization_frame: 500
+
 
 ####################################
 
@@ -286,7 +303,7 @@ cruise_ship_case_1:
   agents: [5, 5, 6, 6, 10]
   targets: ["163", "164"]
   mode_type: 0
-  risk_seed: 233
+  master_seed: 233
   risk_iterations: 7000
   risk_increase_chance: 0.05
   starting_risks:
@@ -303,6 +320,8 @@ cruise_ship_case_1:
   normal_max_speed: 1.2
   every_nth_frame_simulation: 3
   every_nth_frame_animation: 50
+  danger_visualization_frame: 1200
+
 
 cruise_ship_case_2:
   environment: "cruise_ship"
@@ -310,7 +329,7 @@ cruise_ship_case_2:
   agents: [5, 5, 6, 6, 5]
   targets: ["163", "164"]
   mode_type: 0
-  risk_seed: 233
+  master_seed: 233
   risk_iterations: 7000
   risk_increase_chance: 0.05
   starting_risks:
@@ -327,6 +346,8 @@ cruise_ship_case_2:
   normal_max_speed: 1.2
   every_nth_frame_simulation: 3
   every_nth_frame_animation: 50
+  danger_visualization_frame: 1200
+
 
 cruise_ship_case_3:
   environment: "cruise_ship"
@@ -334,7 +355,7 @@ cruise_ship_case_3:
   agents: [5, 5, 6, 6, 5]
   targets: ["163", "164"]
   mode_type: 0
-  risk_seed: 233
+  master_seed: 233
   risk_iterations: 7000
   risk_increase_chance: 0.05
   starting_risks:
@@ -351,6 +372,7 @@ cruise_ship_case_3:
   normal_max_speed: 1.2
   every_nth_frame_simulation: 3
   every_nth_frame_animation: 50
+  danger_visualization_frame: 1200
 
 cruise_ship_case_4:
   environment: "cruise_ship"
@@ -358,7 +380,7 @@ cruise_ship_case_4:
   agents: [5, 5, 6, 6, 5]
   targets: ["163", "164"]
   mode_type: 0
-  risk_seed: 233
+  master_seed: 233
   risk_iterations: 7000
   risk_increase_chance: 0.05
   starting_risks:
@@ -375,6 +397,7 @@ cruise_ship_case_4:
   normal_max_speed: 1.2
   every_nth_frame_simulation: 3
   every_nth_frame_animation: 50
+  danger_visualization_frame: 1200
 
 cruise_ship_case_5:
   environment: "cruise_ship"
@@ -382,7 +405,7 @@ cruise_ship_case_5:
   agents: [5, 5]
   targets: ["163", "164"]
   mode_type: 1
-  risk_seed: 1006
+  master_seed: 1006
   risk_iterations: 7000
   risk_increase_chance: 0.05
   starting_risks:
@@ -394,6 +417,7 @@ cruise_ship_case_5:
   normal_max_speed: 1.2
   every_nth_frame_simulation: 3
   every_nth_frame_animation: 50
+  danger_visualization_frame: 1200
 
 cruise_ship_case_6:
   environment: "cruise_ship"
@@ -401,7 +425,7 @@ cruise_ship_case_6:
   agents: [5, 5]
   targets: ["163", "164"]
   mode_type: 1
-  risk_seed: 1005
+  master_seed: 1005
   risk_iterations: 7000
   risk_increase_chance: 0.05
   starting_risks:
@@ -418,6 +442,7 @@ cruise_ship_case_6:
   normal_max_speed: 1.2
   every_nth_frame_simulation: 3
   every_nth_frame_animation: 50
+  danger_visualization_frame: 1200
 
 cruise_ship_case_7:
   environment: "cruise_ship"
@@ -425,7 +450,7 @@ cruise_ship_case_7:
   agents: [5, 5]
   targets: ["163", "164"]
   mode_type: 1
-  risk_seed: 1007
+  master_seed: 1007
   risk_iterations: 7500
   risk_increase_chance: 0.05
   starting_risks:
@@ -443,6 +468,7 @@ cruise_ship_case_7:
   normal_max_speed: 1.2
   every_nth_frame_simulation: 3
   every_nth_frame_animation: 50
+  danger_visualization_frame: 1200
 
 cruise_ship_case_8:
   environment: "cruise_ship"
@@ -450,7 +476,7 @@ cruise_ship_case_8:
   agents: [5, 5]
   targets: ["163", "164"]
   mode_type: 1
-  risk_seed: 1008
+  master_seed: 1008
   risk_iterations: 7000
   risk_increase_chance: 0.05
   starting_risks:
@@ -465,6 +491,7 @@ cruise_ship_case_8:
   normal_max_speed: 1.2
   every_nth_frame_simulation: 3
   every_nth_frame_animation: 50
+  danger_visualization_frame: 1200
 
 cruise_ship_case_9:
   environment: "cruise_ship"
@@ -472,7 +499,7 @@ cruise_ship_case_9:
   agents: [5, 5]
   targets: ["163", "164"]
   mode_type: 1
-  risk_seed: 1009
+  master_seed: 1009
   risk_iterations: 7000
   risk_increase_chance: 0.05
   starting_risks:
@@ -488,6 +515,7 @@ cruise_ship_case_9:
   normal_max_speed: 1.2
   every_nth_frame_simulation: 3
   every_nth_frame_animation: 50
+  danger_visualization_frame: 1200
 
 cruise_ship_case_10:
   environment: "cruise_ship"
@@ -495,7 +523,7 @@ cruise_ship_case_10:
   agents: [5, 5]
   targets: ["163", "164"]
   mode_type: 1
-  risk_seed: 1010
+  master_seed: 1010
   risk_iterations: 7500
   risk_increase_chance: 0.05
   starting_risks:
@@ -514,6 +542,7 @@ cruise_ship_case_10:
   normal_max_speed: 1.2
   every_nth_frame_simulation: 3
   every_nth_frame_animation: 50
+  danger_visualization_frame: 1200
 
 ####################################
 
@@ -525,7 +554,7 @@ theme_park_case_1:
   agents: [ 13, 7, 6, 4 ]
   targets: [ "65", "23" ]
   mode_type: 0
-  risk_seed: 2468
+  master_seed: 2468
   risk_iterations: 7000
   risk_increase_chance: 0.01
   starting_risks:
@@ -542,6 +571,7 @@ theme_park_case_1:
   normal_max_speed: 1.2
   every_nth_frame_simulation: 3
   every_nth_frame_animation: 50
+  danger_visualization_frame: 1200
 
 theme_park_case_2:
   environment: "theme_park"
@@ -549,7 +579,7 @@ theme_park_case_2:
   agents: [ 13, 6, 5, 4 ]
   targets: [ "65", "23" ]
   mode_type: 0
-  risk_seed: 2468
+  master_seed: 2468
   risk_iterations: 7000
   risk_increase_chance: 0.01
   starting_risks:
@@ -566,6 +596,7 @@ theme_park_case_2:
   normal_max_speed: 1.2
   every_nth_frame_simulation: 3
   every_nth_frame_animation: 50
+  danger_visualization_frame: 1200
 
 theme_park_case_3:
   environment: "theme_park"
@@ -573,7 +604,7 @@ theme_park_case_3:
   agents: [ 4, 7, 6, 4 ]
   targets: [ "65", "23" ]
   mode_type: 0
-  risk_seed: 2468
+  master_seed: 2468
   risk_iterations: 7000
   risk_increase_chance: 0.01
   starting_risks:
@@ -590,6 +621,7 @@ theme_park_case_3:
   normal_max_speed: 1.2
   every_nth_frame_simulation: 3
   every_nth_frame_animation: 50
+  danger_visualization_frame: 1200
 
 theme_park_case_4:
   environment: "theme_park"
@@ -597,7 +629,7 @@ theme_park_case_4:
   agents: [ 13, 7, 6, 4 ]
   targets: [ "65", "23" ]
   mode_type: 0
-  risk_seed: 2468
+  master_seed: 2468
   risk_iterations: 7000
   risk_increase_chance: 0.01
   starting_risks:
@@ -614,6 +646,7 @@ theme_park_case_4:
   normal_max_speed: 1.2
   every_nth_frame_simulation: 3
   every_nth_frame_animation: 50
+  danger_visualization_frame: 1200
 
 theme_park_case_5:
   environment: "theme_park"
@@ -621,7 +654,7 @@ theme_park_case_5:
   agents: [ 13, 7, 6, 4 ]
   targets: [ "65", "23" ]
   mode_type: 0
-  risk_seed: 2468
+  master_seed: 2468
   risk_iterations: 7000
   risk_increase_chance: 0.01
   starting_risks:
@@ -633,6 +666,7 @@ theme_park_case_5:
   normal_max_speed: 1.2
   every_nth_frame_simulation: 3
   every_nth_frame_animation: 50
+  danger_visualization_frame: 1200
 
 theme_park_case_6:
   environment: "theme_park"
@@ -640,7 +674,7 @@ theme_park_case_6:
   agents: [ 13, 7]
   targets: [ "50"]
   mode_type: 0
-  risk_seed: 2465
+  master_seed: 2465
   risk_iterations: 7000
   risk_increase_chance: 0.02
   starting_risks:
@@ -656,6 +690,7 @@ theme_park_case_6:
   normal_max_speed: 1.2
   every_nth_frame_simulation: 3
   every_nth_frame_animation: 50
+  danger_visualization_frame: 1200
 
 theme_park_case_7:
   environment: "theme_park"
@@ -663,7 +698,7 @@ theme_park_case_7:
   agents: [ 13, 7 ]
   targets: [ "35" ]
   mode_type: 0
-  risk_seed: 246
+  master_seed: 246
   risk_iterations: 7000
   risk_increase_chance: 0.02
   starting_risks:
@@ -676,6 +711,7 @@ theme_park_case_7:
   normal_max_speed: 1.2
   every_nth_frame_simulation: 3
   every_nth_frame_animation: 50
+  danger_visualization_frame: 1200
 
 theme_park_case_8:
   environment: "theme_park"
@@ -683,7 +719,7 @@ theme_park_case_8:
   agents: [ 5, 7 ]
   targets: [ "65" ]
   mode_type: 0
-  risk_seed: 246
+  master_seed: 246
   risk_iterations: 7000
   risk_increase_chance: 0.05
   starting_risks:
@@ -696,6 +732,7 @@ theme_park_case_8:
   normal_max_speed: 1.2
   every_nth_frame_simulation: 3
   every_nth_frame_animation: 50
+  danger_visualization_frame: 1200
 
 theme_park_case_9:
   environment: "theme_park"
@@ -703,7 +740,7 @@ theme_park_case_9:
   agents: [ 5, 7 ]
   targets: [ "65" ]
   mode_type: 0
-  risk_seed: 2469
+  master_seed: 2469
   risk_iterations: 7000
   risk_increase_chance: 0.02
   starting_risks:
@@ -716,6 +753,7 @@ theme_park_case_9:
   normal_max_speed: 1.2
   every_nth_frame_simulation: 3
   every_nth_frame_animation: 50
+  danger_visualization_frame: 1200
 
 theme_park_case_10:
   environment: "theme_park"
@@ -723,7 +761,7 @@ theme_park_case_10:
   agents: [ 5, 7, 6, 5]
   targets: [ "50" ]
   mode_type: 0
-  risk_seed: 2469
+  master_seed: 2469
   risk_iterations: 7000
   risk_increase_chance: 0.02
   starting_risks:
@@ -736,6 +774,7 @@ theme_park_case_10:
   normal_max_speed: 1.2
   every_nth_frame_simulation: 3
   every_nth_frame_animation: 50
+  danger_visualization_frame: 1200
 
 ####################################
 
@@ -746,7 +785,7 @@ crowding:
   agents: [3, 3, 8, 30, 5, 3, 4, 2, 5, 4, 3, 2, 3, 1, 2, 3, 2, 3, 1, 3]
   targets: ["163", "164", "226", "227"]
   mode_type: 4
-  risk_seed: 1234
+  master_seed: 1234
   risk_iterations: 7000
   risk_increase_chance: 0.05
   starting_risks:
@@ -758,3 +797,4 @@ crowding:
   normal_max_speed: 1.2
   every_nth_frame_simulation: 3
   every_nth_frame_animation: 50
+  danger_visualization_frame: 1200

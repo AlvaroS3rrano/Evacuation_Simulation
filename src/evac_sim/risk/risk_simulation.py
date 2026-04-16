@@ -1,128 +1,186 @@
+from __future__ import annotations
+
+import logging
+from dataclasses import dataclass
 import random
-
 import networkx as nx
-from src.evac_sim.db.danger_sim_db_manager import *
+
+from evac_sim.db.repositories.risk import insert_risk_levels
+
+log = logging.getLogger(__name__)
 
 
-def update_risk(G: nx.DiGraph, increase_chance=0.2, propagation_threshold=0.5):
-    """
-    Updates the risk levels of nodes in the graph.
+@dataclass(frozen=True)
+class RiskStepConfig:
+    increase_chance: float
+    propagation_threshold: float
+    random_increment_min: float = 0.05
+    random_increment_max: float = 0.2
+    direct_decay: float = 3.0
+    second_decay: float = 9.0
+    precision: int | None = None
 
-    The update combines (i) random local increases and (ii) deterministic, symmetric propagation:
-      - If a node has risk >= propagation_threshold, it becomes an active emitter.
-      - Its direct neighbors (in an undirected sense) receive a propagated risk level equal to one-third of its risk.
-      - Second-order neighbors (excluding the original node and its direct neighbors) receive one-ninth of its risk.
-      - Nodes with risk 0 do not increase randomly unless they are affected by propagation from an active emitter.
 
-    Args:
-        G (nx.DiGraph): Graph with nodes and edges. Each node must have a "risk" attribute in [0, 1].
-        increase_chance (float): Probability of randomly increasing the risk of a node (only if its current risk > 0).
-        propagation_threshold (float): Risk level above which a node becomes an active emitter and propagates risk.
-    """
-    new_risks = {}
+def clamp01(x: float) -> float:
+    return max(0.0, min(1.0, x))
 
-    # Randomly update the risk for each node,
-    # except for nodes with risk 0 (unless they are affected by active-emitter propagation).
-    for node in G.nodes:
-        current_risk = G.nodes[node]["risk"]
-        if current_risk > 0 and random.random() < increase_chance:
-            current_risk = min(1.0, current_risk + random.uniform(0.05, 0.2))
-        new_risks[node] = round(current_risk, 1)
 
-    # Convert the graph to an undirected version for symmetric propagation.
-    UG = G.to_undirected()
+def maybe_round(x: float, precision: int | None) -> float:
+    return round(x, precision) if precision is not None else x
 
-    # Deterministic propagation from active emitters (risk >= propagation_threshold).
-    for node in G.nodes:
-        node_risk = G.nodes[node]["risk"]
-        if node_risk >= propagation_threshold:
-            # First level: direct neighbors receive one-third of the emitter's risk.
-            risk_direct = round(node_risk / 3, 1)
-            for neighbor in UG.neighbors(node):
-                new_risks[neighbor] = max(new_risks.get(neighbor, G.nodes[neighbor]["risk"]), risk_direct)
 
-            # Second level: neighbors of direct neighbors (excluding the original node and its direct neighbors).
-            first_level = set(UG.neighbors(node))
-            risk_second = round(node_risk / 9, 1)
-            for neighbor in first_level:
-                for second_neighbor in UG.neighbors(neighbor):
-                    if second_neighbor == node or second_neighbor in first_level:
-                        continue
-                    new_risks[second_neighbor] = max(
-                        new_risks.get(second_neighbor, G.nodes[second_neighbor]["risk"]), risk_second
-                    )
+def extract_risks(G: nx.DiGraph) -> dict[str, float]:
+    return {node: float(G.nodes[node].get("risk", 0.0)) for node in sorted(G.nodes)}
 
-    # Apply the new risk values to the graph.
-    for node, risk in new_risks.items():
+
+def apply_risks(G: nx.DiGraph, risks: dict[str, float]) -> None:
+    for node, risk in risks.items():
         G.nodes[node]["risk"] = risk
 
 
-def simulate_risk(risk_sim_values, every_nth_frame, G, exits, connection, seed=None):
-    """
-    Simulates risk evolution in a graph over multiple frames and stores the results in a database.
+def compute_next_risks(
+    G: nx.DiGraph,
+    current_risks: dict[str, float],
+    cfg: RiskStepConfig,
+    rng: random.Random,
+) -> dict[str, float]:
+    new_risks = dict(current_risks)
+    UG = G.to_undirected()
 
-    Args:
-        risk_sim_values: An object with attributes:
-            - iterations (int): Total number of frames to simulate.
-            - start_frame (int): Initial frame (if used).
-            - max_risk_increment (float): Maximum risk increment per step (if used).
-            - increase_chance (float): Probability of random risk increase per update.
-            - propagation_threshold (float): Risk level above which a node becomes an active emitter.
-            - risk_overrides (list of (int, str, float) tuples, optional):
-                Overrides to forcibly set node risk at specific frames.
-            - starting_risks (list of (str, float) tuples, optional):
-                Defines initial risk values for specific nodes.
-        every_nth_frame (int): How often (in frames) to save results.
-        G: NetworkX graph on which the simulation runs.
-        exits (list of str): List of exit-node identifiers.
-        connection: Database connection for writing results.
-        seed (int, optional): Seed for random number generator for reproducibility.
-    """
-    # Validate the input arguments
+    # 1. Random local increase
+    for node in sorted(G.nodes):
+        risk = current_risks[node]
+        if risk > 0.0 and rng.random() < cfg.increase_chance:
+            risk = clamp01(
+                risk + rng.uniform(cfg.random_increment_min, cfg.random_increment_max)
+            )
+        new_risks[node] = maybe_round(risk, cfg.precision)
+
+    # 2. Propagation
+    for node in sorted(G.nodes):
+        node_risk = current_risks[node]
+        if node_risk < cfg.propagation_threshold:
+            continue
+
+        first_level = sorted(UG.neighbors(node))
+        direct_risk = maybe_round(clamp01(node_risk / cfg.direct_decay), cfg.precision)
+        second_risk = maybe_round(clamp01(node_risk / cfg.second_decay), cfg.precision)
+
+        for neighbor in first_level:
+            new_risks[neighbor] = max(new_risks[neighbor], direct_risk)
+
+        first_level_set = set(first_level)
+        for neighbor in first_level:
+            for second_neighbor in sorted(UG.neighbors(neighbor)):
+                if second_neighbor == node or second_neighbor in first_level_set:
+                    continue
+                new_risks[second_neighbor] = max(new_risks[second_neighbor], second_risk)
+
+    return {node: clamp01(risk) for node, risk in new_risks.items()}
+
+
+def simulate_risk(
+    risk_sim_values,
+    every_nth_frame: int,
+    G: nx.DiGraph,
+    exits,
+    connection,
+    seed: int | None = None,
+    case_name: str = "default",
+) -> None:
     if risk_sim_values.iterations <= 0:
         raise ValueError("iterations must be a positive integer.")
     if every_nth_frame <= 0:
         raise ValueError("every_nth_frame must be a positive integer.")
 
-    if seed is not None:
-        random.seed(seed)
+    rng = random.Random(seed)
 
-    for frame in range(risk_sim_values.iterations + 1):
+    step_cfg = RiskStepConfig(
+        increase_chance=risk_sim_values.increase_chance,
+        propagation_threshold=risk_sim_values.propagation_threshold,
+        precision=None,
+    )
 
-        for f, node_id, risk_val in risk_sim_values.risk_overrides:
-            if frame == f and node_id in G.nodes:
-                G.nodes[node_id]["risk"] = risk_val
+    log.info(
+        "Risk simulation start | case=%s iterations=%d every_nth_frame=%d seed=%s",
+        case_name,
+        risk_sim_values.iterations,
+        every_nth_frame,
+        seed,
+    )
 
-        if frame == 0:
-            # Apply starting risks
-            for node_id, risk_val in risk_sim_values.starting_risks:
-                if node_id in G.nodes:
-                    G.nodes[node_id]["risk"] = risk_val
+    # Inicialización
+    risks = extract_risks(G)
 
-            # Ensure that exit nodes have risk 0
-            for exit_node in exits:
-                if exit_node in G.nodes:
-                    G.nodes[exit_node]["risk"] = 0
+    for node_id, risk_val in risk_sim_values.starting_risks:
+        if node_id in risks:
+            risks[node_id] = clamp01(float(risk_val))
+        else:
+            log.warning(
+                "Starting risk ignored | case=%s node=%s not found in graph",
+                case_name,
+                node_id,
+            )
 
-            # Save the initial risk levels of all nodes before any updates
+    for exit_node in exits:
+        if exit_node in risks:
+            risks[exit_node] = 0.0
+        else:
+            log.warning(
+                "Exit node ignored while initializing risks | case=%s node=%s not found in graph",
+                case_name,
+                exit_node,
+            )
+
+    apply_risks(G, risks)
+
+    try:
+        insert_risk_levels(connection, case_name, 0, risks)
+    except Exception:
+        log.exception(
+            "Failed to persist initial risks | case=%s frame=0",
+            case_name,
+        )
+        raise
+
+    overrides_by_frame: dict[int, list[tuple[str, float]]] = {}
+    for frame, node_id, risk_val in risk_sim_values.risk_overrides:
+        overrides_by_frame.setdefault(int(frame), []).append((node_id, float(risk_val)))
+
+    for frame in range(1, risk_sim_values.iterations + 1):
+        if frame in overrides_by_frame:
+            for node_id, risk_val in overrides_by_frame[frame]:
+                if node_id in risks:
+                    risks[node_id] = clamp01(risk_val)
+                else:
+                    log.warning(
+                        "Risk override ignored | case=%s frame=%d node=%s not found in graph",
+                        case_name,
+                        frame,
+                        node_id,
+                    )
+
+        risks = compute_next_risks(G, risks, step_cfg, rng)
+
+        for exit_node in exits:
+            if exit_node in risks:
+                risks[exit_node] = 0.0
+
+        apply_risks(G, risks)
+
+        if frame % every_nth_frame == 0 or frame == risk_sim_values.iterations:
             try:
-                write_risk_levels(connection, 0, {node: G.nodes[node]["risk"] for node in G.nodes})
-            except Exception as e:
-                print(f"Error writing initial risks: {e}")
-            continue
+                insert_risk_levels(connection, case_name, frame, risks)
+            except Exception:
+                log.exception(
+                    "Failed to persist risks | case=%s frame=%d",
+                    case_name,
+                    frame,
+                )
+                raise
 
-        # Directly use the iteration as frames
-        if frame % every_nth_frame == 0:
-            try:
-                # Update risks in the graph based on propagation and random increase chance
-                update_risk(G, risk_sim_values.increase_chance, risk_sim_values.propagation_threshold)
-
-                # Ensure that exit nodes retain a risk of 0 after the update
-                for exit_node in exits:
-                    if exit_node in G.nodes:
-                        G.nodes[exit_node]["risk"] = 0
-
-                # Save the updated risk levels for the current frame
-                write_risk_levels(connection, frame, {node: G.nodes[node]["risk"] for node in G.nodes})
-            except Exception as e:
-                print(f"Error updating risks at frame {frame}: {e}")
+    log.info(
+        "Risk simulation finished | case=%s last_frame=%d",
+        case_name,
+        risk_sim_values.iterations,
+    )

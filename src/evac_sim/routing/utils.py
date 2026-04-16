@@ -7,9 +7,10 @@ def is_sublist(sub, main) -> bool:
     """
     n = len(sub)
     for i in range(len(main) - n + 1):
-        if main[i:i + n] == sub:
+        if main[i : i + n] == sub:
             return True
     return False
+
 
 def collect_unblocked_paths(paths, blocked_nodes):
     """
@@ -19,7 +20,7 @@ def collect_unblocked_paths(paths, blocked_nodes):
     are excluded, but blocking can later be relaxed by higher-level logic.
 
     Args:
-        paths (Iterable[tuple]): Iterable of (path, cost, betweenness).
+        paths (Iterable[tuple]): Iterable of (path, cost).
         blocked_nodes (Iterable): Nodes that must not appear in the path.
 
     Returns:
@@ -31,7 +32,7 @@ def collect_unblocked_paths(paths, blocked_nodes):
     blocked_set = set(blocked_nodes)
 
     return [
-        (path, cost, betweenness)
-        for path, cost, betweenness in paths
+        (path, cost)
+        for path, cost in paths
         if not any(node in blocked_set for node in path)
     ]

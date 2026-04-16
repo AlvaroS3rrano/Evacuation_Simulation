@@ -1,47 +1,58 @@
+from dataclasses import dataclass, field
+from typing import Any
+
+
+@dataclass(slots=True)
 class AgentGroup:
     """
-    Represents a group of agents along with their designated path, algorithm identifier, and knowledge level.
+    Group of agents sharing the same evacuation path and routing behaviour.
 
-    Attributes:
-        agents (list): List of agent IDs.
-        path (list): The designated path for the agent group (as a list of nodes).
-        current_nodes (dict): Dictionary mapping each agent's ID to the current node where the agent is located.
-        algorithm (int): Identifier for the algorithm used:
-                         0: shortest path
-                         1: centrality measures
-        awareness_level (int): The awareness level of the agents:
-                               0: Knows only upon reaching a neighboring node.
-                               1: Knows every change as it happens.
-        blocked_nodes (list): List of nodes that are currently blocked.
+    Attributes
+    ----------
+    agents:
+        List of agent identifiers belonging to the group.
+
+    path:
+        Planned path for the group as a sequence of nodes.
+
+    current_nodes:
+        Mapping from each agent identifier to its current node.
+
+    algorithm:
+        Routing algorithm identifier:
+        0 -> shortest path
+        1 -> centrality-based path
+
+    awareness_level:
+        Information awareness level of the agents:
+        0 -> agents only learn changes when reaching a neighbouring node
+        1 -> agents know changes immediately
+
+    blocked_nodes:
+        List of currently blocked nodes affecting the group.
+
+    wait_until_node:
+        Node where the sistem can continue with path-related logic.
+
+    agents_in_stairs:
+        List of agent identifiers currently located on stairs.
+
+    initial_agent_id:
+        Identifier of the initial or reference agent for the group.
     """
 
-    def __init__(self, agents, path, current_nodes, algorithm, awareness_level, *, blocked_nodes=None, wait_until_node=None, areInStairs=[]):
-        """
-        Initializes an AgentGroup instance.
+    agents: list[Any]
+    path: list[Any]
+    current_nodes: dict[Any, Any]
+    algorithm: int
+    awareness_level: int
+    blocked_nodes: list[Any] = field(default_factory=list)
+    wait_until_node: Any = None
+    agents_in_stairs: list[Any] = field(default_factory=list)
+    initial_agents_ids: list[Any] = field(default_factory=list)
 
-        Parameters:
-            agents (list): List of agent IDs.
-            path (list): The designated path for the group.
-            current_nodes (dict): Dictionary mapping each agent's ID to its current node.
-            algorithm (int): Algorithm identifier (e.g., 0 for shortest path, 1 for centrality measures).
-            awareness_level (int): The awareness level of the agents (e.g., 0 for low awareness or 1 for high awareness).
-            blocked_nodes (list, optional): List of nodes to mark as blocked initially.
-                                            Defaults to an empty list if not provided.
-            wait_until_node (str, optional): Node identifier to wait at before executing certain operations.
-                                             The related function will only execute once the agent reaches this node.
-        """
-        self.agents = agents                          # List of agent IDs.
-        self.path = path                              # Designated path for the group.
-        self.current_nodes = current_nodes            # Dictionary mapping agent IDs to their current nodes.
-        self.algorithm = algorithm                    # Algorithm used (0 for shortest path, 1 for centrality measures).
-        self.awareness_level = awareness_level        # Awareness level (0 or 1).
-        self.blocked_nodes = blocked_nodes if blocked_nodes is not None else []
-        self.wait_until_node = wait_until_node        # Node at which to continue looking for new paths
-        self.areInStairs = areInStairs                # List of agents IDs that are in a stairs node
-
-    def __repr__(self):
-        """
-        Returns a string representation of the AgentGroup instance, useful for debugging.
-        """
-        return (f"AgentGroup(agents={self.agents}, path={self.path}, "
-                f"algorithm={self.algorithm}, awareness_level={self.awareness_level})")
+    def __post_init__(self) -> None:
+        if self.algorithm not in (0, 1):
+            raise ValueError("algorithm must be 0 (shortest path) or 1 (centrality-based path)")
+        if self.awareness_level not in (0, 1):
+            raise ValueError("awareness_level must be 0 or 1")

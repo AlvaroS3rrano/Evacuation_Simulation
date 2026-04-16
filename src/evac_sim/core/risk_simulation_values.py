@@ -1,48 +1,45 @@
+from dataclasses import dataclass, field
+
+StartingRisk = tuple[str, float]
+RiskOverride = tuple[int, str, float]
+
+
+@dataclass(slots=True)
 class RiskSimulationValues:
     """
-    Represents the configuration parameters for a risk simulation.
+    Configuration parameters controlling the risk simulation.
 
-    Attributes:
-        iterations (int): Total number of simulation frames.
-        increase_chance (float): Probability of an individual risk increase per frame.
-        propagation_threshold (float): Risk value above which a node becomes an active emitter
-            and propagates risk to neighboring nodes.
-        risk_overrides (list of tuple, optional): Optional list of (frame, node, risk)
-            tuples to force-set specific node risks at given frames. Defaults to an empty list.
-        starting_risks (list of tuple, optional): Optional list of (node, risk)
-            tuples to define the initial risk values of specific nodes. Defaults to an empty list.
+    Attributes
+    ----------
+    iterations:
+        Total number of simulation frames.
+
+    increase_chance:
+        Probability of an individual risk increase per frame.
+
+    propagation_threshold:
+        Risk value above which a node becomes an active emitter and
+        propagates risk to neighbouring nodes.
+
+    starting_risks:
+        Initial risk values assigned to specific nodes as
+        `(node_id, risk_value)` tuples.
+
+    risk_overrides:
+        Forced risk assignments applied at specific frames as
+        `(frame, node_id, risk_value)` tuples.
     """
 
-    def __init__(
-        self,
-        iterations: int = 3000,
-        increase_chance: float = 0.01,
-        propagation_threshold: float = 0.5,
-        starting_risks: list[tuple[str, float]] | None = None,
-        risk_overrides: list[tuple[int, str, float]] | None = None,
-    ):
-        """
-        Initializes a RiskSimulationValues instance with provided or default parameters.
+    iterations: int = 3000
+    increase_chance: float = 0.01
+    propagation_threshold: float = 0.5
+    starting_risks: list[StartingRisk] = field(default_factory=list)
+    risk_overrides: list[RiskOverride] = field(default_factory=list)
 
-        Parameters:
-            iterations (int): Total number of simulation frames (default is 3000).
-            increase_chance (float): Probability of an individual risk increase per frame (default is 0.01).
-            propagation_threshold (float): Risk threshold that activates a node as an emitter
-                in the propagation model (default is 0.5).
-            starting_risks (list of (str, float) tuples, optional):
-                Defines initial risk values for specific nodes (default is None → empty list).
-            risk_overrides (list of (int, str, float) tuples, optional):
-                Forcibly sets node risk at specific frames (default is None → empty list).
-        """
-        self.iterations = iterations
-        self.increase_chance = increase_chance
-        self.propagation_threshold = propagation_threshold
-        self.starting_risks = starting_risks or []
-        self.risk_overrides = risk_overrides or []
-
-
-if __name__ == "__main__":
-
-    # Example usage:
-    simulation = RiskSimulationValues()
-    print(simulation)  # Displays the default values
+    def __post_init__(self) -> None:
+        if self.iterations <= 0:
+            raise ValueError("iterations must be > 0")
+        if not 0 <= self.increase_chance <= 1:
+            raise ValueError("increase_chance must be between 0 and 1")
+        if not 0 <= self.propagation_threshold <= 1:
+            raise ValueError("propagation_threshold must be between 0 and 1")

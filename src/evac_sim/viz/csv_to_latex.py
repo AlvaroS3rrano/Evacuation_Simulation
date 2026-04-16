@@ -1,4 +1,5 @@
 import re
+
 import pandas as pd
 
 # ----------------------------
@@ -24,12 +25,7 @@ SCENARIO_METRICS = [
 
 def _make_configuration(df: pd.DataFrame) -> pd.Series:
     """Builds the 'Configuration' label from algorithm + awareness."""
-    return (
-        df["algorithm"].astype(str)
-        + ", "
-        + df["awareness"].astype(str)
-        + "-Awareness"
-    )
+    return df["algorithm"].astype(str) + ", " + df["awareness"].astype(str) + "-Awareness"
 
 
 def _order_configurations(df: pd.DataFrame, col: str = "Configuration") -> pd.DataFrame:
@@ -52,6 +48,7 @@ def _flatten_agg_columns(columns) -> list[str]:
 # ----------------------------
 # Case name helpers
 # ----------------------------
+
 
 def extract_case_info(case_name: str) -> tuple[str, int | None]:
     """
@@ -80,6 +77,7 @@ def format_case_name(case_name: str) -> str:
 # Aggregation helpers
 # ----------------------------
 
+
 def _read_csv_columns(csv_path: str, columns: list[str]) -> pd.DataFrame:
     """Reads only the required columns from a CSV (keeps code DRY)."""
     return pd.read_csv(csv_path, usecols=columns).copy()
@@ -89,7 +87,7 @@ def _aggregate_by_configuration(
     df: pd.DataFrame,
     metrics: dict[str, str | list[str]],
     group_cols: list[str],
-    order_configurations: bool = True
+    order_configurations: bool = True,
 ) -> pd.DataFrame:
     """
     Aggregates df over group_cols using metrics dict and returns aggregated dataframe.
@@ -110,17 +108,26 @@ def _aggregate_by_configuration(
 # 1) Casewise table (case_name x configuration)
 # ----------------------------
 
+
 def csv_to_latex_rows_casewise_config(
     csv_path: str,
     float_fmt: str = "{:.4f}",
     time_fmt: str = "{:.2f}",
     order_configurations: bool = True,
-    addlinespace_between_cases: bool = False
+    addlinespace_between_cases: bool = False,
 ) -> str:
     columns = [
-        "case_name", "algorithm", "awareness",
-        "mean_remaining_path_risk", "remaining_path_risk_var",
-        "avg_path_length", "min_time", "max_time", "avg_time", "median_time", "p90_time",
+        "case_name",
+        "algorithm",
+        "awareness",
+        "mean_remaining_path_risk",
+        "remaining_path_risk_var",
+        "avg_path_length",
+        "min_time",
+        "max_time",
+        "avg_time",
+        "median_time",
+        "p90_time",
     ]
     df = _read_csv_columns(csv_path, columns)
     df["Configuration"] = _make_configuration(df)
@@ -159,7 +166,11 @@ def csv_to_latex_rows_casewise_config(
     for _, r in out.iterrows():
         case_label = format_case_name(r["case_name"])
 
-        if addlinespace_between_cases and last_case_label is not None and case_label != last_case_label:
+        if (
+            addlinespace_between_cases
+            and last_case_label is not None
+            and case_label != last_case_label
+        ):
             rows.append(r"\addlinespace")
 
         rows.append(
@@ -183,12 +194,13 @@ def csv_to_latex_rows_casewise_config(
 # 2) Single case table (configuration only) - MEANS
 # ----------------------------
 
+
 def csv_to_latex_rows_for_case_config_means(
     csv_path: str,
     case_name: str,
     float_fmt: str = "{:.4f}",
     time_fmt: str = "{:.2f}",
-    order_configurations: bool = True
+    order_configurations: bool = True,
 ) -> str:
     """
     Builds LaTeX rows for a single case, aggregated by (algorithm, awareness).
@@ -197,9 +209,14 @@ def csv_to_latex_rows_for_case_config_means(
       Configuration & Max Evac. Time & Avg Evac. Time & Avg Path Length & Mean RPR & RPR Var \\\\
     """
     columns = [
-        "case_name", "algorithm", "awareness",
-        "max_time", "avg_time", "avg_path_length",
-        "mean_remaining_path_risk", "remaining_path_risk_var",
+        "case_name",
+        "algorithm",
+        "awareness",
+        "max_time",
+        "avg_time",
+        "avg_path_length",
+        "mean_remaining_path_risk",
+        "remaining_path_risk_var",
     ]
     df = _read_csv_columns(csv_path, columns)
 
@@ -241,6 +258,7 @@ def csv_to_latex_rows_for_case_config_means(
 # ----------------------------
 # 3) Scenario compact table (configuration only) - mean/std/mean±std
 # ----------------------------
+
 
 def _aggregate_scenario_compact_config(
     csv_path: str,
@@ -306,6 +324,7 @@ def csv_to_latex_rows_scenario_compact_config(
         print(result)
     return result
 
+
 if __name__ == "__main__":
     CSV_PATHS = {
         "cruise": "../../../results/CSV/Cruise_Ship_experiment_metrics.csv",
@@ -315,11 +334,9 @@ if __name__ == "__main__":
 
     scenario = "theme_park"  # change to "theme_park" or "corridor"
     case = "example_case"
-    mode = "mean+std"    # "mean", "std", "mean+std"4
+    mode = "mean+std"  # "mean", "std", "mean+std"4
 
     latex_rows = csv_to_latex_rows_casewise_config(CSV_PATHS[scenario])
     # latex_rows = csv_to_latex_rows_for_case_config_means(CSV_PATHS[scenario], "example_case")
     # latex_rows = csv_to_latex_rows_scenario_compact_config(CSV_PATHS[scenario], mode=mode)
     print(latex_rows)
-
-
