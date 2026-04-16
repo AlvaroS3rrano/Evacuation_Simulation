@@ -17,6 +17,8 @@ dependencies = [
   "networkx",
   "shapely",
   "matplotlib",
+  "plotly",
+  "nbformat",
 ]
 
 [project.scripts]
