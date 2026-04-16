@@ -1,36 +1,28 @@
 # Evac-Sim - Evacuation Simulation Framework
 
-Simulation framework for pedestrian evacuation scenarios based on
-**JuPedSim**, designed to support research on evacuation dynamics,
-risk propagation, and intelligent routing strategies.
+**Evac-Sim** is a research-oriented framework for simulating pedestrian evacuation scenarios with **JuPedSim**.
+It is designed to support experimentation on evacuation dynamics, risk propagation, situational awareness,
+and routing strategies in complex environments.
 
-The framework enables the simulation of complex evacuation scenarios,
-analysis of agent behavior under different levels of environmental
-awareness, and systematic comparison of routing strategies.
-
-This project is developed in the context of academic research on
-evacuation dynamics and intelligent environments.
+The project combines agent-based simulation, configurable scenario definitions, trajectory generation, risk modeling,
+and post-run analysis artifacts in a reproducible workflow.
 
 ------------------------------------------------------------------------
 
 ## 📌 Project Overview
 
-The goal of this project is to simulate evacuation processes in complex
-environments, analyzing different routing strategies and levels of
-environmental awareness.
+The main goal of this project is to study how different evacuation conditions affect agent behavior and evacuation outcomes.
+In particular, the framework focuses on:
 
-The framework allows:
+- agent-based pedestrian evacuation simulation using **JuPedSim**
+- custom environments and walkable area definitions
+- dynamic risk computation during the evacuation process
+- comparison of routing strategies under different conditions
+- analysis of how environmental awareness influences decision-making
+- storage of simulation outputs for later inspection and visualization
 
--   Agent-based pedestrian simulation using **JuPedSim**
--   Definition of custom environments and walkable areas
--   Risk computation per agent and per frame
--   Visualization of trajectories and risk evolution
--   Storage and analysis of simulation results
-
-A key aspect of the framework is the modeling of different levels of
-agent environmental awareness, distinguishing between **high-awareness**
-and **low-awareness** agents, as well as comparing multiple routing
-strategies.
+A central research aspect of the framework is the distinction between agents with different levels of environmental
+awareness, and the comparison between efficient routing and centrality-based routing strategies.
 
 ------------------------------------------------------------------------
 
@@ -56,7 +48,7 @@ strategies.
     │ └── study.yaml
     │
     ├── Notebooks/
-    │ └── experiments.ipynb
+    │ └── main.ipynb
     │
     ├── results/
     │ └── images/
@@ -88,6 +80,8 @@ strategies.
     │   ├── cli.py
     │   └── runner.py
     │
+    ├── tests/
+    │
     ├── pyproject.toml
     └── README.md
 
@@ -108,7 +102,7 @@ cd Evacuation_Simulation
 python -m venv .venv
 
 # Windows
-.venv\Scripts\activate
+.venv/Scripts/activate
 
 # Linux / macOS
 source .venv/bin/activate
@@ -135,7 +129,7 @@ pip install -e .[dev]
 
 Experiments are defined in:
 ````text
-configs/study.yaml
+./configs
 ````
 
 #### Run a simulation:
@@ -224,21 +218,48 @@ Then open one of the available notebooks, such as:
 
 ## ⚙️ Configuration
 
-Simulation cases are defined in YAML files under:
+Simulation cases are defined as YAML entries. A case usually specifies:
 
-    configs/
+- `environment`: scenario/layout to simulate
+- `sources`: origin nodes or spawning points
+- `agents`: number of agents spawned at each source
+- `targets`: destination nodes or exits
+- `mode_type`: routing/behavior mode
+- `master_seed`: seed for reproducibility
+- `risk_iterations`: number of risk propagation iterations
+- `risk_increase_chance`: probability used in risk progression
+- `starting_risks`: initial risky locations
+- `risk_overrides`: risk changes injected at specific frames
+- `risk_threshold`: threshold that marks a risky condition for decisions
+- `propagation_threshold`: threshold used by the propagation model
+- `gamma`: routing or scoring parameter used in strategy selection
+- `stairs_max_speed` / `normal_max_speed`: movement parameters
+- `every_nth_frame_simulation`: simulation frame subsampling
+- `every_nth_frame_animation`: animation frame subsampling
+- `danger_visualization_frame`: frame chosen for danger visualization
 
 Example:
 
-``` yaml
+```yaml
 corridor_case_1:
-  environment: corridor
-  sources: [A]
-  targets: [B]
-  agents: [50]
-  risk_seed: 42
-  risk_iterations: 3000
-  gamma: 0.5
+  environment: "corridor"
+  sources: ["16"]
+  agents: [5]
+  targets: ["1", "14"]
+  mode_type: 0
+  master_seed: 1001
+  risk_iterations: 2000
+  risk_increase_chance: 0.05
+  starting_risks:
+  risk_overrides:
+  risk_threshold: 0.5
+  propagation_threshold: 0.5
+  gamma: 0.2
+  stairs_max_speed: 0.6
+  normal_max_speed: 1.2
+  every_nth_frame_simulation: 3
+  every_nth_frame_animation: 50
+  danger_visualization_frame: 500
 ```
 
 Run it with:
@@ -281,6 +302,22 @@ Each run stores:
 -   runtime metadata
 -   execution logs
 
+------------------------------------------------------------------------
+
+## Version Used for the SIMPAT Paper
+
+## Version Used for the SIMPAT Paper
+
+For reproducibility, the version of this project used for the **SIMPAT paper** corresponds to the 69th
+commit in the repository history (chronological order from the initial commit):
+
+```text
+d1098b3
+```
+To reproduce this version:
+```bash
+git checkout d1098b3
+```
 ------------------------------------------------------------------------
 
 ## 👤 Author
