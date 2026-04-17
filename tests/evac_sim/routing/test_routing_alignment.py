@@ -25,13 +25,17 @@ class DummyEnv:
 
 
 class DummyGroup:
-    def __init__(self, path=None, algorithm=0, awareness_level=0):
+    def __init__(self, path=None, algorithm=0, awareness_level=0, agents=None):
         self.path = path
         self.algorithm = algorithm
         self.awareness_level = awareness_level
         self.blocked_nodes = []
         self.wait_until_node = None
         self.current_nodes = {}
+        self.agents = [1, 2] if agents is None else agents
+        self.reserved_edges = set()
+        self.reserved_group_size = 0
+        self.initial_agents_ids = list(self.agents)
 
 
 def test_centrality_measures_uses_geometric_mean():
@@ -112,14 +116,30 @@ def test_get_targets_for_current_node_includes_same_floor_and_connectors():
 
 def test_low_awareness_only_reacts_to_next_node(monkeypatch):
     env = DummyEnv()
-    group = DummyGroup(path=["A", "B", "X"], algorithm=0, awareness_level=0)
+    group = DummyGroup(path=["A", "B", "X"], algorithm=0, awareness_level=0, agents=[1, 2])
 
     called = {"updated": False}
 
     def fake_update_all_graph_risks(env_, risk_map):
         called["updated"] = True
 
-    def fake_get_possible_paths(env_, current_node, exits, gamma, algo, blocked_nodes=None):
+    captured = {}
+
+    def fake_get_possible_paths(
+            env_,
+            current_node,
+            exits,
+            gamma,
+            algo,
+            *,
+            blocked_nodes=None,
+            heuristic="none",
+            beta=1.0,
+            group_size=0,
+    ):
+        captured["heuristic"] = heuristic
+        captured["beta"] = beta
+        captured["group_size"] = group_size
         return [["A", "C", "X"], ["A", "D", "X"]]
 
     monkeypatch.setattr(
@@ -142,21 +162,42 @@ def test_low_awareness_only_reacts_to_next_node(monkeypatch):
         env_info=env,
         gamma=0.4,
         risk_threshold=0.5,
+        heuristic="h1",
+        beta=2.0,
     )
 
     assert called["updated"] is True
     assert best == ["A", "C", "X"]
     assert "B" in group.blocked_nodes
+    assert captured["heuristic"] == "h1"
+    assert captured["beta"] == 2.0
+    assert captured["group_size"] == 2
 
 
 def test_high_awareness_reacts_to_any_remaining_unsafe_node(monkeypatch):
     env = DummyEnv()
-    group = DummyGroup(path=["A", "B", "C", "X"], algorithm=0, awareness_level=1)
+    group = DummyGroup(path=["A", "B", "C", "X"], algorithm=0, awareness_level=1, agents=[1, 2])
+
+    captured = {}
 
     def fake_update_all_graph_risks(env_, risk_map):
         return None
 
-    def fake_get_possible_paths(env_, current_node, exits, gamma, algo, blocked_nodes=None):
+    def fake_get_possible_paths(
+        env_,
+        current_node,
+        exits,
+        gamma,
+        algo,
+        *,
+        blocked_nodes=None,
+        heuristic="none",
+        beta=1.0,
+        group_size=0,
+    ):
+        captured["heuristic"] = heuristic
+        captured["beta"] = beta
+        captured["group_size"] = group_size
         return [["A", "D", "X"], ["A", "E", "X"]]
 
     monkeypatch.setattr(
@@ -178,10 +219,15 @@ def test_high_awareness_reacts_to_any_remaining_unsafe_node(monkeypatch):
         env_info=env,
         gamma=0.4,
         risk_threshold=0.5,
+        heuristic="h1",
+        beta=1.5,
     )
 
     assert best == ["A", "D", "X"]
     assert "C" in group.blocked_nodes
+    assert captured["heuristic"] == "h1"
+    assert captured["beta"] == 1.5
+    assert captured["group_size"] == 2
 
 
 def test_efficient_sort_prefers_lowest_cost():

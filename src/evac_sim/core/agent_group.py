@@ -50,6 +50,8 @@ class AgentGroup:
     wait_until_node: Any = None
     agents_in_stairs: list[Any] = field(default_factory=list)
     initial_agents_ids: list[Any] = field(default_factory=list)
+    reserved_edges: set[tuple[Any, Any]] = field(default_factory=set)
+    reserved_group_size: int = 0
 
     def __post_init__(self) -> None:
         if self.algorithm not in (0, 1):

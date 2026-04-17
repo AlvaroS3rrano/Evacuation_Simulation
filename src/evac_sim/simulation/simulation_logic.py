@@ -1,3 +1,9 @@
+from evac_sim.core.agent_group import AgentGroup
+
+import logging
+
+logger = logging.getLogger(__name__)
+
 def compute_current_nodes(simulation_config, agent_group, frame) -> None:
     """
     Computes the current node for each agent in the agent_group based on its stage_id.
@@ -88,3 +94,110 @@ def update_agent_speed_on_stairs(G, simulation_config, agent_group):
         else:
             # If the current node is undefined, default to normal speed
             agent.model.v0 = simulation_config.normal_max_speed
+
+def path_to_edges(path):
+    return {(u, v) for u, v in zip(path, path[1:])}
+
+def get_remaining_path_for_group(group: AgentGroup):
+    if not group.path or not group.current_nodes:
+        return []
+
+    max_idx = -1
+    current_area = None
+
+    for aid in group.agents:
+        area = group.current_nodes.get(aid)
+        if area is None:
+            continue
+        try:
+            idx = group.path.index(area)
+        except ValueError:
+            continue
+        if idx > max_idx:
+            max_idx = idx
+
+    if max_idx < 0:
+        return list(group.path)
+
+    return group.path[max_idx:]
+
+def update_group_reserved_edges(
+    env_info,
+    group: AgentGroup,
+    *,
+    frame: int | None = None,
+    group_id: str | int | None = None,
+    group_size_override: int | None = None,
+) -> None:
+    current_group_size = (
+        group_size_override if group_size_override is not None else len(group.agents)
+    )
+    old_reserved_edges = getattr(group, "reserved_edges", set())
+    old_reserved_group_size = getattr(group, "reserved_group_size", 0)
+
+    remaining_path = get_remaining_path_for_group(group)
+    new_reserved_edges = {(u, v) for u, v in zip(remaining_path, remaining_path[1:])}
+
+    to_release = old_reserved_edges - new_reserved_edges
+    to_add = new_reserved_edges - old_reserved_edges
+    kept_edges = old_reserved_edges & new_reserved_edges
+
+    # 1) Release edges no longer reserved using OLD reserved size
+    for u, v in to_release:
+        if env_info.graph.has_edge(u, v):
+            env_info.graph[u][v]["occupancy"] = max(
+                0,
+                env_info.graph[u][v].get("occupancy", 0) - old_reserved_group_size
+            )
+
+    # 2) If group size changed, adjust kept edges by delta
+    size_delta = current_group_size - old_reserved_group_size
+    if size_delta != 0:
+        for u, v in kept_edges:
+            if env_info.graph.has_edge(u, v):
+                env_info.graph[u][v]["occupancy"] = max(
+                    0,
+                    env_info.graph[u][v].get("occupancy", 0) + size_delta
+                )
+
+    # 3) Add newly reserved edges using CURRENT size
+    for u, v in to_add:
+        if env_info.graph.has_edge(u, v):
+            env_info.graph[u][v]["occupancy"] = env_info.graph[u][v].get("occupancy", 0) + current_group_size
+
+    logger.info(
+        "Reservation update | frame=%s group=%s agents=%d old_edges=%d new_edges=%d add=%d release=%d delta=%d",
+        frame,
+        group_id,
+        current_group_size,
+        len(old_reserved_edges),
+        len(new_reserved_edges),
+        len(to_add),
+        len(to_release),
+        size_delta,
+    )
+
+    for u, v in sorted(to_add):
+        if env_info.graph.has_edge(u, v):
+            logger.debug(
+                "Reserve edge | frame=%s group=%s edge=(%s,%s) occupancy=%s",
+                frame,
+                group_id,
+                u,
+                v,
+                env_info.graph[u][v]["occupancy"],
+            )
+
+    for u, v in sorted(to_release):
+        if env_info.graph.has_edge(u, v):
+            logger.debug(
+                "Release edge | frame=%s group=%s edge=(%s,%s) occupancy=%s",
+                frame,
+                group_id,
+                u,
+                v,
+                env_info.graph[u][v]["occupancy"],
+            )
+
+    group.reserved_edges = new_reserved_edges
+    group.reserved_group_size = current_group_size

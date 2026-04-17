@@ -1,12 +1,14 @@
 from .graph_risk import update_all_graph_risks
 from .multifloor_paths import get_posible_paths
 
+def _get_group_size(agent_group) -> int:
+    return len(agent_group.agents)
 
 def handle_blocked_node_in_path(best_path, agent_group) -> None:
     """
     Update the wait target when the selected path contains blocked nodes.
     """
-    blocked_nodes = getattr(agent_group, "blocked_nodes", [])
+    blocked_nodes = agent_group.blocked_nodes
 
     if best_path and any(node in best_path for node in blocked_nodes):
         blocked_node = next(node for node in blocked_nodes if node in best_path)
@@ -21,7 +23,17 @@ def handle_blocked_node_in_path(best_path, agent_group) -> None:
         agent_group.blocked_nodes = blocked_nodes
 
 
-def _get_possible_paths_with_fallback(env_info, current_node, exits, gamma, algo, blocked_nodes):
+def _get_possible_paths_with_fallback(
+    env_info,
+    current_node,
+    exits,
+    gamma,
+    algo,
+    blocked_nodes,
+    heuristic="none",
+    beta=1.0,
+    group_size=0,
+):
     """
     Get feasible paths, retrying without blocked nodes if needed.
     """
@@ -32,6 +44,9 @@ def _get_possible_paths_with_fallback(env_info, current_node, exits, gamma, algo
         gamma,
         algo,
         blocked_nodes=blocked_nodes,
+        heuristic=heuristic,
+        beta=beta,
+        group_size=group_size,
     )
 
     if not paths:
@@ -42,6 +57,9 @@ def _get_possible_paths_with_fallback(env_info, current_node, exits, gamma, algo
             gamma,
             algo,
             blocked_nodes=[],
+            heuristic=heuristic,
+            beta=beta,
+            group_size=group_size,
         )
 
     return paths
@@ -65,6 +83,9 @@ def compute_initial_path(
     source_node,
     risk_per_node=None,
     gamma=0.4,
+    heuristic="none",
+    beta=1.0,
+    group_size=None,
 ):
     """
     Compute the initial evacuation path for a group before the simulation starts.
@@ -73,10 +94,13 @@ def compute_initial_path(
     already existing path or on next_node, because it is used during group
     initialization.
     """
-    blocked_nodes = getattr(agent_group, "blocked_nodes", [])
+    blocked_nodes = agent_group.blocked_nodes
 
     if risk_per_node is not None:
         update_all_graph_risks(env_info, risk_per_node)
+
+    if group_size is None:
+        group_size = _get_group_size(agent_group)
 
     alternative_paths = _get_possible_paths_with_fallback(
         env_info=env_info,
@@ -85,6 +109,9 @@ def compute_initial_path(
         gamma=gamma,
         algo=agent_group.algorithm,
         blocked_nodes=blocked_nodes,
+        heuristic=heuristic,
+        beta=beta,
+        group_size=group_size,
     )
 
     return _select_path_by_active_strategy(alternative_paths, agent_group)
@@ -98,12 +125,14 @@ def compute_low_awareness_alternative_path(
     env_info,
     gamma,
     risk_threshold,
+    heuristic="none",
+    beta=1.0,
 ):
     """
     Recompute the path if the next node is unsafe.
     """
     current_path = getattr(agent_group, "path", None)
-    blocked_nodes = getattr(agent_group, "blocked_nodes", [])
+    blocked_nodes = agent_group.blocked_nodes
 
     if current_path is None or next_node is None:
         return None
@@ -120,6 +149,8 @@ def compute_low_awareness_alternative_path(
 
     update_all_graph_risks(env_info, risk_per_node)
 
+    group_size = _get_group_size(agent_group)
+
     alternative_paths = _get_possible_paths_with_fallback(
         env_info=env_info,
         current_node=current_node,
@@ -127,6 +158,9 @@ def compute_low_awareness_alternative_path(
         gamma=gamma,
         algo=agent_group.algorithm,
         blocked_nodes=blocked_nodes,
+        heuristic=heuristic,
+        beta=beta,
+        group_size=group_size,
     )
 
     return _select_path_by_active_strategy(alternative_paths, agent_group)
@@ -139,12 +173,14 @@ def compute_high_awareness_alternative_path(
     env_info,
     gamma,
     risk_threshold,
+    heuristic="none",
+    beta=1.0,
 ):
     """
     Recompute the path if any remaining node is unsafe.
     """
-    current_path = getattr(agent_group, "path", None)
-    blocked_nodes = getattr(agent_group, "blocked_nodes", [])
+    current_path = agent_group.path
+    blocked_nodes = agent_group.blocked_nodes
     dangerous_path = False
 
     if risk_per_node is None:
@@ -170,6 +206,8 @@ def compute_high_awareness_alternative_path(
     agent_group.blocked_nodes = blocked_nodes
     update_all_graph_risks(env_info, risk_per_node)
 
+    group_size = _get_group_size(agent_group)
+
     alternative_paths = _get_possible_paths_with_fallback(
         env_info=env_info,
         current_node=current_node,
@@ -177,6 +215,9 @@ def compute_high_awareness_alternative_path(
         gamma=gamma,
         algo=agent_group.algorithm,
         blocked_nodes=blocked_nodes,
+        heuristic=heuristic,
+        beta=beta,
+        group_size=group_size,
     )
 
     return _select_path_by_active_strategy(alternative_paths, agent_group)
@@ -191,6 +232,8 @@ def compute_alternative_path(
     risk_per_node=None,
     risk_threshold=0.5,
     gamma=0.4,
+    heuristic="none",
+    beta=1.0,
 ):
     """
     Dispatch rerouting based on the group's awareness level.
@@ -211,6 +254,8 @@ def compute_alternative_path(
             env_info=env_info,
             gamma=gamma,
             risk_threshold=risk_threshold,
+            heuristic=heuristic,
+            beta=beta,
         )
 
     if agent_group.awareness_level == 1:
@@ -222,6 +267,8 @@ def compute_alternative_path(
             env_info=env_info,
             gamma=gamma,
             risk_threshold=risk_threshold,
+            heuristic=heuristic,
+            beta=beta,
         )
 
     return None

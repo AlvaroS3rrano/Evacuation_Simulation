@@ -4,6 +4,11 @@ import math
 import networkx as nx
 from networkx.algorithms.simple_paths import shortest_simple_paths
 
+from evac_sim.routing.heuristics import compute_effective_edge_cost
+
+import logging
+
+logger = logging.getLogger(__name__)
 
 def centrality_measures(G, all_paths):
     """
@@ -47,30 +52,55 @@ def centrality_measures(G, all_paths):
     return node_centrality, scored_paths
 
 
-def collect_k_shortest_paths(G: nx.DiGraph, source, targets, k=15):
-    """
-    Collect up to k simple minimum-cost paths from the source to each target
-    and score them using the current candidate path set.
-
-    Args:
-        G (nx.DiGraph): Directed graph where edges have a 'cost' attribute.
-        source: Source node.
-        targets (list): Target nodes.
-        k (int): Maximum number of shortest simple paths per target.
-
-    Returns:
-        list: A list of (path, cost, centrality_score) tuples.
-    """
+def collect_k_shortest_paths(
+    G,
+    source,
+    targets,
+    k=15,
+    heuristic="none",
+    beta=1.0,
+    group_size=0,
+):
     all_paths = []
+
+    def edge_weight(u, v, edge_data):
+        return compute_effective_edge_cost(
+            edge_data=edge_data,
+            heuristic=heuristic,
+            beta=beta,
+            group_size=group_size,
+        )
 
     for target in targets:
         try:
-            paths_gen = shortest_simple_paths(G, source, target, weight="cost")
+            paths_gen = shortest_simple_paths(
+                G,
+                source,
+                target,
+                weight=edge_weight,
+            )
 
             for path in itertools.islice(paths_gen, k):
-                cost = sum(G[u][v]["cost"] for u, v in zip(path, path[1:]))
+                cost = sum(
+                    compute_effective_edge_cost(
+                        edge_data=G[u][v],
+                        heuristic=heuristic,
+                        beta=beta,
+                        group_size=group_size,
+                    )
+                    for u, v in zip(path, path[1:])
+                )
                 all_paths.append((path, cost))
-
+                logger.info(
+                    "Candidate path | source=%s target=%s heuristic=%s beta=%.2f group_size=%s path=%s cost=%.3f",
+                    source,
+                    target,
+                    heuristic,
+                    beta,
+                    group_size,
+                    path,
+                    cost,
+                )
         except nx.NetworkXNoPath:
             continue
 

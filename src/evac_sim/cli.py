@@ -29,6 +29,17 @@ def build_parser() -> argparse.ArgumentParser:
         "--out-dir", default=None, help="Output directory (default: ./runs/<timestamp>_<case>)"
     )
     run.add_argument("-v", "--verbose", action="store_true", help="Verbose logs")
+    run.add_argument("--heuristic",
+                     choices=["none" ,"h1", "h2", "h3"],
+                     default=None,
+                     help="Routing heuristic to use (default: none)"
+    )
+    run.add_argument(
+        "--beta",
+        type=float,
+        default=1.0,
+        help="Beta parameter for routing heuristics (default: 1.0)",
+    )
 
     return p
 
@@ -54,6 +65,8 @@ def main(argv: list[str] | None = None) -> int:
             environment=args.environment,
             out_dir=out_dir,
             verbose=getattr(args, "verbose", False),
+            heuristic=args.heuristic,
+            beta=args.beta,
         )
         return 0
 

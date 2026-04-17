@@ -33,6 +33,8 @@ def run_from_yaml(
     environment: str | None = None,
     out_dir: Optional[Path] = None,
     verbose: bool = False,
+    heuristic: str = "none",
+    beta: float = 1.0,
 ) -> None:
     project_root = project_root.resolve()
 
@@ -89,6 +91,8 @@ def run_from_yaml(
             "git_commit": git_commit_hash(paths.project_root),
             "python": sys.version.split()[0],
             "platform": platform.platform(),
+            "heuristic": heuristic,
+            "beta": beta,
         }
 
         (paths.run_dir / "metadata.json").write_text(
@@ -97,7 +101,13 @@ def run_from_yaml(
         )
 
         try:
-            run_experiment_from_case(cfg, paths, selected_case_id)
+            run_experiment_from_case(
+                cfg,
+                paths,
+                selected_case_id,
+                heuristic=heuristic,
+                beta=beta,
+            )
         except Exception:
             log.exception("Experiment crashed (case_id=%s)", selected_case_id)
             raise
@@ -139,6 +149,8 @@ def run_from_yaml(
         "git_commit": git_commit_hash(batch_paths.batch_dir),
         "python": sys.version.split()[0],
         "platform": platform.platform(),
+        "heuristic": heuristic,
+        "beta": beta,
     }
 
     combined_results_db = batch_paths.combined_dir / "results.db"
@@ -177,6 +189,8 @@ def run_from_yaml(
                 "git_commit": git_commit_hash(case_paths.project_root),
                 "python": sys.version.split()[0],
                 "platform": platform.platform(),
+                "heuristic": heuristic,
+                "beta": beta,
             }
 
             (case_paths.run_dir / "metadata.json").write_text(
@@ -188,6 +202,8 @@ def run_from_yaml(
                 cfg,
                 case_paths,
                 selected_case_id,
+                heuristic=heuristic,
+                beta=beta,
                 shared_results_db_conn=results_db_conn,
                 shared_results_db_file=combined_results_db,
             )

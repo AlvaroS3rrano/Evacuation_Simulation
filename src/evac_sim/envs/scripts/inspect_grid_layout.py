@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import math
 from collections import Counter
 
 import matplotlib.pyplot as plt
@@ -16,6 +17,31 @@ from evac_sim.envs.layout_creation import (
     get_waypoints_from_cells,
     build_bidirectional_weighted_edges,
 )
+
+
+
+def _get_polygon(cell_or_polygon) -> Polygon:
+    polygon = getattr(cell_or_polygon, "polygon", cell_or_polygon)
+    if not isinstance(polygon, Polygon):
+        raise TypeError(f"Expected Polygon-compatible cell, got {type(polygon).__name__}")
+    return polygon
+
+
+def compute_edge_capacity(cells, source: str, target: str) -> int:
+    source_polygon = _get_polygon(cells[source])
+    target_polygon = _get_polygon(cells[target])
+
+    source_area = source_polygon.area
+    target_area = target_polygon.area
+
+    return max(1, math.floor(min(source_area, target_area)))
+
+
+def enrich_edges_with_capacity(cells, edges: list[tuple[str, str, float]]) -> list[tuple[str, str, float, int]]:
+    return [
+        (source, target, weight, compute_edge_capacity(cells, source, target))
+        for source, target, weight in edges
+    ]
 
 def _get_cell_center(cell_or_polygon):
     if hasattr(cell_or_polygon, "center"):
@@ -184,10 +210,10 @@ def print_waypoints_python(waypoints: dict[str, tuple[list[float], float]]) -> N
     print("}")
 
 
-def print_edges_python(edges: list[tuple[str, str, float]]) -> None:
+def print_edges_python(edges: list[tuple[str, str, float, int]]) -> None:
     print("edges = [")
-    for source, target, weight in edges:
-        print(f'    ("{source}", "{target}", {weight}),')
+    for source, target, weight, capacity in edges:
+        print(f'    ("{source}", "{target}", {weight}, {capacity}),')
     print("]")
 
 
@@ -515,7 +541,7 @@ def main() -> None:
         print_waypoints_python(waypoints)
 
     if args.print_edges:
-        print_edges_python(edges)
+        print_edges_python(enrich_edges_with_capacity(cells, edges))
 
     if args.print_specific_areas:
         print_specific_areas_python(cells)

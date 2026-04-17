@@ -13,12 +13,6 @@ def _is_connector(EnvInf, node, floor_from, floor_to):
     """Return True if node connects two floors."""
     return node in EnvInf.floor_connecting_nodes.get((floor_from, floor_to), [])
 
-
-def _segment_end_floor(EnvInf, seg):
-    """Return the floor index of the segment's last node."""
-    return EnvInf.graph.nodes[seg[-1]]["floor"]
-
-
 def _get_graph_for_floor(EnvInf, floor: int):
     """Return the graph for a floor or the global graph."""
     return EnvInf.floors[floor] if EnvInf.floors is not None else EnvInf.graph
@@ -112,6 +106,9 @@ def _expand_frontier_once(
     gamma,
     blocked_nodes,
     visited_states,
+    heuristic="none",
+    beta=1.0,
+    group_size=0,
 ):
     """
     Expand one step of the multi-floor frontier.
@@ -136,7 +133,15 @@ def _expand_frontier_once(
         targets = _build_targets_for_next_floor(EnvInf, exits_by_floor, next_floor, d)
 
         segments2 = _get_cached_segments_from_connector(
-            EnvInf, connector, next_floor, targets, gamma, blocked_nodes
+            EnvInf,
+            connector,
+            next_floor,
+            targets,
+            gamma,
+            blocked_nodes,
+            heuristic=heuristic,
+            beta=beta,
+            group_size=group_size,
         )
 
         if not segments2:
@@ -204,7 +209,18 @@ def _sort_complete(complete, algo: int):
     return complete
 
 
-def get_posible_paths(EnvInf, current_node, exits, gamma, algo, *, blocked_nodes=None):
+def get_posible_paths(
+    EnvInf,
+    current_node,
+    exits,
+    gamma,
+    algo,
+    *,
+    blocked_nodes=None,
+    heuristic="none",
+    beta=1.0,
+    group_size=0,
+):
     """
     Compute feasible paths from the current node to any exit.
     """
@@ -227,6 +243,9 @@ def get_posible_paths(EnvInf, current_node, exits, gamma, algo, *, blocked_nodes
         blocked_nodes=blocked_nodes,
         apply_block_filter=True,
         apply_gamma_filter=False,
+        heuristic=heuristic,
+        beta=beta,
+        group_size=group_size,
     )
 
     complete, frontier = _init_complete_and_frontier(
@@ -245,6 +264,9 @@ def get_posible_paths(EnvInf, current_node, exits, gamma, algo, *, blocked_nodes
             gamma,
             blocked_nodes,
             visited_states,
+            heuristic=heuristic,
+            beta=beta,
+            group_size=group_size,
         )
         complete.extend(newly_complete)
 

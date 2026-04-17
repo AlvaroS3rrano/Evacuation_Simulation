@@ -39,6 +39,7 @@ from evac_sim.simulation.simulation_manager import (
     run_agent_simulation,
     set_agents_in_simulation,
 )
+from evac_sim.simulation.simulation_logic import update_group_reserved_edges
 
 from evac_sim.analysis.metrics import compute_group_metrics
 from evac_sim.db.sqlite_utils import (
@@ -308,6 +309,42 @@ def prepare_shared_resources(
         owns_simulation_conn=owns_simulation_conn,
     )
 
+def compute_initial_priority_cost(
+    *,
+    source: Any,
+    targets: list[Any],
+    env_info: EnvironmentInfo,
+    algorithm: int,
+    gamma: float,
+) -> float:
+    dummy_group = AgentGroup(
+        agents=[],
+        path=None,
+        current_nodes={},
+        algorithm=algorithm,
+        awareness_level=0,
+    )
+
+    path = compute_initial_path(
+        targets,
+        dummy_group,
+        env_info,
+        source,
+        risk_per_node=None,
+        gamma=gamma,
+        heuristic="none",
+        beta=1.0,
+        group_size=1,
+    )
+
+    if path is None or len(path) < 2:
+        return float("inf")
+
+    total_cost = 0.0
+    for u, v in zip(path, path[1:]):
+        total_cost += env_info.graph[u][v]["cost"]
+
+    return total_cost
 
 def build_agent_groups(
     *,
@@ -324,23 +361,84 @@ def build_agent_groups(
     risk_first_frame: dict[Any, float],
     gamma: float,
     normal_max_speed: float,
+    heuristic: str = "none",
+    beta: float = 1.0,
 ) -> dict[str, AgentGroup]:
     awareness_levels_per_group = [0, 1, 0, 1]
     algorithm_per_group = [0, 0, 1, 1]
 
     agent_groups: dict[str, AgentGroup] = {}
 
+    # 1) Build candidate group metadata
+    group_candidates = []
+
     for i, source in enumerate(sources):
         if mode_type == 1:
-            group = AgentGroup(None, None, None, i, mode)
+            algorithm = i
+            awareness_level = mode
         else:
-            group = AgentGroup(
-                None,
-                None,
-                None,
-                algorithm_per_group[mode],
-                awareness_levels_per_group[mode],
-            )
+            algorithm = algorithm_per_group[mode]
+            awareness_level = awareness_levels_per_group[mode]
+
+        group_size = len(positions[source])
+
+        base_exit_cost = compute_initial_priority_cost(
+            source=source,
+            targets=targets,
+            env_info=env_info,
+            algorithm=algorithm,
+            gamma=gamma,
+        )
+
+        group_candidates.append(
+            {
+                "source": source,
+                "group_size": group_size,
+                "algorithm": algorithm,
+                "awareness_level": awareness_level,
+                "base_exit_cost": base_exit_cost,
+            }
+        )
+
+    # 2) Order groups: closest first, then larger groups, then stable source id
+    group_candidates.sort(
+        key=lambda g: (g["base_exit_cost"], -g["group_size"], str(g["source"]))
+    )
+
+    log.info(
+        "Initial assignment order: %s",
+        [
+            (g["source"], g["group_size"], round(g["base_exit_cost"], 3))
+            for g in group_candidates
+        ],
+    )
+
+    log.info(
+        "Initial group ordering (closest_first): %s",
+        [
+            {
+                "source": g["source"],
+                "group_size": g["group_size"],
+                "priority_cost": round(g["base_exit_cost"], 3),
+            }
+            for g in group_candidates
+        ],
+    )
+
+    # 3) Assign paths sequentially and reserve immediately
+    for group_info in group_candidates:
+        source = group_info["source"]
+        group_size = group_info["group_size"]
+        algorithm = group_info["algorithm"]
+        awareness_level = group_info["awareness_level"]
+
+        group = AgentGroup(
+            agents=[],
+            path=None,
+            current_nodes={},
+            algorithm=algorithm,
+            awareness_level=awareness_level,
+        )
 
         path = compute_initial_path(
             targets,
@@ -349,8 +447,18 @@ def build_agent_groups(
             source,
             risk_per_node=risk_first_frame,
             gamma=gamma,
+            heuristic=heuristic,
+            beta=beta,
+            group_size=group_size,
         )
-        log.warning("Initial path for source=%s -> %s", source, path)
+
+        log.warning(
+            "Initial path for source=%s size=%d priority_cost=%.3f -> %s",
+            source,
+            group_size,
+            group_info["base_exit_cost"],
+            path,
+        )
 
         if path is None:
             raise ValueError(
@@ -381,8 +489,25 @@ def build_agent_groups(
         group.current_nodes = {agent_id: path[0] for agent_id in agent_ids}
         group.agents = agent_ids
         group.initial_agents_ids = list(agent_ids)
+        group.reserved_edges = set()
+        group.reserved_group_size = 0
+
+        # IMPORTANT: reserve immediately so next groups see the new occupancy
+        update_group_reserved_edges(
+            env_info,
+            group,
+            frame=0,
+            group_id=source,
+        )
 
         agent_groups[source] = group
+
+        log.info(
+            "Initial reservation applied | source=%s agents=%d reserved_edges=%d",
+            source,
+            len(group.agents),
+            len(group.reserved_edges),
+        )
 
     return agent_groups
 
@@ -528,6 +653,8 @@ def run_single_mode(
     mode: int,
     paths: RunPaths,
     resources: ExperimentResources,
+    heuristic: str = "none",
+    beta: float = 1.0,
 ) -> None:
     log.info(
         "Mode start | mode=%s env=%s case=%s",
@@ -568,6 +695,8 @@ def run_single_mode(
         risk_first_frame=resources.risk_first_frame,
         gamma=resources.gamma,
         normal_max_speed=resources.normal_max_speed,
+        heuristic=heuristic,
+        beta=beta,
     )
 
     sim_cfg = SimulationConfig(
@@ -591,6 +720,8 @@ def run_single_mode(
             case_name=case_id,
             mode=mode,
             threshold=resources.risk_threshold,
+            heuristic=heuristic,
+            beta=beta,
         )
     except Exception:
         log.exception("Simulation failed | mode=%s", mode)
@@ -651,6 +782,8 @@ def run_experiment_from_case(
     cfg: dict[str, Any],
     paths: RunPaths,
     case_id: str,
+    heuristic: str = "none",
+    beta: float = 1.0,
     shared_simulation_conn: sqlite3.Connection | None = None,
     shared_simulation_db_file: Path | None = None,
 ) -> None:
@@ -670,6 +803,8 @@ def run_experiment_from_case(
                 mode=mode,
                 paths=paths,
                 resources=resources,
+                heuristic=heuristic,
+                beta=beta,
             )
 
         resources.simulation_conn.commit()

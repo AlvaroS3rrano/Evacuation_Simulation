@@ -12,7 +12,7 @@ from evac_sim.db.repositories.group_decisions import insert_group_decision
 from evac_sim.envs.journey_configuration import set_journeys
 from evac_sim.routing.decision_policies import compute_alternative_path
 from evac_sim.routing.utils import is_sublist
-from evac_sim.simulation.simulation_logic import compute_current_nodes, update_agent_speed_on_stairs
+from evac_sim.simulation.simulation_logic import compute_current_nodes, update_agent_speed_on_stairs, update_group_reserved_edges
 
 logger = logging.getLogger(__name__)
 
@@ -61,6 +61,8 @@ def update_group_paths(
     *,
     frame: int,
     group_id: int,
+    heuristic: str = "none",
+    beta: float = 1.0,
 ) -> AgentGroup:
     """
     Evaluates whether the group's path should be rerouted.
@@ -100,6 +102,8 @@ def update_group_paths(
             risk_map,
             threshold,
             sim_cfg.gamma,
+            heuristic=heuristic,
+            beta=beta,
         )
 
         if alt_path and not is_sublist(alt_path, current_path):
@@ -208,6 +212,8 @@ def process_frame(
     mode: int,
     frame: int,
     threshold: float,
+    heuristic: str = "none",
+    beta: float = 1.0,
 ) -> None:
     """
     Compute current nodes, log agent areas, adjust speeds, update paths for each group,
@@ -218,6 +224,12 @@ def process_frame(
     for group_id, group in groups.items():
         try:
             compute_current_nodes(sim_cfg, group, frame)
+            update_group_reserved_edges(
+                env_info,
+                group,
+                frame=frame,
+                group_id=group_id,
+            )
 
             active_ids = {a.id for a in sim_cfg.simulation.agents()}
             group.agents = [aid for aid in group.agents if aid in active_ids]
@@ -251,6 +263,8 @@ def process_frame(
                 threshold,
                 frame=frame,
                 group_id=group_id,
+                heuristic=heuristic,
+                beta=beta,
             )
 
             record_group_path_data(
@@ -285,6 +299,8 @@ def run_agent_simulation(
     case_name: str,
     mode: int,
     threshold: float,
+    heuristic: str = "none",
+    beta: float = 1.0,
 ) -> None:
     """
     Advance the simulation and periodically process agent movements and path updates.
@@ -302,6 +318,8 @@ def run_agent_simulation(
             mode=mode,
             frame=0,
             threshold=threshold,
+            heuristic=heuristic,
+            beta=beta,
         )
 
     last_log_frame = -1
@@ -330,6 +348,8 @@ def run_agent_simulation(
                 mode=mode,
                 frame=frame,
                 threshold=threshold,
+                heuristic=heuristic,
+                beta=beta,
             )
 
     logger.info("Simulation end | last_frame=%d", frame)
