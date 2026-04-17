@@ -306,8 +306,6 @@ Each run stores:
 
 ## Version Used for the SIMPAT Paper
 
-## Version Used for the SIMPAT Paper
-
 For reproducibility, the version of this project used for the **SIMPAT paper** corresponds to the 69th
 commit in the repository history (chronological order from the initial commit):
 
