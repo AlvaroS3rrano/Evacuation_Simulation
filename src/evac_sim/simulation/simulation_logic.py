@@ -103,8 +103,6 @@ def get_remaining_path_for_group(group: AgentGroup):
         return []
 
     max_idx = -1
-    current_area = None
-
     for aid in group.agents:
         area = group.current_nodes.get(aid)
         if area is None:
@@ -121,6 +119,17 @@ def get_remaining_path_for_group(group: AgentGroup):
 
     return group.path[max_idx:]
 
+
+def get_reserved_path_segment(group: AgentGroup, horizon_k: int | None = None):
+    remaining_path = get_remaining_path_for_group(group)
+
+    if horizon_k is None:
+        return remaining_path
+
+    # k edges => k+1 nodes
+    max_nodes = max(1, horizon_k + 1)
+    return remaining_path[:max_nodes]
+
 def update_group_reserved_edges(
     env_info,
     group: AgentGroup,
@@ -128,6 +137,7 @@ def update_group_reserved_edges(
     frame: int | None = None,
     group_id: str | int | None = None,
     group_size_override: int | None = None,
+    horizon_k: int | None = None,
 ) -> None:
     current_group_size = (
         group_size_override if group_size_override is not None else len(group.agents)
@@ -135,8 +145,8 @@ def update_group_reserved_edges(
     old_reserved_edges = getattr(group, "reserved_edges", set())
     old_reserved_group_size = getattr(group, "reserved_group_size", 0)
 
-    remaining_path = get_remaining_path_for_group(group)
-    new_reserved_edges = {(u, v) for u, v in zip(remaining_path, remaining_path[1:])}
+    reserved_path = get_reserved_path_segment(group, horizon_k=horizon_k)
+    new_reserved_edges = {(u, v) for u, v in zip(reserved_path, reserved_path[1:])}
 
     to_release = old_reserved_edges - new_reserved_edges
     to_add = new_reserved_edges - old_reserved_edges

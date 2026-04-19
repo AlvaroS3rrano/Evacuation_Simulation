@@ -42,14 +42,26 @@ def test_compute_effective_edge_cost_h1_uses_capacity_at_least_one():
     assert result == pytest.approx(8.0 + 1.5 * ((2 + 3) / 1))
 
 
-@pytest.mark.parametrize("heuristic", ["h2", "h3"])
-def test_compute_effective_edge_cost_future_heuristics_raise_not_implemented(heuristic):
+def test_compute_effective_edge_cost_h2_uses_projected_occupancy():
+    edge_data = {"cost": 10.0, "occupancy": 3, "capacity": 5}
+
+    result = compute_effective_edge_cost(
+        edge_data=edge_data,
+        heuristic="h2",
+        beta=2.0,
+        group_size=4,
+    )
+
+    assert result == pytest.approx(10.0 + 2.0 * ((3 + 4) / 5))
+
+
+def test_compute_effective_edge_cost_h3_raises_not_implemented():
     edge_data = {"cost": 10.0, "occupancy": 1, "capacity": 5}
 
     with pytest.raises(NotImplementedError):
         compute_effective_edge_cost(
             edge_data=edge_data,
-            heuristic=heuristic,
+            heuristic="h3",
             beta=1.0,
             group_size=1,
         )

@@ -11,14 +11,14 @@ def compute_effective_edge_cost(
     if heuristic == "none":
         return base_cost
 
-    if heuristic == "h1":
-        capacity = edge_data.get("capacity", 1)
-        occupancy = edge_data.get("occupancy", 0)
+    capacity = max(1, edge_data.get("capacity", 1))
+    occupancy = edge_data.get("occupancy", 0)
 
-        projected_ratio = (occupancy + group_size) / max(1, capacity)
+    if heuristic in {"h1", "h2"}:
+        projected_ratio = (occupancy + group_size) / capacity
         return base_cost + beta * projected_ratio
 
-    if heuristic in {"h2", "h3"}:
-        raise NotImplementedError(f"Heuristic '{heuristic}' not implemented yet.")
+    if heuristic == "h3":
+        raise NotImplementedError("Heuristic 'h3' not implemented yet.")
 
     raise ValueError(f"Unknown heuristic: {heuristic}")

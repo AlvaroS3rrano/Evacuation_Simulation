@@ -30,6 +30,12 @@ def _ctx(
         parts.append(f"agents={agents}")
     return " | ".join(parts)
 
+def _reservation_horizon_for_heuristic(heuristic: str, horizon_k: int | None):
+    if heuristic == "h1":
+        return None
+    if heuristic == "h2":
+        return horizon_k if horizon_k is not None else 3
+    return None
 
 def validate_agent(agent_id: int, simulation, current_nodes: dict) -> bool:
     """
@@ -214,6 +220,7 @@ def process_frame(
     threshold: float,
     heuristic: str = "none",
     beta: float = 1.0,
+    horizon_k: int | None = None,
 ) -> None:
     """
     Compute current nodes, log agent areas, adjust speeds, update paths for each group,
@@ -223,12 +230,15 @@ def process_frame(
 
     for group_id, group in groups.items():
         try:
+            reservation_horizon = _reservation_horizon_for_heuristic(heuristic, horizon_k)
+
             compute_current_nodes(sim_cfg, group, frame)
             update_group_reserved_edges(
                 env_info,
                 group,
                 frame=frame,
                 group_id=group_id,
+                horizon_k=reservation_horizon,
             )
 
             active_ids = {a.id for a in sim_cfg.simulation.agents()}
@@ -255,6 +265,8 @@ def process_frame(
 
             update_agent_speed_on_stairs(env_info.graph, sim_cfg, group)
 
+            old_path = list(group.path) if group.path else None
+
             group = update_group_paths(
                 sim_cfg,
                 risks,
@@ -266,6 +278,15 @@ def process_frame(
                 heuristic=heuristic,
                 beta=beta,
             )
+
+            if group.path != old_path:
+                update_group_reserved_edges(
+                    env_info,
+                    group,
+                    frame=frame,
+                    group_id=group_id,
+                    horizon_k=reservation_horizon,
+                )
 
             record_group_path_data(
                 conn,
@@ -301,6 +322,7 @@ def run_agent_simulation(
     threshold: float,
     heuristic: str = "none",
     beta: float = 1.0,
+    horizon_k: int | None = None,
 ) -> None:
     """
     Advance the simulation and periodically process agent movements and path updates.
@@ -350,6 +372,7 @@ def run_agent_simulation(
                 threshold=threshold,
                 heuristic=heuristic,
                 beta=beta,
+                horizon_k=horizon_k
             )
 
     logger.info("Simulation end | last_frame=%d", frame)

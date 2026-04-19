@@ -40,6 +40,12 @@ def build_parser() -> argparse.ArgumentParser:
         default=1.0,
         help="Beta parameter for routing heuristics (default: 1.0)",
     )
+    run.add_argument(
+        "--horizon-k",
+        type=int,
+        default=3,
+        help="Number of future edges reserved by heuristic h2 (default: 3)",
+    )
 
     return p
 
@@ -67,6 +73,7 @@ def main(argv: list[str] | None = None) -> int:
             verbose=getattr(args, "verbose", False),
             heuristic=args.heuristic,
             beta=args.beta,
+            horizon_k=args.horizon_k,
         )
         return 0
 

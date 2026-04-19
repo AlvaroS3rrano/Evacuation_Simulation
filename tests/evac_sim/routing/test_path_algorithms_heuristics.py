@@ -71,3 +71,58 @@ def test_collect_k_shortest_paths_h1_prefers_less_congested_path_first():
     )
 
     assert paths[0][0] == ["A", "C", "D"]
+
+def test_collect_k_shortest_paths_h2_penalizes_congested_route():
+    G = _build_test_graph()
+
+    paths = collect_k_shortest_paths(
+        G,
+        "A",
+        ["D"],
+        heuristic="h2",
+        beta=2.0,
+        group_size=4,
+    )
+
+    assert paths
+    cost_by_path = {tuple(path): cost for path, cost in paths}
+
+    assert cost_by_path[("A", "C", "D")] < cost_by_path[("A", "B", "D")]
+
+
+def test_collect_k_shortest_paths_h2_prefers_less_congested_path_first():
+    G = _build_test_graph()
+
+    paths = collect_k_shortest_paths(
+        G,
+        "A",
+        ["D"],
+        heuristic="h2",
+        beta=2.0,
+        group_size=4,
+    )
+
+    assert paths[0][0] == ["A", "C", "D"]
+
+
+def test_collect_k_shortest_paths_h1_and_h2_match_when_occupancy_is_same():
+    G = _build_test_graph()
+
+    h1_paths = collect_k_shortest_paths(
+        G,
+        "A",
+        ["D"],
+        heuristic="h1",
+        beta=2.0,
+        group_size=4,
+    )
+    h2_paths = collect_k_shortest_paths(
+        G,
+        "A",
+        ["D"],
+        heuristic="h2",
+        beta=2.0,
+        group_size=4,
+    )
+
+    assert h1_paths == h2_paths

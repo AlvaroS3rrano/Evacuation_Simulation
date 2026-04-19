@@ -363,6 +363,7 @@ def build_agent_groups(
     normal_max_speed: float,
     heuristic: str = "none",
     beta: float = 1.0,
+    horizon_k: int | None = None,
 ) -> dict[str, AgentGroup]:
     awareness_levels_per_group = [0, 1, 0, 1]
     algorithm_per_group = [0, 0, 1, 1]
@@ -492,12 +493,13 @@ def build_agent_groups(
         group.reserved_edges = set()
         group.reserved_group_size = 0
 
-        # IMPORTANT: reserve immediately so next groups see the new occupancy
+        reservation_horizon = None if heuristic=="h1" else horizon_k if heuristic=="h2" else None
         update_group_reserved_edges(
             env_info,
             group,
             frame=0,
             group_id=source,
+            horizon_k=reservation_horizon,
         )
 
         agent_groups[source] = group
@@ -655,6 +657,7 @@ def run_single_mode(
     resources: ExperimentResources,
     heuristic: str = "none",
     beta: float = 1.0,
+    horizon_k: int | None = None,
 ) -> None:
     log.info(
         "Mode start | mode=%s env=%s case=%s",
@@ -697,6 +700,7 @@ def run_single_mode(
         normal_max_speed=resources.normal_max_speed,
         heuristic=heuristic,
         beta=beta,
+        horizon_k=horizon_k,
     )
 
     sim_cfg = SimulationConfig(
@@ -722,6 +726,7 @@ def run_single_mode(
             threshold=resources.risk_threshold,
             heuristic=heuristic,
             beta=beta,
+            horizon_k=horizon_k,
         )
     except Exception:
         log.exception("Simulation failed | mode=%s", mode)
@@ -784,6 +789,7 @@ def run_experiment_from_case(
     case_id: str,
     heuristic: str = "none",
     beta: float = 1.0,
+    horizon_k: int | None = None,
     shared_simulation_conn: sqlite3.Connection | None = None,
     shared_simulation_db_file: Path | None = None,
 ) -> None:
@@ -805,6 +811,7 @@ def run_experiment_from_case(
                 resources=resources,
                 heuristic=heuristic,
                 beta=beta,
+                horizon_k=horizon_k
             )
 
         resources.simulation_conn.commit()

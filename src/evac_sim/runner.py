@@ -35,6 +35,7 @@ def run_from_yaml(
     verbose: bool = False,
     heuristic: str = "none",
     beta: float = 1.0,
+    horizon_k: int | None = None,
 ) -> None:
     project_root = project_root.resolve()
 
@@ -93,6 +94,7 @@ def run_from_yaml(
             "platform": platform.platform(),
             "heuristic": heuristic,
             "beta": beta,
+            "horizon_k": horizon_k,
         }
 
         (paths.run_dir / "metadata.json").write_text(
@@ -107,6 +109,7 @@ def run_from_yaml(
                 selected_case_id,
                 heuristic=heuristic,
                 beta=beta,
+                horizon_k=horizon_k,
             )
         except Exception:
             log.exception("Experiment crashed (case_id=%s)", selected_case_id)
@@ -151,6 +154,7 @@ def run_from_yaml(
         "platform": platform.platform(),
         "heuristic": heuristic,
         "beta": beta,
+        "horizon_k": horizon_k,
     }
 
     combined_results_db = batch_paths.combined_dir / "results.db"
@@ -191,6 +195,7 @@ def run_from_yaml(
                 "platform": platform.platform(),
                 "heuristic": heuristic,
                 "beta": beta,
+                "horizon_k": horizon_k,
             }
 
             (case_paths.run_dir / "metadata.json").write_text(
@@ -204,6 +209,7 @@ def run_from_yaml(
                 selected_case_id,
                 heuristic=heuristic,
                 beta=beta,
+                horizon_k=horizon_k,
                 shared_results_db_conn=results_db_conn,
                 shared_results_db_file=combined_results_db,
             )

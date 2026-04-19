@@ -3,6 +3,7 @@ import networkx as nx
 from evac_sim.core.agent_group import AgentGroup
 from evac_sim.simulation.simulation_logic import (
     get_remaining_path_for_group,
+    get_reserved_path_segment,
     update_group_reserved_edges,
 )
 
@@ -143,3 +144,110 @@ def test_update_group_reserved_edges_never_makes_occupancy_negative():
     assert env.graph["A"]["B"]["occupancy"] >= 0
     assert env.graph["B"]["C"]["occupancy"] >= 0
     assert env.graph["C"]["D"]["occupancy"] >= 0
+
+def test_get_reserved_path_segment_without_horizon_returns_full_remaining_path():
+    group = build_group(
+        path=["A", "B", "C", "D"],
+        current_nodes={1: "B", 2: "B"},
+        agents=[1, 2],
+    )
+
+    reserved_segment = get_reserved_path_segment(group, horizon_k=None)
+
+    assert reserved_segment == ["B", "C", "D"]
+
+
+def test_get_reserved_path_segment_with_horizon_1_returns_one_edge_ahead():
+    group = build_group(
+        path=["A", "B", "C", "D"],
+        current_nodes={1: "B", 2: "B"},
+        agents=[1, 2],
+    )
+
+    reserved_segment = get_reserved_path_segment(group, horizon_k=1)
+
+    assert reserved_segment == ["B", "C"]
+
+
+def test_get_reserved_path_segment_with_horizon_2_returns_two_edges_ahead():
+    group = build_group(
+        path=["A", "B", "C", "D"],
+        current_nodes={1: "A", 2: "A"},
+        agents=[1, 2],
+    )
+
+    reserved_segment = get_reserved_path_segment(group, horizon_k=2)
+
+    assert reserved_segment == ["A", "B", "C"]
+
+
+def test_update_group_reserved_edges_with_horizon_limits_reserved_edges():
+    env = DummyEnv()
+    group = build_group(
+        path=["A", "B", "C", "D"],
+        current_nodes={1: "A", 2: "A"},
+        agents=[1, 2],
+    )
+
+    update_group_reserved_edges(env, group, frame=0, group_id="g1", horizon_k=1)
+
+    assert env.graph["A"]["B"]["occupancy"] == 2
+    assert env.graph["B"]["C"]["occupancy"] == 0
+    assert env.graph["C"]["D"]["occupancy"] == 0
+    assert group.reserved_edges == {("A", "B")}
+
+
+def test_update_group_reserved_edges_with_horizon_2_reserves_only_first_two_edges():
+    env = DummyEnv()
+    group = build_group(
+        path=["A", "B", "C", "D"],
+        current_nodes={1: "A", 2: "A"},
+        agents=[1, 2],
+    )
+
+    update_group_reserved_edges(env, group, frame=0, group_id="g1", horizon_k=2)
+
+    assert env.graph["A"]["B"]["occupancy"] == 2
+    assert env.graph["B"]["C"]["occupancy"] == 2
+    assert env.graph["C"]["D"]["occupancy"] == 0
+    assert group.reserved_edges == {("A", "B"), ("B", "C")}
+
+
+def test_update_group_reserved_edges_with_horizon_moves_window_when_group_advances():
+    env = DummyEnv()
+    group = build_group(
+        path=["A", "B", "C", "D"],
+        current_nodes={1: "A", 2: "A"},
+        agents=[1, 2],
+    )
+
+    update_group_reserved_edges(env, group, frame=0, group_id="g1", horizon_k=1)
+
+    group.current_nodes = {1: "B", 2: "B"}
+    update_group_reserved_edges(env, group, frame=1, group_id="g1", horizon_k=1)
+
+    assert env.graph["A"]["B"]["occupancy"] == 0
+    assert env.graph["B"]["C"]["occupancy"] == 2
+    assert env.graph["C"]["D"]["occupancy"] == 0
+    assert group.reserved_edges == {("B", "C")}
+
+
+def test_update_group_reserved_edges_with_horizon_replaces_window_after_reroute():
+    env = DummyEnv()
+    group = build_group(
+        path=["A", "B", "C", "D"],
+        current_nodes={1: "B", 2: "B"},
+        agents=[1, 2],
+    )
+
+    update_group_reserved_edges(env, group, frame=0, group_id="g1", horizon_k=1)
+
+    group.path = ["A", "B", "X", "D"]
+    group.current_nodes = {1: "B", 2: "B"}
+
+    update_group_reserved_edges(env, group, frame=1, group_id="g1", horizon_k=1)
+
+    assert env.graph["B"]["C"]["occupancy"] == 0
+    assert env.graph["B"]["X"]["occupancy"] == 2
+    assert env.graph["X"]["D"]["occupancy"] == 0
+    assert group.reserved_edges == {("B", "X")}
