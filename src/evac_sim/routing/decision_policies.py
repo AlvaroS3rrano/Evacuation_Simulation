@@ -1,3 +1,5 @@
+from plotly.graph_objs.indicator.gauge import threshold
+
 from .graph_risk import update_all_graph_risks
 from .multifloor_paths import get_posible_paths
 
@@ -229,7 +231,7 @@ def compute_alternative_path(
     env_info,
     current_node=None,
     next_node=None,
-    risk_per_node=None,
+    risk_map=None,
     risk_threshold=0.5,
     gamma=0.4,
     heuristic="none",
@@ -247,7 +249,7 @@ def compute_alternative_path(
     if agent_group.awareness_level == 0:
         return compute_low_awareness_alternative_path(
             exits=exits,
-            risk_per_node=risk_per_node,
+            risk_per_node=risk_map,
             next_node=next_node,
             current_node=current_node,
             agent_group=agent_group,
@@ -261,7 +263,7 @@ def compute_alternative_path(
     if agent_group.awareness_level == 1:
         return compute_high_awareness_alternative_path(
             exits=exits,
-            risk_per_node=risk_per_node,
+            risk_per_node=risk_map,
             current_node=current_node,
             agent_group=agent_group,
             env_info=env_info,
@@ -272,3 +274,39 @@ def compute_alternative_path(
         )
 
     return None
+
+def compute_best_available_path(
+    exits,
+    agent_group,
+    env_info,
+    current_node,
+    risk_map=None,
+    risk_threshold=0.5,
+    gamma=0.4,
+    heuristic="none",
+    beta=1.0,
+):
+    blocked_nodes = agent_group.blocked_nodes
+    group_size = _get_group_size(agent_group)
+
+    alternative_paths = _get_possible_paths_with_fallback(
+        env_info=env_info,
+        current_node=current_node,
+        exits=exits,
+        gamma=gamma,
+        algo=agent_group.algorithm,
+        blocked_nodes=blocked_nodes,
+        heuristic=heuristic,
+        beta=beta,
+        group_size=group_size,
+    )
+
+    safe_paths = [
+        p for p in alternative_paths
+        if all(risk_map.get(node, 0.0) <= risk_threshold for node in p)
+    ]
+
+    if safe_paths:
+        return safe_paths[0]
+    else:
+        return None

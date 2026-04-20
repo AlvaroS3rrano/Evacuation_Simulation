@@ -10,8 +10,9 @@ from evac_sim.db.repositories.agent_area import insert_agent_areas
 from evac_sim.db.repositories.risk import get_risk_levels_by_frame
 from evac_sim.db.repositories.group_decisions import insert_group_decision
 from evac_sim.envs.journey_configuration import set_journeys
-from evac_sim.routing.decision_policies import compute_alternative_path
+from evac_sim.routing.decision_policies import compute_alternative_path, compute_best_available_path
 from evac_sim.routing.utils import is_sublist
+from evac_sim.routing.heuristics import compute_effective_edge_cost
 from evac_sim.simulation.simulation_logic import compute_current_nodes, update_agent_speed_on_stairs, update_group_reserved_edges
 
 logger = logging.getLogger(__name__)
@@ -57,6 +58,34 @@ def try_get_node_index(node, path: list) -> int:
     except ValueError:
         return -1
 
+def _remaining_path_from_node(path: list, current_node):
+    try:
+        idx = path.index(current_node)
+        return path[idx:]
+    except ValueError:
+        return path
+
+
+def _path_effective_cost(
+    graph,
+    path: list,
+    *,
+    heuristic: str = "none",
+    beta: float = 1.0,
+    group_size: int = 0,
+) -> float:
+    if not path or len(path) < 2:
+        return float("inf")
+
+    total = 0.0
+    for u, v in zip(path, path[1:]):
+        total += compute_effective_edge_cost(
+            edge_data=graph[u][v],
+            heuristic=heuristic,
+            beta=beta,
+            group_size=group_size,
+        )
+    return total
 
 def update_group_paths(
     sim_cfg,
@@ -69,11 +98,18 @@ def update_group_paths(
     group_id: int,
     heuristic: str = "none",
     beta: float = 1.0,
+    congestion_reroute_epsilon: float = 0.10,
 ) -> AgentGroup:
     """
-    Evaluates whether the group's path should be rerouted.
-    If a better path is found, all agents follow the new path,
-    and each is switched to the appropriate stage based on their current position.
+    Evaluate whether the group should be rerouted.
+
+    Low awareness:
+        reroute only when the current policy detects a risk-based trigger.
+
+    High awareness:
+        reroute when either:
+        1) the current policy detects a risk-based trigger, or
+        2) a better alternative route improves the effective cost by at least epsilon.
     """
     agent_ids = group.agents
     if not agent_ids:
@@ -84,7 +120,6 @@ def update_group_paths(
     simulation = sim_cfg.simulation
     waypoints = sim_cfg.waypoints_ids
 
-    # Select the leading agent in the group (furthest along current_path)
     to_check = [max(agent_ids, key=lambda aid: current_path.index(current_nodes[aid]))]
 
     for aid in to_check:
@@ -97,9 +132,10 @@ def update_group_paths(
             continue
 
         next_node = current_path[idx + 1]
+        group_size = len(group.agents)
 
-        # Compute an alternative path from the current node
-        alt_path = compute_alternative_path(
+        # 1) Risk-triggered alternative
+        risk_alt_path = compute_alternative_path(
             sim_cfg.exit_names,
             group,
             env_info,
@@ -112,15 +148,57 @@ def update_group_paths(
             beta=beta,
         )
 
-        if alt_path and not is_sublist(alt_path, current_path):
-            # Combine current_path up to curr_node with alt_path (avoid repeating curr_node)
+        selected_alt_path = None
+        reroute_reason = None
+
+        if risk_alt_path and not is_sublist(risk_alt_path, current_path):
+            selected_alt_path = risk_alt_path
+            reroute_reason = "risk"
+
+        # 2) Congestion-based proactive reroute for HIGH awareness only
+        elif group.awareness_level == 1 and heuristic == "h2":
+            best_path = compute_best_available_path(
+                exits=sim_cfg.exit_names,
+                agent_group=group,
+                env_info=env_info,
+                current_node=curr_node,
+                risk_map=risk_map,
+                risk_threshold=threshold,
+                gamma=sim_cfg.gamma,
+                heuristic=heuristic,
+                beta=beta,
+            )
+
+            if best_path and not is_sublist(best_path, current_path):
+                current_remaining = _remaining_path_from_node(current_path, curr_node)
+
+                current_cost = _path_effective_cost(
+                    env_info.graph,
+                    current_remaining,
+                    heuristic=heuristic,
+                    beta=beta,
+                    group_size=group_size,
+                )
+
+                best_cost = _path_effective_cost(
+                    env_info.graph,
+                    best_path,
+                    heuristic=heuristic,
+                    beta=beta,
+                    group_size=group_size,
+                )
+
+                if best_cost <= (1.0 - congestion_reroute_epsilon) * current_cost:
+                    selected_alt_path = best_path
+                    reroute_reason = "congestion"
+
+        if selected_alt_path is not None:
             try:
                 current_idx = current_path.index(curr_node)
-                full_path = current_path[: current_idx + 1] + alt_path[1:]
+                full_path = current_path[: current_idx + 1] + selected_alt_path[1:]
             except ValueError:
-                full_path = alt_path  # fallback
+                full_path = selected_alt_path
 
-            # Create a new journey using the full_path
             journeys = set_journeys(
                 simulation,
                 curr_node,
@@ -130,7 +208,6 @@ def update_group_paths(
             )
             new_jid, _ = journeys[curr_node][0]
 
-            # Assign each agent to the correct stage along the new path
             for agent_id in agent_ids:
                 node = current_nodes[agent_id]
                 try:
@@ -143,8 +220,9 @@ def update_group_paths(
                 simulation.switch_agent_journey(agent_id, new_jid, stage_id)
 
             logger.info(
-                "Reroute applied | %s | curr=%s next=%s | old_len=%d new_len=%d",
+                "Reroute applied | %s | reason=%s | curr=%s next=%s | old_len=%d new_len=%d",
                 _ctx(frame=frame, group_id=group_id, agents=len(agent_ids)),
+                reroute_reason,
                 curr_node,
                 next_node,
                 len(current_path),
@@ -155,7 +233,6 @@ def update_group_paths(
             return group
 
     return group
-
 
 def record_group_path_data(
     connection,
@@ -221,6 +298,7 @@ def process_frame(
     heuristic: str = "none",
     beta: float = 1.0,
     horizon_k: int | None = None,
+    congestion_reroute_epsilon: float = 0.1,
 ) -> None:
     """
     Compute current nodes, log agent areas, adjust speeds, update paths for each group,
@@ -277,6 +355,7 @@ def process_frame(
                 group_id=group_id,
                 heuristic=heuristic,
                 beta=beta,
+                congestion_reroute_epsilon=congestion_reroute_epsilon,
             )
 
             if group.path != old_path:

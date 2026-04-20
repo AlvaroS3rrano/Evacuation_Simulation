@@ -4,19 +4,37 @@ from evac_sim.core.agent_group import AgentGroup
 from evac_sim.simulation import simulation_manager as sm
 
 
-def build_group():
+def build_group(awareness_level=0, path=None, current_nodes=None, agents=None):
+    if path is None:
+        path = ["A", "B", "C"]
+    if current_nodes is None:
+        current_nodes = {1: "A", 2: "A"}
+    if agents is None:
+        agents = [1, 2]
+
     group = AgentGroup(
-        agents=[1, 2],
-        path=["A", "B", "C"],
-        current_nodes={1: "A", 2: "A"},
+        agents=agents,
+        path=path,
+        current_nodes=current_nodes,
         algorithm=0,
-        awareness_level=0,
+        awareness_level=awareness_level,
     )
     group.reserved_edges = set()
     group.reserved_group_size = 0
-    group.initial_agents_ids = [1, 2]
+    group.initial_agents_ids = list(agents)
     return group
 
+def build_sim_cfg():
+    return SimpleNamespace(
+        simulation=SimpleNamespace(
+            agents=lambda: [SimpleNamespace(id=1), SimpleNamespace(id=2)],
+            switch_agent_journey=lambda *args, **kwargs: None,
+        ),
+        waypoints_ids={"B": 101, "C": 102, "D": 103, "X": 104, "Y": 105},
+        exit_ids={"D": 201, "Y": 202},
+        exit_names=["D", "Y"],
+        gamma=0.4,
+    )
 
 def test_reservation_horizon_for_heuristic_h1_returns_none():
     assert sm._reservation_horizon_for_heuristic("h1", 5) is None
@@ -171,3 +189,246 @@ def test_process_frame_reapplies_reservation_after_reroute(monkeypatch):
     assert captured[0] == (("A", "B", "C"), 2)
     assert captured[1] == (("A", "X", "D"), 2)
     assert len(captured) == 2
+
+def test_high_awareness_reroutes_due_to_congestion_improvement(monkeypatch):
+    sim_cfg = build_sim_cfg()
+    env_info = SimpleNamespace(graph={})
+    group = build_group(
+        awareness_level=1,
+        path=["A", "B", "C", "D"],
+        current_nodes={1: "A", 2: "A"},
+        agents=[1, 2],
+    )
+
+    monkeypatch.setattr(sm, "validate_agent", lambda *args, **kwargs: True)
+    monkeypatch.setattr(sm, "is_sublist", lambda alt, current: False)
+
+    monkeypatch.setattr(sm, "compute_alternative_path", lambda *args, **kwargs: None)
+
+    monkeypatch.setattr(
+        sm,
+        "compute_best_available_path",
+        lambda *args, **kwargs: ["A", "X", "Y"],
+    )
+
+    costs = {
+        tuple(["A", "B", "C", "D"]): 10.0,
+        tuple(["A", "X", "Y"]): 7.0,
+    }
+
+    monkeypatch.setattr(
+        sm,
+        "_remaining_path_from_node",
+        lambda path, current_node: path,
+    )
+
+    monkeypatch.setattr(
+        sm,
+        "_path_effective_cost",
+        lambda graph, path, **kwargs: costs[tuple(path)],
+    )
+
+    monkeypatch.setattr(
+        sm,
+        "set_journeys",
+        lambda simulation, curr_node, paths, waypoints, exit_ids: {
+            curr_node: [(999, paths[0])]
+        },
+    )
+
+    updated_group = sm.update_group_paths(
+        sim_cfg,
+        risk_map={},
+        group=group,
+        env_info=env_info,
+        threshold=0.5,
+        frame=0,
+        group_id="g1",
+        heuristic="h2",
+        beta=1.0,
+        congestion_reroute_epsilon=0.10,
+    )
+
+    assert updated_group.path == ["A", "X", "Y"]
+
+
+def test_high_awareness_does_not_reroute_if_improvement_is_below_epsilon(monkeypatch):
+    sim_cfg = build_sim_cfg()
+    env_info = SimpleNamespace(graph={})
+    group = build_group(
+        awareness_level=1,
+        path=["A", "B", "C", "D"],
+        current_nodes={1: "A", 2: "A"},
+        agents=[1, 2],
+    )
+
+    monkeypatch.setattr(sm, "validate_agent", lambda *args, **kwargs: True)
+    monkeypatch.setattr(sm, "is_sublist", lambda alt, current: False)
+
+    monkeypatch.setattr(sm, "compute_alternative_path", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        sm,
+        "compute_best_available_path",
+        lambda *args, **kwargs: ["A", "X", "Y"],
+    )
+
+    # 5% improvement, lower than 10%
+    costs = {
+        tuple(["A", "B", "C", "D"]): 10.0,
+        tuple(["A", "X", "Y"]): 9.5,
+    }
+
+    monkeypatch.setattr(sm, "_remaining_path_from_node", lambda path, current_node: path)
+    monkeypatch.setattr(
+        sm,
+        "_path_effective_cost",
+        lambda graph, path, **kwargs: costs[tuple(path)],
+    )
+
+    updated_group = sm.update_group_paths(
+        sim_cfg,
+        risk_map={},
+        group=group,
+        env_info=env_info,
+        threshold=0.5,
+        frame=0,
+        group_id="g1",
+        heuristic="h2",
+        beta=1.0,
+        congestion_reroute_epsilon=0.10,
+    )
+
+    assert updated_group.path == ["A", "B", "C", "D"]
+
+
+def test_low_awareness_does_not_reroute_due_to_congestion_only(monkeypatch):
+    sim_cfg = build_sim_cfg()
+    env_info = SimpleNamespace(graph={})
+    group = build_group(
+        awareness_level=0,
+        path=["A", "B", "C", "D"],
+        current_nodes={1: "A", 2: "A"},
+        agents=[1, 2],
+    )
+
+    monkeypatch.setattr(sm, "validate_agent", lambda *args, **kwargs: True)
+    monkeypatch.setattr(sm, "is_sublist", lambda alt, current: False)
+
+    # No risk trigger
+    monkeypatch.setattr(sm, "compute_alternative_path", lambda *args, **kwargs: None)
+
+    # Even with a better option low awareness should not change
+    monkeypatch.setattr(
+        sm,
+        "compute_best_available_path",
+        lambda *args, **kwargs: ["A", "X", "Y"],
+    )
+
+    monkeypatch.setattr(sm, "_remaining_path_from_node", lambda path, current_node: path)
+    monkeypatch.setattr(
+        sm,
+        "_path_effective_cost",
+        lambda graph, path, **kwargs: 1.0,
+    )
+
+    updated_group = sm.update_group_paths(
+        sim_cfg,
+        risk_map={},
+        group=group,
+        env_info=env_info,
+        threshold=0.5,
+        frame=0,
+        group_id="g1",
+        heuristic="h2",
+        beta=1.0,
+        congestion_reroute_epsilon=0.10,
+    )
+
+    assert updated_group.path == ["A", "B", "C", "D"]
+
+
+def test_high_awareness_still_reroutes_due_to_risk_trigger(monkeypatch):
+    sim_cfg = build_sim_cfg()
+    env_info = SimpleNamespace(graph={})
+    group = build_group(
+        awareness_level=1,
+        path=["A", "B", "C", "D"],
+        current_nodes={1: "A", 2: "A"},
+        agents=[1, 2],
+    )
+
+    monkeypatch.setattr(sm, "validate_agent", lambda *args, **kwargs: True)
+    monkeypatch.setattr(sm, "is_sublist", lambda alt, current: False)
+
+    # Risk trigger
+    monkeypatch.setattr(
+        sm,
+        "compute_alternative_path",
+        lambda *args, **kwargs: ["A", "X", "Y"],
+    )
+
+    monkeypatch.setattr(
+        sm,
+        "compute_best_available_path",
+        lambda *args, **kwargs: None,
+    )
+
+    monkeypatch.setattr(
+        sm,
+        "set_journeys",
+        lambda simulation, curr_node, paths, waypoints, exit_ids: {
+            curr_node: [(999, paths[0])]
+        },
+    )
+
+    updated_group = sm.update_group_paths(
+        sim_cfg,
+        risk_map={"C": 0.9},
+        group=group,
+        env_info=env_info,
+        threshold=0.5,
+        frame=0,
+        group_id="g1",
+        heuristic="h2",
+        beta=1.0,
+        congestion_reroute_epsilon=0.10,
+    )
+
+    assert updated_group.path == ["A", "X", "Y"]
+
+
+def test_high_awareness_does_not_reroute_if_best_path_is_equivalent(monkeypatch):
+    sim_cfg = build_sim_cfg()
+    env_info = SimpleNamespace(graph={})
+    group = build_group(
+        awareness_level=1,
+        path=["A", "B", "C", "D"],
+        current_nodes={1: "A", 2: "A"},
+        agents=[1, 2],
+    )
+
+    monkeypatch.setattr(sm, "validate_agent", lambda *args, **kwargs: True)
+
+    monkeypatch.setattr(sm, "compute_alternative_path", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        sm,
+        "compute_best_available_path",
+        lambda *args, **kwargs: ["A", "B", "C", "D"],
+    )
+
+    monkeypatch.setattr(sm, "is_sublist", lambda alt, current: True)
+
+    updated_group = sm.update_group_paths(
+        sim_cfg,
+        risk_map={},
+        group=group,
+        env_info=env_info,
+        threshold=0.5,
+        frame=0,
+        group_id="g1",
+        heuristic="h2",
+        beta=1.0,
+        congestion_reroute_epsilon=0.10,
+    )
+
+    assert updated_group.path == ["A", "B", "C", "D"]
