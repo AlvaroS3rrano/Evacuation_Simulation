@@ -655,3 +655,33 @@ def test_process_frame_does_not_restore_old_reservations_after_reroute(monkeypat
     )
 
     assert calls["restore"] == 0
+
+def test_split_group_by_progress_threshold_splits_lagging_agents():
+    group = build_group(
+        awareness_level=1,
+        path=["A", "B", "C", "D", "E"],
+        current_nodes={1: "D", 2: "D", 3: "B", 4: "A"},
+        agents=[1, 2, 3, 4],
+    )
+
+    result = sm.split_group_by_progress_threshold(group, threshold=1)
+
+    assert result is not None
+    lead_group, lag_group = result
+
+    assert lead_group.agents == [1, 2]
+    assert lag_group.agents == [3, 4]
+    assert lead_group.path == ["A", "B", "C", "D", "E"]
+    assert lag_group.path == ["A", "B", "C", "D", "E"]
+
+def test_split_group_by_progress_threshold_returns_none_when_dispersion_is_within_threshold():
+    group = build_group(
+        awareness_level=1,
+        path=["A", "B", "C", "D"],
+        current_nodes={1: "C", 2: "B", 3: "B"},
+        agents=[1, 2, 3],
+    )
+
+    result = sm.split_group_by_progress_threshold(group, threshold=1)
+
+    assert result is None

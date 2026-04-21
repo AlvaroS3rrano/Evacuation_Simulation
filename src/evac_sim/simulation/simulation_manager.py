@@ -44,6 +44,101 @@ def _reservation_horizon_for_heuristic(heuristic: str, horizon_k: int | None):
         return horizon_k if horizon_k is not None else 3
     return None
 
+def _uses_reservations(heuristic: str) -> bool:
+    return heuristic != "none"
+
+def _safe_path_index(path: list | None, node) -> int:
+    if not path:
+        return -1
+    try:
+        return path.index(node)
+    except ValueError:
+        return -1
+
+def _build_subgroup_from_parent(parent: AgentGroup, agent_ids: list[int]) -> AgentGroup:
+    return AgentGroup(
+        agents=list(agent_ids),
+        path=list(parent.path) if parent.path is not None else None,
+        current_nodes={
+            aid: parent.current_nodes[aid]
+            for aid in agent_ids
+            if aid in parent.current_nodes
+        },
+        algorithm=parent.algorithm,
+        awareness_level=parent.awareness_level,
+        blocked_nodes=list(parent.blocked_nodes),
+        wait_until_node=parent.wait_until_node,
+        agents_in_stairs=[aid for aid in parent.agents_in_stairs if aid in agent_ids],
+        initial_agents_ids=[aid for aid in parent.initial_agents_ids if aid in agent_ids],
+        reserved_edges=set(),
+        reserved_group_size=0,
+    )
+
+def _next_split_group_id(existing_groups: dict, parent_group_id, suffix: str = "lag") -> str:
+    base = f"{parent_group_id}__{suffix}"
+    candidate = base
+    counter = 1
+
+    while candidate in existing_groups:
+        counter += 1
+        candidate = f"{base}_{counter}"
+
+    return candidate
+
+def split_group_by_progress_threshold(
+    group: AgentGroup,
+    *,
+    threshold: int | None,
+) -> tuple[AgentGroup, AgentGroup] | None:
+    """
+    Split a group in two when lagging or desaligned agents are too far behind
+    the most advanced one in the group's current path.
+
+    Agents are moved to a lagging subgroup when:
+    - their progress index differs from the maximum by more than `threshold`, or
+    - their current node cannot be mapped to the group's current path.
+    """
+    if threshold is None or threshold < 0:
+        return None
+
+    if not group.path or not group.current_nodes or len(group.agents) < 2:
+        return None
+
+    indexed_agents: list[tuple[int, int]] = []
+    unmapped_ids: list[int] = []
+
+    for aid in group.agents:
+        idx = _safe_path_index(group.path, group.current_nodes.get(aid))
+        if idx >= 0:
+            indexed_agents.append((aid, idx))
+        else:
+            unmapped_ids.append(aid)
+
+    if not indexed_agents:
+        return None
+
+    max_idx = max(idx for _, idx in indexed_agents)
+
+    lagging_ids = [
+        aid
+        for aid, idx in indexed_agents
+        if (max_idx - idx) > threshold
+    ]
+
+    lagging_set = set(lagging_ids) | set(unmapped_ids)
+    if not lagging_set:
+        return None
+
+    leading_ids = [aid for aid in group.agents if aid not in lagging_set]
+
+    if not leading_ids:
+        return None
+
+    lead_group = _build_subgroup_from_parent(group, leading_ids)
+    lag_group = _build_subgroup_from_parent(group, [aid for aid in group.agents if aid in lagging_set])
+
+    return lead_group, lag_group
+
 def validate_agent(agent_id: int, simulation, current_nodes: dict) -> bool:
     """
     Check if an agent exists in the simulation and has a recorded current node.
@@ -290,6 +385,101 @@ def record_group_path_data(
         risk_now=risks.get(current_area, 0.0) if current_area is not None else 0.0,
     )
 
+def _process_single_group(
+    sim_cfg,
+    env_info,
+    conn,
+    risks: dict,
+    groups: dict,
+    *,
+    case_name: str,
+    mode: int,
+    frame: int,
+    threshold: float,
+    heuristic: str,
+    beta: float,
+    horizon_k: int | None,
+    congestion_reroute_epsilon: float,
+    group_id,
+    group: AgentGroup,
+) -> None:
+    reservation_horizon = _reservation_horizon_for_heuristic(heuristic, horizon_k)
+    use_reservations = _uses_reservations(heuristic)
+
+    if use_reservations:
+        update_group_reserved_edges(
+            env_info,
+            group,
+            frame=frame,
+            group_id=group_id,
+            horizon_k=reservation_horizon,
+        )
+
+    agent_areas = {
+        agent_id: (current_area, risks.get(current_area, 0.0))
+        for agent_id, current_area in group.current_nodes.items()
+    }
+
+    insert_agent_areas(
+        conn,
+        case_name=case_name,
+        mode=mode,
+        frame=frame,
+        agent_areas=agent_areas,
+    )
+
+    update_agent_speed_on_stairs(env_info.graph, sim_cfg, group)
+
+    old_path = list(group.path) if group.path else None
+    old_reserved_edges = set(group.reserved_edges)
+    old_reserved_group_size = group.reserved_group_size
+
+    if use_reservations:
+        release_group_reserved_edges(env_info, group)
+
+    group = update_group_paths(
+        sim_cfg,
+        risks,
+        group,
+        env_info,
+        threshold,
+        frame=frame,
+        group_id=group_id,
+        heuristic=heuristic,
+        beta=beta,
+        congestion_reroute_epsilon=congestion_reroute_epsilon,
+    )
+
+    if use_reservations:
+        if group.path == old_path:
+            group.reserved_edges = old_reserved_edges
+            group.reserved_group_size = old_reserved_group_size
+            restore_group_reserved_edges(env_info, group)
+        else:
+            group.reserved_edges = set()
+            group.reserved_group_size = 0
+            update_group_reserved_edges(
+                env_info,
+                group,
+                frame=frame,
+                group_id=group_id,
+                horizon_k=reservation_horizon,
+            )
+    else:
+        group.reserved_edges = set()
+        group.reserved_group_size = 0
+
+    record_group_path_data(
+        conn,
+        case_name=case_name,
+        mode=mode,
+        frame=frame,
+        group_id=str(group_id),
+        group=group,
+        risks=risks,
+    )
+
+    groups[group_id] = group
 
 def process_frame(
     sim_cfg,
@@ -305,25 +495,17 @@ def process_frame(
     beta: float = 1.0,
     horizon_k: int | None = None,
     congestion_reroute_epsilon: float = 0.1,
+    group_split_threshold: int | None = None,
 ) -> None:
-    """
-    Compute current nodes, log agent areas, adjust speeds, update paths for each group,
-    and record path-choice data.
-    """
     risks = get_risk_levels_by_frame(conn, case_name, frame)
 
-    for group_id, group in groups.items():
+    for original_group_id, original_group in list(groups.items()):
         try:
-            reservation_horizon = _reservation_horizon_for_heuristic(heuristic, horizon_k)
+            group = groups.get(original_group_id)
+            if group is None:
+                continue
 
             compute_current_nodes(sim_cfg, group, frame)
-            update_group_reserved_edges(
-                env_info,
-                group,
-                frame=frame,
-                group_id=group_id,
-                horizon_k=reservation_horizon,
-            )
 
             active_ids = {a.id for a in sim_cfg.simulation.agents()}
             group.agents = [aid for aid in group.agents if aid in active_ids]
@@ -334,75 +516,70 @@ def process_frame(
             if not group.agents:
                 continue
 
-            agent_areas = {
-                agent_id: (current_area, risks.get(current_area, 0.0))
-                for agent_id, current_area in group.current_nodes.items()
-            }
+            groups_to_process = [(original_group_id, group)]
 
-            insert_agent_areas(
-                conn,
-                case_name=case_name,
-                mode=mode,
-                frame=frame,
-                agent_areas=agent_areas,
-            )
-
-            update_agent_speed_on_stairs(env_info.graph, sim_cfg, group)
-
-            old_path = list(group.path) if group.path else None
-            old_reserved_edges = set(group.reserved_edges)
-            old_reserved_group_size = group.reserved_group_size
-
-            # Evaluate rerouting without counting the group's own current reservations
-            release_group_reserved_edges(env_info, group)
-
-            group = update_group_paths(
-                sim_cfg,
-                risks,
+            split_result = split_group_by_progress_threshold(
                 group,
-                env_info,
-                threshold,
-                frame=frame,
-                group_id=group_id,
-                heuristic=heuristic,
-                beta=beta,
-                congestion_reroute_epsilon=congestion_reroute_epsilon,
+                threshold=group_split_threshold,
             )
 
-            if group.path == old_path:
-                # No reroute: restore previous reservations exactly as they were
-                group.reserved_edges = old_reserved_edges
-                group.reserved_group_size = old_reserved_group_size
-                restore_group_reserved_edges(env_info, group)
-            else:
-                # Reroute: old reservations were already released, rebuild new ones from scratch
-                group.reserved_edges = set()
-                group.reserved_group_size = 0
-                update_group_reserved_edges(
-                    env_info,
-                    group,
-                    frame=frame,
-                    group_id=group_id,
-                    horizon_k=reservation_horizon,
+            if split_result is not None:
+                lead_group, lag_group = split_result
+                lag_group_id = _next_split_group_id(groups, original_group_id, suffix="lag")
+
+                logger.info(
+                    "Group split applied | %s | threshold=%s | lead_agents=%d lag_agents=%d new_group=%s",
+                    _ctx(frame=frame, group_id=original_group_id, agents=len(group.agents)),
+                    group_split_threshold,
+                    len(lead_group.agents),
+                    len(lag_group.agents),
+                    lag_group_id,
                 )
 
-            record_group_path_data(
-                conn,
-                case_name=case_name,
-                mode=mode,
-                frame=frame,
-                group_id=str(group_id),
-                group=group,
-                risks=risks,
-            )
+                if _uses_reservations(heuristic):
+                    # Remove the previous group edge reservations before dividing the groups
+                    release_group_reserved_edges(env_info, group)
+                else:
+                    group.reserved_edges = set()
+                    group.reserved_group_size = 0
 
-            groups[group_id] = group
+                groups[original_group_id] = lead_group
+                groups[lag_group_id] = lag_group
+
+                groups_to_process = [
+                    (original_group_id, lead_group),
+                    (lag_group_id, lag_group),
+                ]
+
+            for group_id, aligned_group in groups_to_process:
+                if not aligned_group.agents:
+                    continue
+
+                _process_single_group(
+                    sim_cfg,
+                    env_info,
+                    conn,
+                    risks,
+                    groups,
+                    case_name=case_name,
+                    mode=mode,
+                    frame=frame,
+                    threshold=threshold,
+                    heuristic=heuristic,
+                    beta=beta,
+                    horizon_k=horizon_k,
+                    congestion_reroute_epsilon=congestion_reroute_epsilon,
+                    group_id=group_id,
+                    group=aligned_group,
+                )
 
         except Exception:
             logger.exception(
                 "Group processing failed | %s",
                 _ctx(
-                    frame=frame, group_id=group_id, agents=len(getattr(group, "agents", []) or [])
+                    frame=frame,
+                    group_id=original_group_id,
+                    agents=len(getattr(original_group, "agents", []) or []),
                 ),
             )
             raise
@@ -422,6 +599,7 @@ def run_agent_simulation(
     beta: float = 1.0,
     horizon_k: int | None = None,
     congestion_reroute_epsilon: float = 0.1,
+    group_split_threshold: int | None = None,
 ) -> None:
     """
     Advance the simulation and periodically process agent movements and path updates.
@@ -443,6 +621,7 @@ def run_agent_simulation(
             beta=beta,
             horizon_k=horizon_k,
             congestion_reroute_epsilon=congestion_reroute_epsilon,
+            group_split_threshold=group_split_threshold,
         )
 
     last_log_frame = -1
@@ -474,7 +653,8 @@ def run_agent_simulation(
                 heuristic=heuristic,
                 beta=beta,
                 horizon_k=horizon_k,
-                congestion_reroute_epsilon = congestion_reroute_epsilon,
+                congestion_reroute_epsilon=congestion_reroute_epsilon,
+                group_split_threshold=group_split_threshold,
             )
 
     logger.info("Simulation end | last_frame=%d", frame)
