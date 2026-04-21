@@ -13,7 +13,13 @@ from evac_sim.envs.journey_configuration import set_journeys
 from evac_sim.routing.decision_policies import compute_alternative_path, compute_best_available_path
 from evac_sim.routing.utils import is_sublist
 from evac_sim.routing.heuristics import compute_effective_edge_cost
-from evac_sim.simulation.simulation_logic import compute_current_nodes, update_agent_speed_on_stairs, update_group_reserved_edges
+from evac_sim.simulation.simulation_logic import (
+    compute_current_nodes,
+    update_agent_speed_on_stairs,
+    update_group_reserved_edges,
+    release_group_reserved_edges,
+    restore_group_reserved_edges,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -344,6 +350,11 @@ def process_frame(
             update_agent_speed_on_stairs(env_info.graph, sim_cfg, group)
 
             old_path = list(group.path) if group.path else None
+            old_reserved_edges = set(group.reserved_edges)
+            old_reserved_group_size = group.reserved_group_size
+
+            # Evaluate rerouting without counting the group's own current reservations
+            release_group_reserved_edges(env_info, group)
 
             group = update_group_paths(
                 sim_cfg,
@@ -358,7 +369,15 @@ def process_frame(
                 congestion_reroute_epsilon=congestion_reroute_epsilon,
             )
 
-            if group.path != old_path:
+            if group.path == old_path:
+                # No reroute: restore previous reservations exactly as they were
+                group.reserved_edges = old_reserved_edges
+                group.reserved_group_size = old_reserved_group_size
+                restore_group_reserved_edges(env_info, group)
+            else:
+                # Reroute: old reservations were already released, rebuild new ones from scratch
+                group.reserved_edges = set()
+                group.reserved_group_size = 0
                 update_group_reserved_edges(
                     env_info,
                     group,
@@ -402,6 +421,7 @@ def run_agent_simulation(
     heuristic: str = "none",
     beta: float = 1.0,
     horizon_k: int | None = None,
+    congestion_reroute_epsilon: float = 0.1,
 ) -> None:
     """
     Advance the simulation and periodically process agent movements and path updates.
@@ -421,6 +441,8 @@ def run_agent_simulation(
             threshold=threshold,
             heuristic=heuristic,
             beta=beta,
+            horizon_k=horizon_k,
+            congestion_reroute_epsilon=congestion_reroute_epsilon,
         )
 
     last_log_frame = -1
@@ -451,7 +473,8 @@ def run_agent_simulation(
                 threshold=threshold,
                 heuristic=heuristic,
                 beta=beta,
-                horizon_k=horizon_k
+                horizon_k=horizon_k,
+                congestion_reroute_epsilon = congestion_reroute_epsilon,
             )
 
     logger.info("Simulation end | last_frame=%d", frame)

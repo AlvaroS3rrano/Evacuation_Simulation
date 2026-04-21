@@ -46,6 +46,12 @@ def build_parser() -> argparse.ArgumentParser:
         default=3,
         help="Number of future edges reserved by heuristic h2 (default: 3)",
     )
+    run.add_argument(
+        "--congestion-reroute-epsilon",
+        type=float,
+        default=0.1,
+        help="Route improvement percentage to reroute because of congestion (default: 0.1)",
+    )
 
     return p
 
@@ -74,6 +80,7 @@ def main(argv: list[str] | None = None) -> int:
             heuristic=args.heuristic,
             beta=args.beta,
             horizon_k=args.horizon_k,
+            congestion_reroute_epsilon=args.congestion_reroute_epsilon,
         )
         return 0
 

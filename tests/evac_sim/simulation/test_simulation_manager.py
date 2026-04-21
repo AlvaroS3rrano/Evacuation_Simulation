@@ -432,3 +432,226 @@ def test_high_awareness_does_not_reroute_if_best_path_is_equivalent(monkeypatch)
     )
 
     assert updated_group.path == ["A", "B", "C", "D"]
+
+def test_process_frame_releases_own_reservations_before_reroute_evaluation(monkeypatch):
+    order = []
+
+    monkeypatch.setattr(sm, "get_risk_levels_by_frame", lambda *args, **kwargs: {})
+    monkeypatch.setattr(sm, "compute_current_nodes", lambda *args, **kwargs: None)
+    monkeypatch.setattr(sm, "insert_agent_areas", lambda *args, **kwargs: None)
+    monkeypatch.setattr(sm, "update_agent_speed_on_stairs", lambda *args, **kwargs: None)
+    monkeypatch.setattr(sm, "record_group_path_data", lambda *args, **kwargs: None)
+
+    def fake_update_group_reserved_edges(env_info, group, **kwargs):
+        order.append(("reserve", tuple(group.path), kwargs.get("horizon_k")))
+
+    monkeypatch.setattr(sm, "update_group_reserved_edges", fake_update_group_reserved_edges)
+    monkeypatch.setattr(
+        sm,
+        "release_group_reserved_edges",
+        lambda *args, **kwargs: order.append(("release", None, None)),
+    )
+    monkeypatch.setattr(
+        sm,
+        "restore_group_reserved_edges",
+        lambda *args, **kwargs: order.append(("restore", None, None)),
+    )
+
+    monkeypatch.setattr(
+        sm,
+        "update_group_paths",
+        lambda *args, **kwargs: args[2],  # no path change
+    )
+
+    sim_cfg = SimpleNamespace(
+        simulation=SimpleNamespace(
+            agents=lambda: [SimpleNamespace(id=1), SimpleNamespace(id=2)]
+        ),
+        gamma=0.4,
+    )
+
+    groups = {"g1": build_group()}
+
+    sm.process_frame(
+        sim_cfg,
+        groups,
+        env_info=SimpleNamespace(graph=None),
+        conn=None,
+        case_name="case",
+        mode=0,
+        frame=0,
+        threshold=0.5,
+        heuristic="h2",
+        beta=1.0,
+        horizon_k=2,
+    )
+
+    assert order == [
+        ("reserve", ("A", "B", "C"), 2),
+        ("release", None, None),
+        ("restore", None, None),
+    ]
+
+def test_process_frame_restores_previous_reservations_when_path_does_not_change(monkeypatch):
+    order = []
+
+    monkeypatch.setattr(sm, "get_risk_levels_by_frame", lambda *args, **kwargs: {})
+    monkeypatch.setattr(sm, "compute_current_nodes", lambda *args, **kwargs: None)
+    monkeypatch.setattr(sm, "insert_agent_areas", lambda *args, **kwargs: None)
+    monkeypatch.setattr(sm, "update_agent_speed_on_stairs", lambda *args, **kwargs: None)
+    monkeypatch.setattr(sm, "record_group_path_data", lambda *args, **kwargs: None)
+
+    monkeypatch.setattr(
+        sm,
+        "update_group_reserved_edges",
+        lambda *args, **kwargs: order.append("reserve"),
+    )
+    monkeypatch.setattr(
+        sm,
+        "release_group_reserved_edges",
+        lambda *args, **kwargs: order.append("release"),
+    )
+    monkeypatch.setattr(
+        sm,
+        "restore_group_reserved_edges",
+        lambda *args, **kwargs: order.append("restore"),
+    )
+
+    monkeypatch.setattr(
+        sm,
+        "update_group_paths",
+        lambda *args, **kwargs: args[2],  # no reroute
+    )
+
+    sim_cfg = SimpleNamespace(
+        simulation=SimpleNamespace(
+            agents=lambda: [SimpleNamespace(id=1), SimpleNamespace(id=2)]
+        ),
+        gamma=0.4,
+    )
+
+    groups = {"g1": build_group()}
+
+    sm.process_frame(
+        sim_cfg,
+        groups,
+        env_info=SimpleNamespace(graph=None),
+        conn=None,
+        case_name="case",
+        mode=0,
+        frame=0,
+        threshold=0.5,
+        heuristic="h2",
+        beta=1.0,
+        horizon_k=2,
+    )
+
+    assert order == ["reserve", "release", "restore"]
+
+def test_process_frame_replaces_old_reservations_when_path_changes(monkeypatch):
+    order = []
+
+    monkeypatch.setattr(sm, "get_risk_levels_by_frame", lambda *args, **kwargs: {})
+    monkeypatch.setattr(sm, "compute_current_nodes", lambda *args, **kwargs: None)
+    monkeypatch.setattr(sm, "insert_agent_areas", lambda *args, **kwargs: None)
+    monkeypatch.setattr(sm, "update_agent_speed_on_stairs", lambda *args, **kwargs: None)
+    monkeypatch.setattr(sm, "record_group_path_data", lambda *args, **kwargs: None)
+
+    def fake_update_group_reserved_edges(env_info, group, **kwargs):
+        order.append(("reserve", tuple(group.path), kwargs.get("horizon_k")))
+
+    monkeypatch.setattr(sm, "update_group_reserved_edges", fake_update_group_reserved_edges)
+    monkeypatch.setattr(
+        sm,
+        "release_group_reserved_edges",
+        lambda *args, **kwargs: order.append(("release", None, None)),
+    )
+    monkeypatch.setattr(
+        sm,
+        "restore_group_reserved_edges",
+        lambda *args, **kwargs: order.append(("restore", None, None)),
+    )
+
+    def fake_update_group_paths(*args, **kwargs):
+        group = args[2]
+        group.path = ["A", "X", "D"]
+        return group
+
+    monkeypatch.setattr(sm, "update_group_paths", fake_update_group_paths)
+
+    sim_cfg = SimpleNamespace(
+        simulation=SimpleNamespace(
+            agents=lambda: [SimpleNamespace(id=1), SimpleNamespace(id=2)]
+        ),
+        gamma=0.4,
+    )
+
+    groups = {"g1": build_group()}
+
+    sm.process_frame(
+        sim_cfg,
+        groups,
+        env_info=SimpleNamespace(graph=None),
+        conn=None,
+        case_name="case",
+        mode=0,
+        frame=0,
+        threshold=0.5,
+        heuristic="h2",
+        beta=1.0,
+        horizon_k=2,
+    )
+
+    assert order == [
+        ("reserve", ("A", "B", "C"), 2),
+        ("release", None, None),
+        ("reserve", ("A", "X", "D"), 2),
+    ]
+
+def test_process_frame_does_not_restore_old_reservations_after_reroute(monkeypatch):
+    calls = {"restore": 0}
+
+    monkeypatch.setattr(sm, "get_risk_levels_by_frame", lambda *args, **kwargs: {})
+    monkeypatch.setattr(sm, "compute_current_nodes", lambda *args, **kwargs: None)
+    monkeypatch.setattr(sm, "insert_agent_areas", lambda *args, **kwargs: None)
+    monkeypatch.setattr(sm, "update_agent_speed_on_stairs", lambda *args, **kwargs: None)
+    monkeypatch.setattr(sm, "record_group_path_data", lambda *args, **kwargs: None)
+    monkeypatch.setattr(sm, "update_group_reserved_edges", lambda *args, **kwargs: None)
+    monkeypatch.setattr(sm, "release_group_reserved_edges", lambda *args, **kwargs: None)
+
+    def fake_restore_group_reserved_edges(*args, **kwargs):
+        calls["restore"] += 1
+
+    monkeypatch.setattr(sm, "restore_group_reserved_edges", fake_restore_group_reserved_edges)
+
+    def fake_update_group_paths(*args, **kwargs):
+        group = args[2]
+        group.path = ["A", "X", "D"]
+        return group
+
+    monkeypatch.setattr(sm, "update_group_paths", fake_update_group_paths)
+
+    sim_cfg = SimpleNamespace(
+        simulation=SimpleNamespace(
+            agents=lambda: [SimpleNamespace(id=1), SimpleNamespace(id=2)]
+        ),
+        gamma=0.4,
+    )
+
+    groups = {"g1": build_group()}
+
+    sm.process_frame(
+        sim_cfg,
+        groups,
+        env_info=SimpleNamespace(graph=None),
+        conn=None,
+        case_name="case",
+        mode=0,
+        frame=0,
+        threshold=0.5,
+        heuristic="h2",
+        beta=1.0,
+        horizon_k=2,
+    )
+
+    assert calls["restore"] == 0

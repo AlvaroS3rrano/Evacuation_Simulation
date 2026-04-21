@@ -658,6 +658,7 @@ def run_single_mode(
     heuristic: str = "none",
     beta: float = 1.0,
     horizon_k: int | None = None,
+    congestion_reroute_epsilon: float = 0.1,
 ) -> None:
     log.info(
         "Mode start | mode=%s env=%s case=%s",
@@ -727,6 +728,7 @@ def run_single_mode(
             heuristic=heuristic,
             beta=beta,
             horizon_k=horizon_k,
+            congestion_reroute_epsilon=congestion_reroute_epsilon,
         )
     except Exception:
         log.exception("Simulation failed | mode=%s", mode)
@@ -790,6 +792,7 @@ def run_experiment_from_case(
     heuristic: str = "none",
     beta: float = 1.0,
     horizon_k: int | None = None,
+    congestion_reroute_epsilon: float = 0.1,
     shared_simulation_conn: sqlite3.Connection | None = None,
     shared_simulation_db_file: Path | None = None,
 ) -> None:
@@ -811,7 +814,8 @@ def run_experiment_from_case(
                 resources=resources,
                 heuristic=heuristic,
                 beta=beta,
-                horizon_k=horizon_k
+                horizon_k=horizon_k,
+                congestion_reroute_epsilon=congestion_reroute_epsilon,
             )
 
         resources.simulation_conn.commit()

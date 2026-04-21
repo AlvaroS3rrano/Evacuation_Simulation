@@ -36,6 +36,7 @@ def run_from_yaml(
     heuristic: str = "none",
     beta: float = 1.0,
     horizon_k: int | None = None,
+    congestion_reroute_epsilon: float = 0.1,
 ) -> None:
     project_root = project_root.resolve()
 
@@ -110,6 +111,7 @@ def run_from_yaml(
                 heuristic=heuristic,
                 beta=beta,
                 horizon_k=horizon_k,
+                congestion_reroute_epsilon=congestion_reroute_epsilon,
             )
         except Exception:
             log.exception("Experiment crashed (case_id=%s)", selected_case_id)
@@ -210,6 +212,7 @@ def run_from_yaml(
                 heuristic=heuristic,
                 beta=beta,
                 horizon_k=horizon_k,
+                congestion_reroute_epsilon=congestion_reroute_epsilon,
                 shared_results_db_conn=results_db_conn,
                 shared_results_db_file=combined_results_db,
             )

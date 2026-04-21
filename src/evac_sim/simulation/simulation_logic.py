@@ -211,3 +211,25 @@ def update_group_reserved_edges(
 
     group.reserved_edges = new_reserved_edges
     group.reserved_group_size = current_group_size
+
+def release_group_reserved_edges(env_info, group: AgentGroup) -> None:
+    reserved_edges = getattr(group, "reserved_edges", set())
+    reserved_group_size = getattr(group, "reserved_group_size", 0)
+
+    for u, v in reserved_edges:
+        if env_info.graph.has_edge(u, v):
+            env_info.graph[u][v]["occupancy"] = max(
+                0,
+                env_info.graph[u][v].get("occupancy", 0) - reserved_group_size
+            )
+
+
+def restore_group_reserved_edges(env_info, group: AgentGroup) -> None:
+    reserved_edges = getattr(group, "reserved_edges", set())
+    reserved_group_size = getattr(group, "reserved_group_size", 0)
+
+    for u, v in reserved_edges:
+        if env_info.graph.has_edge(u, v):
+            env_info.graph[u][v]["occupancy"] = (
+                env_info.graph[u][v].get("occupancy", 0) + reserved_group_size
+            )
