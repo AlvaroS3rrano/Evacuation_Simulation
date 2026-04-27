@@ -66,13 +66,13 @@ def draw_waypoint(
             f"{idx}",
             (waypoint[0], waypoint[1]),
             textcoords="offset points",
-            xytext=(0, 10),  # 👈 ahora está encima
+            xytext=(0, 10),
             ha="center",
-            va="bottom",  # 👈 anclado hacia arriba
+            va="bottom",
             fontsize=8,
             fontweight="bold",
             bbox=dict(boxstyle="round,pad=0.2", fc="white", ec="none", alpha=0.8),
-            zorder=10,  # 👈 para que quede por encima de todo
+            zorder=10,
         )
 
     circle = Circle(

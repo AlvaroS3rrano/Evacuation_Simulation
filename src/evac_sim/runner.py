@@ -213,8 +213,8 @@ def run_from_yaml(
                 beta=beta,
                 horizon_k=horizon_k,
                 congestion_reroute_epsilon=congestion_reroute_epsilon,
-                shared_results_db_conn=results_db_conn,
-                shared_results_db_file=combined_results_db,
+                shared_simulation_conn=results_db_conn,
+                shared_simulation_db_file=combined_results_db,
             )
 
         results_db_conn.commit()

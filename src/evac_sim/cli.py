@@ -31,7 +31,7 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("-v", "--verbose", action="store_true", help="Verbose logs")
     run.add_argument("--heuristic",
                      choices=["none" ,"h1", "h2", "h3"],
-                     default=None,
+                     default="none",
                      help="Routing heuristic to use (default: none)"
     )
     run.add_argument(

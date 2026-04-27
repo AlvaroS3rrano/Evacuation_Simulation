@@ -6,7 +6,7 @@ basement:
   mode_type: 0
   master_seed: 233
   risk_iterations: 7000
-  risk_increase_chance: 0.005 #0.05
+  risk_increase_chance: 0.005
   starting_risks:
   risk_overrides:
   risk_threshold: 0.5
@@ -40,8 +40,8 @@ floor_0:
 
 floor_1:
   environment: "management_building_floor_1"
-  sources: [ "21", ] #  "21", "139", "122", "498", "432"
-  agents: [ 10,] # 25, 7, 10, 5, 20
+  sources: [ "21", "139", "122", "498", "432", ] #  21
+  agents: [ 25, 7, 10, 5, 20] # 10
   targets: [ "224"]
   mode_type: 0
   master_seed: 233
