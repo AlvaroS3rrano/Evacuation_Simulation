@@ -286,6 +286,7 @@ def run_single_mode(
         target_nodes=resources.targets,
         specific_areas=resources.specific_areas,
         risk_db_file=resources.simulation_db_file,
+        risk_threshold=resources.risk_threshold,
         case_name=case_id,
         danger_frame=resources.danger_visualization_frame,
         images_dir=paths.images_dir,

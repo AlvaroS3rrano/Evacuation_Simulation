@@ -57,3 +57,6 @@ floor_1:
   every_nth_frame_simulation: 3
   every_nth_frame_animation: 50
   danger_visualization_frame: 2500
+  group_split_threshold: 5
+  distance_to_agents: 0.4
+  distance_to_polygon: 0.1
