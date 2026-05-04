@@ -5,6 +5,8 @@
 /results/
 /data/sqlite/
 
+/src/evac_sim/envs/generated_layouts/
+
 *.db
 *.sqlite
 *.sqlite3

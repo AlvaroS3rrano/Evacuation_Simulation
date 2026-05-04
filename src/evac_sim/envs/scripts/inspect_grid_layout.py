@@ -14,6 +14,7 @@ from evac_sim.envs.layout_creation import (
     SquareCell,
     build_adaptive_square_cells,
     build_greedy_square_cells,
+    build_convex_navmesh_cells,
     get_waypoints_from_cells,
     build_bidirectional_weighted_edges,
 )
@@ -66,13 +67,13 @@ def draw_waypoint(
             f"{idx}",
             (waypoint[0], waypoint[1]),
             textcoords="offset points",
-            xytext=(0, 10),  # 👈 ahora está encima
+            xytext=(0, 10),
             ha="center",
-            va="bottom",  # 👈 anclado hacia arriba
+            va="bottom",
             fontsize=8,
             fontweight="bold",
             bbox=dict(boxstyle="round,pad=0.2", fc="white", ec="none", alpha=0.8),
-            zorder=10,  # 👈 para que quede por encima de todo
+            zorder=10,
         )
 
     circle = Circle(
@@ -275,6 +276,13 @@ def build_cells_from_args(
             require_full_cell=not args.greedy_center_within,
         )
 
+    if args.method == "convex_navmesh":
+        return build_convex_navmesh_cells(
+            walkable_area=geometry,
+            min_area=args.navmesh_min_area,
+            max_area=args.navmesh_max_area,
+        )
+
     return build_adaptive_square_cells(
         walkable_area=geometry,
         min_cell_size=args.min_cell_size,
@@ -394,7 +402,7 @@ def parse_args() -> argparse.Namespace:
         "--method",
         type=str,
         default="greedy",
-        choices=["greedy", "quadtree"],
+        choices=["greedy", "quadtree", "convex_navmesh"],
         help="Cell generation strategy",
     )
 
@@ -506,6 +514,27 @@ def parse_args() -> argparse.Namespace:
         help="Print cell polygons as Python dictionary",
     )
 
+    parser.add_argument(
+        "--navmesh-min-area",
+        type=float,
+        default=1,
+        help="Minimum triangle area for convex_navmesh",
+    )
+
+    parser.add_argument(
+        "--navmesh-max-area",
+        type=float,
+        default=5,
+        help="Maximum triangle area for convex_navmesh before subdivision",
+    )
+
+    parser.add_argument(
+        "--max-waypoint-radius",
+        type=float,
+        default=0.35,
+        help="Maximum waypoint acceptance radius",
+    )
+
     return parser.parse_args()
 
 
@@ -524,8 +553,9 @@ def main() -> None:
 
         waypoints = get_waypoints_from_cells(
             cells,
-            radius=args.radius,
-            radius_ratio=args.radius_ratio,
+            radius_ratio=0.18 if args.method == "convex_navmesh" else 0.25,
+            min_radius=0.10,
+            max_radius=0.30 if args.method == "convex_navmesh" else None,
         )
     elif args.layout_source == "current":
         waypoints, edges, cells = _load_layout_from_environment_data(env)
