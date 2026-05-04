@@ -159,7 +159,10 @@ def try_get_node_index(node, path: list) -> int:
     except ValueError:
         return -1
 
-def _remaining_path_from_node(path: list, current_node):
+def _remaining_path_from_node(path, current_node):
+    if not path or current_node is None:
+        return None
+
     try:
         idx = path.index(current_node)
         return path[idx:]
@@ -605,6 +608,7 @@ def run_agent_simulation(
     Advance the simulation and periodically process agent movements and path updates.
     """
     sim = sim_cfg.simulation
+    max_frames = 10000
     logger.info("Simulation start | agents=%d", sim.agent_count())
 
     if sim.agent_count() > 0:
@@ -636,9 +640,47 @@ def run_agent_simulation(
 
         frame = iteration // sim_cfg.every_nth_frame_simulation
 
+        if frame > max_frames:
+            logger.error(
+                "Simulation stopped by max_frames | iteration=%d | remaining_agents=%d",
+                iteration,
+                sim.agent_count(),
+            )
+            break
+
         if frame % log_every_frames == 0 and frame != last_log_frame:
             last_log_frame = frame
-            logger.info("Progress | frame=%d | agents=%d", frame, sim.agent_count())
+
+            group_status = {}
+
+            for gid, group in agent_groups.items():
+                if not group.agents:
+                    continue
+
+                agents_data = {}
+
+                for aid in group.agents:
+                    current_node = group.current_nodes.get(aid)
+
+                    agents_data[aid] = {
+                        "current_node": current_node,
+                        "remaining_path_head": _remaining_path_from_node(
+                            group.path,
+                            current_node,
+                        )[:8],
+                    }
+
+                group_status[str(gid)] = {
+                    "agents": len(group.agents),
+                    "agents_data": agents_data,
+                }
+
+            logger.info(
+                "Progress | frame=%d | agents=%d | groups=%s",
+                frame,
+                sim.agent_count(),
+                group_status,
+            )
 
         if frame % sim_cfg.every_nth_frame_animation == 0:
             process_frame(

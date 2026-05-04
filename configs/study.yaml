@@ -83,7 +83,7 @@ corridor_case_1:
   mode_type: 0
   master_seed: 1001
   risk_iterations: 2000
-  risk_increase_chance: 0.05
+  risk_increase_chance: 0.0001
   starting_risks:
   risk_overrides:
   risk_threshold: 0.5
@@ -103,7 +103,7 @@ corridor_case_2:
   mode_type: 0
   master_seed: 1002
   risk_iterations: 2000
-  risk_increase_chance: 0.05
+  risk_increase_chance: 0.0001
   starting_risks:
   risk_overrides:
   risk_threshold: 0.5
@@ -123,7 +123,7 @@ corridor_case_3:
   mode_type: 0
   master_seed: 1003
   risk_iterations: 2500
-  risk_increase_chance: 0.06
+  risk_increase_chance: 0.0001
   starting_risks:
     - ["9", 1.0]
   risk_overrides:
@@ -144,7 +144,7 @@ corridor_case_4:
   mode_type: 0
   master_seed: 1004
   risk_iterations: 3000
-  risk_increase_chance: 0.05
+  risk_increase_chance: 0.0001
   starting_risks:
     - ["11", 1.0]
     - ["12", 0.7]
@@ -209,7 +209,7 @@ corridor_case_7:
   mode_type: 0
   master_seed: 1007
   risk_iterations: 3000
-  risk_increase_chance: 0.05
+  risk_increase_chance: 0.0001
   starting_risks:
   risk_overrides:
   risk_threshold: 0.5
@@ -305,7 +305,7 @@ cruise_ship_case_1:
   mode_type: 0
   master_seed: 233
   risk_iterations: 7000
-  risk_increase_chance: 0.05
+  risk_increase_chance: 0.0001
   starting_risks:
     - ["8", 1.0]
   risk_overrides:
@@ -331,7 +331,7 @@ cruise_ship_case_2:
   mode_type: 0
   master_seed: 233
   risk_iterations: 7000
-  risk_increase_chance: 0.05
+  risk_increase_chance: 0.0001
   starting_risks:
     - ["8", 1.0]
   risk_overrides:
@@ -357,7 +357,7 @@ cruise_ship_case_3:
   mode_type: 0
   master_seed: 233
   risk_iterations: 7000
-  risk_increase_chance: 0.05
+  risk_increase_chance: 0.0001
   starting_risks:
     - ["8", 1.0]
   risk_overrides:
@@ -382,7 +382,7 @@ cruise_ship_case_4:
   mode_type: 0
   master_seed: 233
   risk_iterations: 7000
-  risk_increase_chance: 0.05
+  risk_increase_chance: 0.0001
   starting_risks:
     - ["8", 1.0]
   risk_overrides:
@@ -407,7 +407,7 @@ cruise_ship_case_5:
   mode_type: 1
   master_seed: 1006
   risk_iterations: 7000
-  risk_increase_chance: 0.05
+  risk_increase_chance: 0.0001
   starting_risks:
   risk_overrides: []
   risk_threshold: 0.5
@@ -427,7 +427,7 @@ cruise_ship_case_6:
   mode_type: 1
   master_seed: 1005
   risk_iterations: 7000
-  risk_increase_chance: 0.05
+  risk_increase_chance: 0.0001
   starting_risks:
     - ["40", 1.0]
     - ["41", 1.0]
@@ -452,7 +452,7 @@ cruise_ship_case_7:
   mode_type: 1
   master_seed: 1007
   risk_iterations: 7500
-  risk_increase_chance: 0.05
+  risk_increase_chance: 0.0001
   starting_risks:
     - ["6", 1.0]
     - ["70", 1.0]
@@ -478,7 +478,7 @@ cruise_ship_case_8:
   mode_type: 1
   master_seed: 1008
   risk_iterations: 7000
-  risk_increase_chance: 0.05
+  risk_increase_chance: 0.0001
   starting_risks:
     - ["6", 1.0]
     - ["7", 1.0]
@@ -501,7 +501,7 @@ cruise_ship_case_9:
   mode_type: 1
   master_seed: 1009
   risk_iterations: 7000
-  risk_increase_chance: 0.05
+  risk_increase_chance: 0.0001
   starting_risks:
     - ["14", 1.0]
     - ["30", 1.0]
@@ -525,7 +525,7 @@ cruise_ship_case_10:
   mode_type: 1
   master_seed: 1010
   risk_iterations: 7500
-  risk_increase_chance: 0.05
+  risk_increase_chance: 0.0001
   starting_risks:
     - ["11", 1.0]
     - ["10", 1.0]
@@ -721,7 +721,7 @@ theme_park_case_8:
   mode_type: 0
   master_seed: 246
   risk_iterations: 7000
-  risk_increase_chance: 0.05
+  risk_increase_chance: 0.0001
   starting_risks:
     - [ "69", 1.0 ]
   risk_overrides:
@@ -787,7 +787,7 @@ crowding:
   mode_type: 4
   master_seed: 1234
   risk_iterations: 7000
-  risk_increase_chance: 0.05
+  risk_increase_chance: 0.0001
   starting_risks:
   risk_overrides: null
   risk_threshold: 0.5

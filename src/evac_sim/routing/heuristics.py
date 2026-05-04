@@ -6,6 +6,9 @@ def compute_effective_edge_cost(
     beta: float = 1.0,
     group_size: int = 0,
 ) -> float:
+    if heuristic is None:
+        heuristic = "none"
+
     base_cost = edge_data["cost"]
 
     if heuristic == "none":
