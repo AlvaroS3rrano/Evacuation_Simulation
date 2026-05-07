@@ -136,6 +136,7 @@ def test_low_awareness_only_reacts_to_next_node(monkeypatch):
             heuristic="none",
             beta=1.0,
             group_size=0,
+            horizon_k=None,
     ):
         captured["heuristic"] = heuristic
         captured["beta"] = beta
@@ -147,7 +148,7 @@ def test_low_awareness_only_reacts_to_next_node(monkeypatch):
         fake_update_all_graph_risks,
     )
     monkeypatch.setattr(
-        "evac_sim.routing.decision_policies.get_posible_paths",
+        "evac_sim.routing.decision_policies.get_possible_paths",
         fake_get_possible_paths,
     )
 
@@ -194,6 +195,7 @@ def test_high_awareness_reacts_to_any_remaining_unsafe_node(monkeypatch):
         heuristic="none",
         beta=1.0,
         group_size=0,
+        horizon_k=None,
     ):
         captured["heuristic"] = heuristic
         captured["beta"] = beta
@@ -205,7 +207,7 @@ def test_high_awareness_reacts_to_any_remaining_unsafe_node(monkeypatch):
         fake_update_all_graph_risks,
     )
     monkeypatch.setattr(
-        "evac_sim.routing.decision_policies.get_posible_paths",
+        "evac_sim.routing.decision_policies.get_possible_paths",
         fake_get_possible_paths,
     )
 

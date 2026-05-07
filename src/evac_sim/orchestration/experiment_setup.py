@@ -411,6 +411,7 @@ def _create_initial_group(
         heuristic=heuristic,
         beta=beta,
         group_size=group_size,
+        horizon_k=horizon_k,
     )
 
     if path is None:

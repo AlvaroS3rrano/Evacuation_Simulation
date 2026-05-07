@@ -12,7 +12,7 @@ from evac_sim.db.repositories.group_decisions import insert_group_decision
 from evac_sim.envs.journey_configuration import set_journeys
 from evac_sim.routing.decision_policies import compute_alternative_path, compute_best_available_path
 from evac_sim.routing.utils import is_sublist
-from evac_sim.routing.heuristics import compute_effective_edge_cost
+from evac_sim.routing.path_algorithms import compute_path_effective_cost
 from evac_sim.simulation.simulation_logic import (
     compute_current_nodes,
     update_agent_speed_on_stairs,
@@ -169,28 +169,6 @@ def _remaining_path_from_node(path, current_node):
     except ValueError:
         return path
 
-
-def _path_effective_cost(
-    graph,
-    path: list,
-    *,
-    heuristic: str = "none",
-    beta: float = 1.0,
-    group_size: int = 0,
-) -> float:
-    if not path or len(path) < 2:
-        return float("inf")
-
-    total = 0.0
-    for u, v in zip(path, path[1:]):
-        total += compute_effective_edge_cost(
-            edge_data=graph[u][v],
-            heuristic=heuristic,
-            beta=beta,
-            group_size=group_size,
-        )
-    return total
-
 def update_group_paths(
     sim_cfg,
     risk_map: dict,
@@ -203,6 +181,7 @@ def update_group_paths(
     heuristic: str = "none",
     beta: float = 1.0,
     congestion_reroute_epsilon: float = 0.10,
+    horizon_k: int = None,
 ) -> AgentGroup:
     """
     Evaluate whether the group should be rerouted.
@@ -250,6 +229,7 @@ def update_group_paths(
             sim_cfg.gamma,
             heuristic=heuristic,
             beta=beta,
+            horizon_k=horizon_k,
         )
 
         selected_alt_path = None
@@ -271,25 +251,28 @@ def update_group_paths(
                 gamma=sim_cfg.gamma,
                 heuristic=heuristic,
                 beta=beta,
+                horizon_k=horizon_k,
             )
 
             if best_path and not is_sublist(best_path, current_path):
                 current_remaining = _remaining_path_from_node(current_path, curr_node)
 
-                current_cost = _path_effective_cost(
+                current_cost = compute_path_effective_cost(
                     env_info.graph,
                     current_remaining,
                     heuristic=heuristic,
                     beta=beta,
                     group_size=group_size,
+                    horizon_k=horizon_k,
                 )
 
-                best_cost = _path_effective_cost(
+                best_cost = compute_path_effective_cost(
                     env_info.graph,
                     best_path,
                     heuristic=heuristic,
                     beta=beta,
                     group_size=group_size,
+                    horizon_k=horizon_k,
                 )
 
                 if best_cost <= (1.0 - congestion_reroute_epsilon) * current_cost:
@@ -451,6 +434,7 @@ def _process_single_group(
         heuristic=heuristic,
         beta=beta,
         congestion_reroute_epsilon=congestion_reroute_epsilon,
+        horizon_k=horizon_k,
     )
 
     if use_reservations:

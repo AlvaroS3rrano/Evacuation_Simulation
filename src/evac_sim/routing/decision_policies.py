@@ -1,7 +1,5 @@
-from plotly.graph_objs.indicator.gauge import threshold
-
 from .graph_risk import update_all_graph_risks
-from .multifloor_paths import get_posible_paths
+from .multifloor_paths import get_possible_paths
 
 def _get_group_size(agent_group) -> int:
     return len(agent_group.agents)
@@ -35,11 +33,12 @@ def _get_possible_paths_with_fallback(
     heuristic="none",
     beta=1.0,
     group_size=0,
+    horizon_k=None,
 ):
     """
     Get feasible paths, retrying without blocked nodes if needed.
     """
-    paths = get_posible_paths(
+    paths = get_possible_paths(
         env_info,
         current_node,
         exits,
@@ -49,10 +48,11 @@ def _get_possible_paths_with_fallback(
         heuristic=heuristic,
         beta=beta,
         group_size=group_size,
+        horizon_k=horizon_k,
     )
 
     if not paths:
-        paths = get_posible_paths(
+        paths = get_possible_paths(
             env_info,
             current_node,
             exits,
@@ -62,6 +62,7 @@ def _get_possible_paths_with_fallback(
             heuristic=heuristic,
             beta=beta,
             group_size=group_size,
+            horizon_k=horizon_k,
         )
 
     return paths
@@ -88,6 +89,7 @@ def compute_initial_path(
     heuristic="none",
     beta=1.0,
     group_size=None,
+    horizon_k=None,
 ):
     """
     Compute the initial evacuation path for a group before the simulation starts.
@@ -114,6 +116,7 @@ def compute_initial_path(
         heuristic=heuristic,
         beta=beta,
         group_size=group_size,
+        horizon_k=horizon_k,
     )
 
     return _select_path_by_active_strategy(alternative_paths, agent_group)
@@ -129,6 +132,7 @@ def compute_low_awareness_alternative_path(
     risk_threshold,
     heuristic="none",
     beta=1.0,
+    horizon_k=None,
 ):
     """
     Recompute the path if the next node is unsafe.
@@ -163,6 +167,7 @@ def compute_low_awareness_alternative_path(
         heuristic=heuristic,
         beta=beta,
         group_size=group_size,
+        horizon_k=horizon_k,
     )
 
     return _select_path_by_active_strategy(alternative_paths, agent_group)
@@ -177,6 +182,7 @@ def compute_high_awareness_alternative_path(
     risk_threshold,
     heuristic="none",
     beta=1.0,
+    horizon_k=None,
 ):
     """
     Recompute the path if any remaining node is unsafe.
@@ -220,6 +226,7 @@ def compute_high_awareness_alternative_path(
         heuristic=heuristic,
         beta=beta,
         group_size=group_size,
+        horizon_k=horizon_k,
     )
 
     return _select_path_by_active_strategy(alternative_paths, agent_group)
@@ -236,6 +243,7 @@ def compute_alternative_path(
     gamma=0.4,
     heuristic="none",
     beta=1.0,
+    horizon_k=None,
 ):
     """
     Dispatch rerouting based on the group's awareness level.
@@ -258,6 +266,7 @@ def compute_alternative_path(
             risk_threshold=risk_threshold,
             heuristic=heuristic,
             beta=beta,
+            horizon_k=horizon_k,
         )
 
     if agent_group.awareness_level == 1:
@@ -271,6 +280,7 @@ def compute_alternative_path(
             risk_threshold=risk_threshold,
             heuristic=heuristic,
             beta=beta,
+            horizon_k=horizon_k,
         )
 
     return None
@@ -285,9 +295,13 @@ def compute_best_available_path(
     gamma=0.4,
     heuristic="none",
     beta=1.0,
+    horizon_k=None,
 ):
     blocked_nodes = agent_group.blocked_nodes
     group_size = _get_group_size(agent_group)
+
+    if risk_map is None:
+        risk_map = {}
 
     alternative_paths = _get_possible_paths_with_fallback(
         env_info=env_info,
@@ -299,6 +313,7 @@ def compute_best_available_path(
         heuristic=heuristic,
         beta=beta,
         group_size=group_size,
+        horizon_k=horizon_k,
     )
 
     safe_paths = [

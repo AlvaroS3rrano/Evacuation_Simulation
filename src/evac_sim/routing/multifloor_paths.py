@@ -109,6 +109,7 @@ def _expand_frontier_once(
     heuristic="none",
     beta=1.0,
     group_size=0,
+    horizon_k=None,
 ):
     """
     Expand one step of the multi-floor frontier.
@@ -132,6 +133,12 @@ def _expand_frontier_once(
 
         targets = _build_targets_for_next_floor(EnvInf, exits_by_floor, next_floor, d)
 
+        remaining_horizon_k = horizon_k
+
+        if heuristic == "h2" and horizon_k is not None:
+            used_edges = max(0, len(seg) - 1)
+            remaining_horizon_k = max(0, horizon_k - used_edges)
+
         segments2 = _get_cached_segments_from_connector(
             EnvInf,
             connector,
@@ -142,6 +149,7 @@ def _expand_frontier_once(
             heuristic=heuristic,
             beta=beta,
             group_size=group_size,
+            horizon_k=remaining_horizon_k,
         )
 
         if not segments2:
@@ -209,7 +217,7 @@ def _sort_complete(complete, algo: int):
     return complete
 
 
-def get_posible_paths(
+def get_possible_paths(
     EnvInf,
     current_node,
     exits,
@@ -220,6 +228,7 @@ def get_posible_paths(
     heuristic="none",
     beta=1.0,
     group_size=0,
+    horizon_k=None,
 ):
     """
     Compute feasible paths from the current node to any exit.
@@ -246,6 +255,7 @@ def get_posible_paths(
         heuristic=heuristic,
         beta=beta,
         group_size=group_size,
+        horizon_k=horizon_k,
     )
 
     complete, frontier = _init_complete_and_frontier(
@@ -267,6 +277,7 @@ def get_posible_paths(
             heuristic=heuristic,
             beta=beta,
             group_size=group_size,
+            horizon_k=horizon_k,
         )
         complete.extend(newly_complete)
 

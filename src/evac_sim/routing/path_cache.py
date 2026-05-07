@@ -44,6 +44,7 @@ def get_alternative_paths_for_node(
     heuristic="none",
     beta=1.0,
     group_size=0,
+    horizon_k=None,
 ):
     if blocked_nodes is None:
         blocked_nodes = []
@@ -73,6 +74,7 @@ def get_alternative_paths_for_node(
                 heuristic=heuristic,
                 beta=beta,
                 group_size=group_size,
+                horizon_k=horizon_k,
             )
 
             computed = sorted(
@@ -112,6 +114,7 @@ def _get_cached_segments_from_connector(
     heuristic="none",
     beta=1.0,
     group_size=0,
+    horizon_k=None,
 ):
     """
     Retrieve cached path segments from a connector on the next floor.
@@ -136,6 +139,7 @@ def _get_cached_segments_from_connector(
             heuristic=heuristic,
             beta=beta,
             group_size=group_size,
+            horizon_k=horizon_k,
         )
 
     _ensure_floor_cache(EnvInf, next_floor)
@@ -159,6 +163,7 @@ def _get_cached_segments_from_connector(
             heuristic=heuristic,
             beta=beta,
             group_size=group_size,
+            horizon_k=horizon_k,
         )
 
     return EnvInf.floor_paths[next_floor].get(cache_key, [])
@@ -175,6 +180,7 @@ def updateFloorPaths(
     heuristic="none",
     beta=1.0,
     group_size=0,
+    horizon_k=None,
 ) -> None:
     """
     Precompute and cache alternative paths for each source node on a floor.
@@ -196,6 +202,7 @@ def updateFloorPaths(
             heuristic=heuristic,
             beta=beta,
             group_size=group_size,
+            horizon_k=horizon_k,
         )
         all_floor_paths[source] = alternative_paths
 
