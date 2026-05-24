@@ -5,9 +5,10 @@ import math
 from collections import Counter
 
 import matplotlib.pyplot as plt
+import networkx as nx
 import pedpy
 from matplotlib.patches import Circle
-from shapely.geometry import Polygon
+from shapely.geometry import LineString, Point, Polygon
 
 from evac_sim.envs.environment_factory import select_environment
 from evac_sim.envs.layout_creation import (
@@ -44,6 +45,164 @@ def enrich_edges_with_capacity(cells, edges: list[tuple[str, str, float]]) -> li
         for source, target, weight in edges
     ]
 
+
+def compute_waypoint_distance(
+    waypoints: dict[str, tuple[list[float], float]],
+    source: str,
+    target: str,
+) -> float:
+    source_point = waypoints[source][0]
+    target_point = waypoints[target][0]
+
+    return math.hypot(
+        target_point[0] - source_point[0],
+        target_point[1] - source_point[1],
+    )
+
+
+def _can_connect_waypoints_through_walkable_area(
+    waypoints: dict[str, tuple[list[float], float]],
+    source: str,
+    target: str,
+    walkable_geometry,
+    tolerance: float = 1e-9,
+) -> bool:
+    source_point = waypoints[source][0]
+    target_point = waypoints[target][0]
+
+    line = LineString([source_point, target_point])
+    buffered = line.buffer(tolerance)
+
+    return walkable_geometry.covers(line) or walkable_geometry.covers(buffered)
+
+
+def recalculate_edge_distances(
+    edges: list[tuple[str, str, float]],
+    waypoints: dict[str, tuple[list[float], float]],
+) -> list[tuple[str, str, float]]:
+    recalculated_edges: list[tuple[str, str, float]] = []
+
+    for source, target, _ in edges:
+        if source not in waypoints or target not in waypoints:
+            print(
+                f"[WARN] Skipping edge {source}->{target}: "
+                "source or target waypoint does not exist"
+            )
+            continue
+
+        recalculated_edges.append(
+            (
+                source,
+                target,
+                compute_waypoint_distance(waypoints, source, target),
+            )
+        )
+
+    return recalculated_edges
+
+
+def connect_disconnected_current_edges(
+    edges: list[tuple[str, str, float]],
+    waypoints: dict[str, tuple[list[float], float]],
+    walkable_geometry,
+) -> list[tuple[str, str, float]]:
+    """
+    Keep the existing current-layout edges and add bidirectional edges between
+    disconnected components when the straight segment between two waypoints
+    remains inside the walkable area.
+    """
+    if not waypoints:
+        return edges
+
+    undirected = nx.Graph()
+    undirected.add_nodes_from(waypoints)
+
+    existing_pairs: set[tuple[str, str]] = set()
+
+    for source, target, weight in edges:
+        undirected.add_edge(source, target, weight=weight)
+        existing_pairs.add((source, target))
+
+    refreshed_edges = list(edges)
+
+    while True:
+        components = list(nx.connected_components(undirected))
+
+        if len(components) <= 1:
+            break
+
+        best_connection: tuple[str, str, float] | None = None
+        best_distance = float("inf")
+
+        for index_a, component_a in enumerate(components):
+            for component_b in components[index_a + 1:]:
+                for source in component_a:
+                    for target in component_b:
+                        if not _can_connect_waypoints_through_walkable_area(
+                            waypoints=waypoints,
+                            source=source,
+                            target=target,
+                            walkable_geometry=walkable_geometry,
+                        ):
+                            continue
+
+                        distance = compute_waypoint_distance(
+                            waypoints=waypoints,
+                            source=source,
+                            target=target,
+                        )
+
+                        if distance < best_distance:
+                            best_distance = distance
+                            best_connection = (source, target, distance)
+
+        if best_connection is None:
+            unresolved = [
+                sorted(component, key=lambda node: int(node) if node.isdigit() else node)
+                for component in components
+            ]
+            print(
+                "[WARN] Some current-layout components could not be connected "
+                f"without crossing obstacles: {unresolved}"
+            )
+            break
+
+        source, target, distance = best_connection
+
+        if (source, target) not in existing_pairs:
+            refreshed_edges.append((source, target, distance))
+            existing_pairs.add((source, target))
+
+        if (target, source) not in existing_pairs:
+            refreshed_edges.append((target, source, distance))
+            existing_pairs.add((target, source))
+
+        undirected.add_edge(source, target, weight=distance)
+
+        print(
+            f"[INFO] Added connection {source}<->{target} "
+            f"with distance={distance:.6f}"
+        )
+
+    return refreshed_edges
+
+
+def refresh_current_edges(
+    edges: list[tuple[str, str, float]],
+    waypoints: dict[str, tuple[list[float], float]],
+    walkable_geometry,
+) -> list[tuple[str, str, float]]:
+    recalculated_edges = recalculate_edge_distances(
+        edges=edges,
+        waypoints=waypoints,
+    )
+
+    return connect_disconnected_current_edges(
+        edges=recalculated_edges,
+        waypoints=waypoints,
+        walkable_geometry=walkable_geometry,
+    )
+
 def _get_cell_center(cell_or_polygon):
     if hasattr(cell_or_polygon, "center"):
         return cell_or_polygon.center
@@ -51,6 +210,41 @@ def _get_cell_center(cell_or_polygon):
     polygon = getattr(cell_or_polygon, "polygon", cell_or_polygon)
     centroid = polygon.centroid
     return (centroid.x, centroid.y)
+
+
+def get_largest_waypoints_from_cells(
+    cells: dict[str, SquareCell],
+    shrink_epsilon: float = 1e-9,
+) -> dict[str, tuple[list[float], float]]:
+    """
+    Build waypoints whose acceptance radius is the largest circle centered in the
+    cell that remains inside the cell polygon.
+
+    Since waypoints store radius, not diameter, the largest accepted radius is
+    the distance from the waypoint center to the specific area's boundary.
+    """
+    if shrink_epsilon < 0:
+        raise ValueError("shrink_epsilon must be >= 0")
+
+    waypoints: dict[str, tuple[list[float], float]] = {}
+
+    for cell_id, cell in cells.items():
+        polygon = _get_polygon(cell)
+        center = _get_cell_center(cell)
+        point = Point(center)
+
+        if not polygon.covers(point):
+            point = polygon.representative_point()
+            center = (point.x, point.y)
+
+        radius = max(0.0, float(point.distance(polygon.boundary)) - shrink_epsilon)
+
+        waypoints[cell_id] = (
+            [float(center[0]), float(center[1])],
+            radius,
+        )
+
+    return waypoints
 
 def draw_waypoint(
     ax,
@@ -248,6 +442,11 @@ def print_layout_summary(
 ) -> None:
     print(f"Environment: {args.env}")
     print(f"Strategy: {args.method}")
+    print(f"Waypoint radius mode: {args.waypoint_radius_mode}")
+
+    if args.layout_source == "current":
+        print(f"Refresh current edges: {args.refresh_current_edges}")
+
     print(f"Minimum cell size: {args.min_cell_size}")
 
     if args.method == "greedy":
@@ -414,6 +613,16 @@ def parse_args() -> argparse.Namespace:
     )
 
     parser.add_argument(
+        "--refresh-current-edges",
+        action="store_true",
+        help=(
+            "Only with --layout-source current: keep current edges, recalculate "
+            "their distances from waypoint coordinates, and try to connect "
+            "disconnected components if a straight walkable segment exists"
+        ),
+    )
+
+    parser.add_argument(
         "--min-cell-size",
         type=float,
         default=1.0,
@@ -444,6 +653,18 @@ def parse_args() -> argparse.Namespace:
         "--greedy-center-within",
         action="store_true",
         help="For greedy: accept base cells by center-inside instead of full-cell coverage",
+    )
+
+    parser.add_argument(
+        "--waypoint-radius-mode",
+        type=str,
+        default="largest",
+        choices=["largest", "ratio"],
+        help=(
+            "For --layout-source computed: 'largest' creates each waypoint with "
+            "the maximum radius accepted by its specific area; 'ratio' keeps the "
+            "previous cell-size ratio behavior"
+        ),
     )
 
     parser.add_argument(
@@ -551,14 +772,25 @@ def main() -> None:
 
         edges = build_bidirectional_weighted_edges(cells, walkable_area=geometry)
 
-        waypoints = get_waypoints_from_cells(
-            cells,
-            radius_ratio=0.18 if args.method == "convex_navmesh" else 0.25,
-            min_radius=0.10,
-            max_radius=0.30 if args.method == "convex_navmesh" else None,
-        )
+        if args.waypoint_radius_mode == "largest":
+            waypoints = get_largest_waypoints_from_cells(cells)
+        else:
+            waypoints = get_waypoints_from_cells(
+                cells,
+                radius=args.radius,
+                radius_ratio=args.radius_ratio,
+                min_radius=0.10,
+                max_radius=args.max_waypoint_radius,
+            )
     elif args.layout_source == "current":
         waypoints, edges, cells = _load_layout_from_environment_data(env)
+
+        if args.refresh_current_edges:
+            edges = refresh_current_edges(
+                edges=edges,
+                waypoints=waypoints,
+                walkable_geometry=geometry,
+            )
 
     should_print_summary = args.print_summary or (
         not args.print_waypoints and not args.print_edges and not args.print_specific_areas
