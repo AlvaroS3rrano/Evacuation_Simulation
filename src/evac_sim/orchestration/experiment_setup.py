@@ -29,12 +29,13 @@ from evac_sim.orchestration.experiment_models import (
     ExperimentResources,
     JuPedSimConfig,
 )
-from evac_sim.orchestration.grouping_config import build_group_distribution_config
 from evac_sim.orchestration.group_distribution import (
     GroupPositionBatch,
     build_group_position_batches,
 )
 from evac_sim.orchestration.grouping_config import GroupDistributionConfig
+from evac_sim.orchestration.congestion_config import build_congestion_config
+from evac_sim.orchestration.edge_capacity import apply_edge_capacity_multiplier
 
 
 def _uses_reservations(heuristic: str) -> bool:
@@ -203,6 +204,13 @@ def prepare_shared_resources(
     env = select_environment(cfg["environment"])
 
     graph = env.graph.copy()
+
+    congestion_config = build_congestion_config(cfg)
+    apply_edge_capacity_multiplier(
+        graph,
+        congestion_config.edge_capacity_multiplier,
+    )
+
     risk_graph = graph.copy()
 
     targets = cfg["targets"]
@@ -290,6 +298,7 @@ def prepare_shared_resources(
         modes=modes,
         agent_positioning=agent_positioning,
         grouping_config=grouping_config,
+        congestion_config=congestion_config,
         jps_config=jps_config,
         owns_simulation_conn=owns_simulation_conn,
     )
