@@ -226,6 +226,7 @@ def run_single_mode(
         heuristic=heuristic,
         beta=beta,
         horizon_k=horizon_k,
+        grouping_config=resources.grouping_config,
         logger=log,
     )
 

@@ -30,6 +30,11 @@ from evac_sim.orchestration.experiment_models import (
     JuPedSimConfig,
 )
 from evac_sim.orchestration.grouping_config import build_group_distribution_config
+from evac_sim.orchestration.group_distribution import (
+    GroupPositionBatch,
+    build_group_position_batches,
+)
+from evac_sim.orchestration.grouping_config import GroupDistributionConfig
 
 
 def _uses_reservations(heuristic: str) -> bool:
@@ -342,20 +347,24 @@ def _build_group_candidates(
     *,
     mode: int,
     mode_type: int,
-    sources: list[Any],
-    positions: dict[str, np.ndarray],
+    group_batches: list[GroupPositionBatch],
     targets: list[Any],
     env_info: EnvironmentInfo,
     gamma: float,
 ) -> list[dict[str, Any]]:
     candidates: list[dict[str, Any]] = []
 
-    for i, source in enumerate(sources):
-        algorithm, awareness_level = _resolve_group_strategy(mode, mode_type, i)
-        group_size = len(positions[source])
+    for batch in group_batches:
+        algorithm, awareness_level = _resolve_group_strategy(
+            mode,
+            mode_type,
+            batch.source_index,
+        )
+
+        group_size = len(batch.positions)
 
         base_exit_cost = compute_initial_priority_cost(
-            source=source,
+            source=batch.source,
             targets=targets,
             env_info=env_info,
             algorithm=algorithm,
@@ -364,7 +373,9 @@ def _build_group_candidates(
 
         candidates.append(
             {
-                "source": source,
+                "group_id": batch.group_id,
+                "source": batch.source,
+                "group_positions": batch.positions,
                 "group_size": group_size,
                 "algorithm": algorithm,
                 "awareness_level": awareness_level,
@@ -373,20 +384,27 @@ def _build_group_candidates(
         )
 
     candidates.sort(
-        key=lambda g: (g["base_exit_cost"], -g["group_size"], str(g["source"]))
+        key=lambda g: (
+            g["base_exit_cost"],
+            -g["group_size"],
+            str(g["source"]),
+            str(g["group_id"]),
+        )
     )
+
     return candidates
 
 
 def _create_initial_group(
     *,
     simulation: jps.Simulation,
+    group_id: str,
     source: Any,
+    group_positions: np.ndarray,
     group_size: int,
     algorithm: int,
     awareness_level: int,
     targets: list[Any],
-    positions: dict[str, np.ndarray],
     waypoints_ids: dict[Any, Any],
     exit_ids: dict[Any, Any],
     env_info: EnvironmentInfo,
@@ -419,19 +437,30 @@ def _create_initial_group(
     )
 
     if path is None:
-        raise ValueError(f"No initial path found for source={source}")
+        raise ValueError(
+            f"No initial path found for group_id={group_id}, source={source}"
+        )
 
     if not isinstance(path, (list, tuple)) or len(path) < 2:
-        raise ValueError(f"Invalid initial path for source={source}: {path}")
+        raise ValueError(
+            f"Invalid initial path for group_id={group_id}, source={source}: {path}"
+        )
 
-    journeys_ids = set_journeys(simulation, source, [path], waypoints_ids, exit_ids)
+    journeys_ids = set_journeys(
+        simulation,
+        source,
+        [path],
+        waypoints_ids,
+        exit_ids,
+    )
+
     journey_id, best_path_source = journeys_ids[source][0]
     next_node = best_path_source[1]
     first_waypoint_id = waypoints_ids[next_node]
 
     agents = set_agents_in_simulation(
         simulation,
-        positions[source],
+        group_positions,
         journey_id,
         first_waypoint_id,
         normal_max_speed,
@@ -451,7 +480,7 @@ def _create_initial_group(
             env_info,
             group,
             frame=0,
-            group_id=source,
+            group_id=group_id,
             horizon_k=_initial_reservation_horizon(heuristic, horizon_k),
         )
 
@@ -465,7 +494,7 @@ def build_agent_groups(
     mode_type: int,
     sources: list[Any],
     targets: list[Any],
-    positions: dict[str, np.ndarray],
+    positions: dict[Any, np.ndarray],
     exit_ids: dict[Any, Any],
     waypoints_ids: dict[Any, Any],
     env_info: EnvironmentInfo,
@@ -475,15 +504,21 @@ def build_agent_groups(
     heuristic: str = "none",
     beta: float = 1.0,
     horizon_k: int | None = None,
+    grouping_config: GroupDistributionConfig | None = None,
     logger=None,
 ) -> dict[str, AgentGroup]:
     agent_groups: dict[str, AgentGroup] = {}
 
+    group_batches = build_group_position_batches(
+        sources=sources,
+        positions=positions,
+        grouping_config=grouping_config,
+    )
+
     group_candidates = _build_group_candidates(
         mode=mode,
         mode_type=mode_type,
-        sources=sources,
-        positions=positions,
+        group_batches=group_batches,
         targets=targets,
         env_info=env_info,
         gamma=gamma,
@@ -493,22 +528,29 @@ def build_agent_groups(
         logger.info(
             "Initial assignment order: %s",
             [
-                (g["source"], g["group_size"], round(g["base_exit_cost"], 3))
+                (
+                    g["group_id"],
+                    g["source"],
+                    g["group_size"],
+                    round(g["base_exit_cost"], 3),
+                )
                 for g in group_candidates
             ],
         )
 
     for group_info in group_candidates:
+        group_id = group_info["group_id"]
         source = group_info["source"]
 
         group = _create_initial_group(
             simulation=simulation,
+            group_id=group_id,
             source=source,
+            group_positions=group_info["group_positions"],
             group_size=group_info["group_size"],
             algorithm=group_info["algorithm"],
             awareness_level=group_info["awareness_level"],
             targets=targets,
-            positions=positions,
             waypoints_ids=waypoints_ids,
             exit_ids=exit_ids,
             env_info=env_info,
@@ -520,11 +562,12 @@ def build_agent_groups(
             horizon_k=horizon_k,
         )
 
-        agent_groups[source] = group
+        agent_groups[group_id] = group
 
         if logger is not None:
             logger.info(
-                "Initial group created | source=%s agents=%d path=%s reserved_edges=%d",
+                "Initial group created | group_id=%s source=%s agents=%d path=%s reserved_edges=%d",
+                group_id,
                 source,
                 len(group.agents),
                 group.path,
