@@ -1,10 +1,14 @@
 import networkx as nx
 import pytest
 
-from evac_sim.orchestration.edge_capacity import apply_edge_capacity_multiplier
+from evac_sim.orchestration.congestion_config import CongestionConfig
+from evac_sim.orchestration.edge_capacity import (
+    apply_congestion_settings_to_graph,
+    apply_edge_capacity_multiplier,
+)
 
 
-def test_apply_edge_capacity_multiplier_keeps_graph_unchanged_for_multiplier_one():
+def test_apply_edge_capacity_multiplier_keeps_capacity_unchanged_for_multiplier_one():
     graph = nx.DiGraph()
     graph.add_edge("1", "2", capacity=4, cost=10.0)
 
@@ -62,3 +66,23 @@ def test_apply_edge_capacity_multiplier_rejects_invalid_multiplier():
 
     with pytest.raises(ValueError, match="Edge capacity multiplier must be > 0"):
         apply_edge_capacity_multiplier(graph, 0)
+
+
+def test_apply_congestion_settings_to_graph_sets_linear_policy_flags():
+    graph = nx.DiGraph()
+    graph.add_edge("1", "2", capacity=4, cost=10.0)
+
+    apply_congestion_settings_to_graph(
+        graph,
+        CongestionConfig(
+            edge_capacity_multiplier=2.0,
+            use_linear_congestion_cost=True,
+            block_edges_at_capacity=True,
+        ),
+    )
+
+    assert graph["1"]["2"]["base_capacity"] == 4
+    assert graph["1"]["2"]["capacity"] == 8
+    assert graph["1"]["2"]["capacity_multiplier"] == 2.0
+    assert graph["1"]["2"]["use_linear_congestion_cost"] is True
+    assert graph["1"]["2"]["block_edges_at_capacity"] is True

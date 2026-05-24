@@ -6,13 +6,15 @@ from evac_sim.orchestration.congestion_config import (
 )
 
 
-def test_congestion_config_uses_defaults_when_missing():
+def test_congestion_config_uses_backward_compatible_defaults_when_missing():
     assert build_congestion_config({}) == CongestionConfig(
         edge_capacity_multiplier=1.0,
+        use_linear_congestion_cost=False,
+        block_edges_at_capacity=False,
     )
 
 
-def test_congestion_config_reads_edge_capacity_multiplier():
+def test_congestion_config_enables_linear_policy_when_section_exists():
     cfg = {
         "congestion": {
             "edge_capacity_multiplier": 2.0,
@@ -21,6 +23,24 @@ def test_congestion_config_reads_edge_capacity_multiplier():
 
     assert build_congestion_config(cfg) == CongestionConfig(
         edge_capacity_multiplier=2.0,
+        use_linear_congestion_cost=True,
+        block_edges_at_capacity=True,
+    )
+
+
+def test_congestion_config_can_disable_linear_policy():
+    cfg = {
+        "congestion": {
+            "edge_capacity_multiplier": 2.0,
+            "use_linear_congestion_cost": False,
+            "block_edges_at_capacity": False,
+        }
+    }
+
+    assert build_congestion_config(cfg) == CongestionConfig(
+        edge_capacity_multiplier=2.0,
+        use_linear_congestion_cost=False,
+        block_edges_at_capacity=False,
     )
 
 
