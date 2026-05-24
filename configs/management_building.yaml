@@ -22,7 +22,7 @@ floor_0:
   environment: "management_building_floor_0"
   sources: ["39", "129"]
   agents: [5, 5]
-  targets: ["107", "27", "108"]
+  targets: ["107", "27", "108", "204"]
   mode_type: 0
   master_seed: 233
   risk_iterations: 7000
