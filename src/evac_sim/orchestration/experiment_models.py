@@ -6,6 +6,7 @@ from typing import Any
 import numpy as np
 
 from evac_sim.core.environment_info import EnvironmentInfo
+from evac_sim.orchestration.grouping_config import GroupDistributionConfig
 
 @dataclass(frozen=True)
 class AgentPositioningConfig:
@@ -47,5 +48,6 @@ class ExperimentResources:
     mode_type: int
     modes: list[int]
     agent_positioning: AgentPositioningConfig
+    grouping_config: GroupDistributionConfig | None
     jps_config: JuPedSimConfig
     owns_simulation_conn: bool

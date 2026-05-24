@@ -29,6 +29,7 @@ from evac_sim.orchestration.experiment_models import (
     ExperimentResources,
     JuPedSimConfig,
 )
+from evac_sim.orchestration.grouping_config import build_group_distribution_config
 
 
 def _uses_reservations(heuristic: str) -> bool:
@@ -219,6 +220,8 @@ def prepare_shared_resources(
     pol.set_targets(targets, env)
 
     agent_positioning = _build_agent_positioning_config(cfg, agent_seed)
+    grouping_config = build_group_distribution_config(cfg)
+
     positions = allocate_positions(
         sources=sources,
         total_agents=total_agents,
@@ -281,6 +284,7 @@ def prepare_shared_resources(
         mode_type=mode_type,
         modes=modes,
         agent_positioning=agent_positioning,
+        grouping_config=grouping_config,
         jps_config=jps_config,
         owns_simulation_conn=owns_simulation_conn,
     )
