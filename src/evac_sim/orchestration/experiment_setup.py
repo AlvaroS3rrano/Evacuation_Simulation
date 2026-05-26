@@ -425,6 +425,7 @@ def _create_initial_group(
     heuristic: str,
     beta: float,
     horizon_k: int | None,
+    no_path_policy: str = "raise",
 ) -> AgentGroup:
     group = AgentGroup(
         agents=[],
@@ -446,6 +447,23 @@ def _create_initial_group(
         group_size=group_size,
         horizon_k=horizon_k,
     )
+
+    waiting_due_to_congestion = False
+
+    if path is None and no_path_policy == "wait" and heuristic != "none":
+        path = compute_initial_path(
+            targets,
+            group,
+            env_info,
+            source,
+            risk_per_node=risk_first_frame,
+            gamma=gamma,
+            heuristic="none",
+            beta=1.0,
+            group_size=group_size,
+            horizon_k=None,
+        )
+        waiting_due_to_congestion = True
 
     if path is None:
         raise ValueError(
@@ -485,8 +503,11 @@ def _create_initial_group(
     group.initial_agents_ids = list(agent_ids)
     group.reserved_edges = set()
     group.reserved_group_size = 0
+    group.waiting_due_to_congestion = waiting_due_to_congestion
+    group.waiting_since_frame = 0 if waiting_due_to_congestion else None
+    group.no_path_count = 1 if waiting_due_to_congestion else 0
 
-    if _uses_reservations(heuristic):
+    if _uses_reservations(heuristic) and not group.waiting_due_to_congestion:
         update_group_reserved_edges(
             env_info,
             group,
@@ -516,6 +537,7 @@ def build_agent_groups(
     beta: float = 1.0,
     horizon_k: int | None = None,
     grouping_config: GroupDistributionConfig | None = None,
+    no_path_policy: str = "raise",
     logger=None,
 ) -> dict[str, AgentGroup]:
     agent_groups: dict[str, AgentGroup] = {}
@@ -571,6 +593,7 @@ def build_agent_groups(
             heuristic=heuristic,
             beta=beta,
             horizon_k=horizon_k,
+            no_path_policy=no_path_policy,
         )
 
         agent_groups[group_id] = group

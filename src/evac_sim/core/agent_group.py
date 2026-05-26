@@ -53,6 +53,10 @@ class AgentGroup:
     reserved_edges: set[tuple[Any, Any]] = field(default_factory=set)
     reserved_group_size: int = 0
 
+    waiting_due_to_congestion: bool = False
+    waiting_since_frame: int | None = None
+    no_path_count: int = 0
+
     def __post_init__(self) -> None:
         if self.algorithm not in (0, 1):
             raise ValueError("algorithm must be 0 (shortest path) or 1 (centrality-based path)")

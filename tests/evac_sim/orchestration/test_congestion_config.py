@@ -25,6 +25,7 @@ def test_congestion_config_enables_linear_policy_when_section_exists():
         edge_capacity_multiplier=2.0,
         use_linear_congestion_cost=True,
         block_edges_at_capacity=True,
+        no_path_policy="wait",
     )
 
 
@@ -34,6 +35,7 @@ def test_congestion_config_can_disable_linear_policy():
             "edge_capacity_multiplier": 2.0,
             "use_linear_congestion_cost": False,
             "block_edges_at_capacity": False,
+            "no_path_policy": "raise",
         }
     }
 
@@ -41,6 +43,7 @@ def test_congestion_config_can_disable_linear_policy():
         edge_capacity_multiplier=2.0,
         use_linear_congestion_cost=False,
         block_edges_at_capacity=False,
+        no_path_policy="raise",
     )
 
 
@@ -68,4 +71,26 @@ def test_congestion_config_rejects_negative_multiplier():
     }
 
     with pytest.raises(ValueError, match="edge_capacity_multiplier must be > 0"):
+        build_congestion_config(cfg)
+
+def test_congestion_config_defaults_to_wait_policy_when_section_exists():
+    cfg = {
+        "congestion": {
+            "edge_capacity_multiplier": 2.0,
+        }
+    }
+
+    congestion_config = build_congestion_config(cfg)
+
+    assert congestion_config.no_path_policy == "wait"
+
+
+def test_congestion_config_rejects_invalid_no_path_policy():
+    cfg = {
+        "congestion": {
+            "no_path_policy": "invalid",
+        }
+    }
+
+    with pytest.raises(ValueError, match="Unsupported congestion.no_path_policy"):
         build_congestion_config(cfg)

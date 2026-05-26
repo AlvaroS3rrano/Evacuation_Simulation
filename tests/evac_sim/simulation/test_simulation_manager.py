@@ -4,59 +4,49 @@ from evac_sim.core.agent_group import AgentGroup
 from evac_sim.simulation import simulation_manager as sm
 
 
-def build_group(awareness_level=0, path=None, current_nodes=None, agents=None):
+def build_group(
+    awareness_level=0,
+    path=None,
+    current_nodes=None,
+    agents=None,
+):
     if path is None:
         path = ["A", "B", "C"]
+
     if current_nodes is None:
         current_nodes = {1: "A", 2: "A"}
+
     if agents is None:
         agents = [1, 2]
 
-    group = AgentGroup(
+    return AgentGroup(
         agents=agents,
         path=path,
         current_nodes=current_nodes,
         algorithm=0,
         awareness_level=awareness_level,
+        initial_agents_ids=list(agents),
     )
-    group.reserved_edges = set()
-    group.reserved_group_size = 0
-    group.initial_agents_ids = list(agents)
-    return group
 
 
 def build_sim_cfg():
     return SimpleNamespace(
         simulation=SimpleNamespace(
             agents=lambda: [SimpleNamespace(id=1), SimpleNamespace(id=2)],
-            switch_agent_journey=lambda *args, **kwargs: None,
         ),
-        waypoints_ids={"B": 101, "C": 102, "D": 103, "X": 104, "Y": 105},
-        exit_ids={"D": 201, "Y": 202},
-        exit_names=["D", "Y"],
+        every_nth_frame_simulation=1,
+        every_nth_frame_animation=1,
         gamma=0.4,
     )
 
 
-def test_reservation_horizon_for_heuristic_h1_returns_none():
-    assert sm._reservation_horizon_for_heuristic("h1", 5) is None
-
-
-def test_reservation_horizon_for_heuristic_h2_uses_default_when_missing():
-    assert sm._reservation_horizon_for_heuristic("h2", None) == 3
-
-
-def test_reservation_horizon_for_heuristic_h2_uses_explicit_value():
-    assert sm._reservation_horizon_for_heuristic("h2", 7) == 7
-
-
-def test_process_frame_passes_horizon_to_reservation_updates(monkeypatch):
+def test_process_frame_calls_process_single_group(monkeypatch):
     captured = []
 
     monkeypatch.setattr(
         sm,
         "get_risk_levels_by_frame",
-        lambda conn, case_name, frame: {},
+        lambda conn, case_name, frame: {"A": 0.1},
     )
 
     monkeypatch.setattr(
@@ -65,485 +55,173 @@ def test_process_frame_passes_horizon_to_reservation_updates(monkeypatch):
         lambda sim_cfg, group, frame: None,
     )
 
-    def fake_update_group_reserved_edges(env_info, group, **kwargs):
-        captured.append(kwargs.get("horizon_k"))
-
-    monkeypatch.setattr(sm, "update_group_reserved_edges", fake_update_group_reserved_edges)
-
     monkeypatch.setattr(
         sm,
-        "insert_agent_areas",
-        lambda *args, **kwargs: None,
+        "split_group_by_progress_threshold",
+        lambda group, threshold: None,
     )
 
-    monkeypatch.setattr(
-        sm,
-        "update_agent_speed_on_stairs",
-        lambda *args, **kwargs: None,
-    )
+    def fake_process_single_group(*args, **kwargs):
+        captured.append(
+            {
+                "case_name": kwargs["case_name"],
+                "mode": kwargs["mode"],
+                "frame": kwargs["frame"],
+                "heuristic": kwargs["heuristic"],
+                "horizon_k": kwargs["horizon_k"],
+                "no_path_policy": kwargs["no_path_policy"],
+                "group_id": kwargs["group_id"],
+            }
+        )
 
-    monkeypatch.setattr(
-        sm,
-        "update_group_paths",
-        lambda *args, **kwargs: args[2],
-    )
-
-    monkeypatch.setattr(
-        sm,
-        "record_group_path_data",
-        lambda *args, **kwargs: None,
-    )
-
-    sim_cfg = SimpleNamespace(
-        simulation=SimpleNamespace(
-            agents=lambda: [SimpleNamespace(id=1), SimpleNamespace(id=2)]
-        ),
-        gamma=0.4,
-    )
+    monkeypatch.setattr(sm, "process_single_group", fake_process_single_group)
 
     groups = {"g1": build_group()}
 
     sm.process_frame(
-        sim_cfg,
+        build_sim_cfg(),
         groups,
         env_info=SimpleNamespace(graph=None),
         conn=None,
         case_name="case",
         mode=0,
-        frame=0,
+        frame=3,
         threshold=0.5,
         heuristic="h2",
         beta=1.0,
         horizon_k=2,
+        no_path_policy="wait",
     )
 
-    assert captured == [2]
-
-
-def test_process_frame_reapplies_reservation_after_reroute(monkeypatch):
-    captured = []
-
-    monkeypatch.setattr(
-        sm,
-        "get_risk_levels_by_frame",
-        lambda conn, case_name, frame: {},
-    )
-
-    monkeypatch.setattr(
-        sm,
-        "compute_current_nodes",
-        lambda sim_cfg, group, frame: None,
-    )
-
-    def fake_update_group_reserved_edges(env_info, group, **kwargs):
-        captured.append((tuple(group.path), kwargs.get("horizon_k")))
-
-    monkeypatch.setattr(sm, "update_group_reserved_edges", fake_update_group_reserved_edges)
-
-    monkeypatch.setattr(
-        sm,
-        "insert_agent_areas",
-        lambda *args, **kwargs: None,
-    )
-
-    monkeypatch.setattr(
-        sm,
-        "update_agent_speed_on_stairs",
-        lambda *args, **kwargs: None,
-    )
-
-    def fake_update_group_paths(*args, **kwargs):
-        group = args[2]
-        group.path = ["A", "X", "D"]
-        return group
-
-    monkeypatch.setattr(sm, "update_group_paths", fake_update_group_paths)
-
-    monkeypatch.setattr(
-        sm,
-        "record_group_path_data",
-        lambda *args, **kwargs: None,
-    )
-
-    sim_cfg = SimpleNamespace(
-        simulation=SimpleNamespace(
-            agents=lambda: [SimpleNamespace(id=1), SimpleNamespace(id=2)]
-        ),
-        gamma=0.4,
-    )
-
-    groups = {"g1": build_group()}
-
-    sm.process_frame(
-        sim_cfg,
-        groups,
-        env_info=SimpleNamespace(graph=None),
-        conn=None,
-        case_name="case",
-        mode=0,
-        frame=0,
-        threshold=0.5,
-        heuristic="h2",
-        beta=1.0,
-        horizon_k=2,
-    )
-
-    assert captured[0] == (("A", "B", "C"), 2)
-    assert captured[1] == (("A", "X", "D"), 2)
-    assert len(captured) == 2
-
-
-def test_update_group_paths_passes_horizon_k_to_effective_cost(monkeypatch):
-    sim_cfg = build_sim_cfg()
-    env_info = SimpleNamespace(graph={})
-    group = build_group(
-        awareness_level=1,
-        path=["A", "B", "C", "D"],
-        current_nodes={1: "A", 2: "A"},
-        agents=[1, 2],
-    )
-
-    monkeypatch.setattr(sm, "validate_agent", lambda *args, **kwargs: True)
-    monkeypatch.setattr(sm, "is_sublist", lambda alt, current: False)
-    monkeypatch.setattr(sm, "compute_alternative_path", lambda *args, **kwargs: None)
-
-    monkeypatch.setattr(
-        sm,
-        "compute_best_available_path",
-        lambda *args, **kwargs: ["A", "X", "Y"],
-    )
-
-    monkeypatch.setattr(
-        sm,
-        "_remaining_path_from_node",
-        lambda path, current_node: path,
-    )
-
-    captured_horizons = []
-
-    def fake_compute_path_effective_cost(graph, path, **kwargs):
-        captured_horizons.append(kwargs.get("horizon_k"))
-
-        costs = {
-            tuple(["A", "B", "C", "D"]): 10.0,
-            tuple(["A", "X", "Y"]): 7.0,
+    assert captured == [
+        {
+            "case_name": "case",
+            "mode": 0,
+            "frame": 3,
+            "heuristic": "h2",
+            "horizon_k": 2,
+            "no_path_policy": "wait",
+            "group_id": "g1",
         }
-        return costs[tuple(path)]
+    ]
 
+
+def test_process_frame_filters_inactive_agents(monkeypatch):
+    captured = []
+
+    monkeypatch.setattr(sm, "get_risk_levels_by_frame", lambda *args, **kwargs: {})
+    monkeypatch.setattr(sm, "compute_current_nodes", lambda *args, **kwargs: None)
     monkeypatch.setattr(
         sm,
-        "compute_path_effective_cost",
-        fake_compute_path_effective_cost,
+        "split_group_by_progress_threshold",
+        lambda group, threshold: None,
     )
 
-    monkeypatch.setattr(
-        sm,
-        "set_journeys",
-        lambda simulation, curr_node, paths, waypoints, exit_ids: {
-            curr_node: [(999, paths[0])]
-        },
+    def fake_process_single_group(*args, **kwargs):
+        captured.append(kwargs["group"].agents)
+
+    monkeypatch.setattr(sm, "process_single_group", fake_process_single_group)
+
+    sim_cfg = SimpleNamespace(
+        simulation=SimpleNamespace(
+            agents=lambda: [SimpleNamespace(id=1)],
+        ),
+        gamma=0.4,
     )
 
-    updated_group = sm.update_group_paths(
-        sim_cfg,
-        risk_map={},
-        group=group,
-        env_info=env_info,
-        threshold=0.5,
-        frame=0,
-        group_id="g1",
-        heuristic="h2",
-        beta=1.0,
-        horizon_k=2,
-        congestion_reroute_epsilon=0.10,
-    )
-
-    assert captured_horizons == [2, 2]
-    assert updated_group.path == ["A", "X", "Y"]
-
-
-def test_high_awareness_reroutes_due_to_congestion_improvement(monkeypatch):
-    sim_cfg = build_sim_cfg()
-    env_info = SimpleNamespace(graph={})
-    group = build_group(
-        awareness_level=1,
-        path=["A", "B", "C", "D"],
-        current_nodes={1: "A", 2: "A"},
-        agents=[1, 2],
-    )
-
-    monkeypatch.setattr(sm, "validate_agent", lambda *args, **kwargs: True)
-    monkeypatch.setattr(sm, "is_sublist", lambda alt, current: False)
-
-    monkeypatch.setattr(sm, "compute_alternative_path", lambda *args, **kwargs: None)
-
-    monkeypatch.setattr(
-        sm,
-        "compute_best_available_path",
-        lambda *args, **kwargs: ["A", "X", "Y"],
-    )
-
-    costs = {
-        tuple(["A", "B", "C", "D"]): 10.0,
-        tuple(["A", "X", "Y"]): 7.0,
+    groups = {
+        "g1": build_group(
+            agents=[1, 2],
+            current_nodes={1: "A", 2: "A"},
+        )
     }
 
-    monkeypatch.setattr(
-        sm,
-        "_remaining_path_from_node",
-        lambda path, current_node: path,
-    )
-
-    monkeypatch.setattr(
-        sm,
-        "compute_path_effective_cost",
-        lambda graph, path, **kwargs: costs[tuple(path)],
-    )
-
-    monkeypatch.setattr(
-        sm,
-        "set_journeys",
-        lambda simulation, curr_node, paths, waypoints, exit_ids: {
-            curr_node: [(999, paths[0])]
-        },
-    )
-
-    updated_group = sm.update_group_paths(
+    sm.process_frame(
         sim_cfg,
-        risk_map={},
-        group=group,
-        env_info=env_info,
-        threshold=0.5,
+        groups,
+        env_info=SimpleNamespace(graph=None),
+        conn=None,
+        case_name="case",
+        mode=0,
         frame=0,
-        group_id="g1",
-        heuristic="h2",
-        beta=1.0,
-        horizon_k=2,
-        congestion_reroute_epsilon=0.10,
-    )
-
-    assert updated_group.path == ["A", "X", "Y"]
-
-
-def test_high_awareness_does_not_reroute_if_improvement_is_below_epsilon(monkeypatch):
-    sim_cfg = build_sim_cfg()
-    env_info = SimpleNamespace(graph={})
-    group = build_group(
-        awareness_level=1,
-        path=["A", "B", "C", "D"],
-        current_nodes={1: "A", 2: "A"},
-        agents=[1, 2],
-    )
-
-    monkeypatch.setattr(sm, "validate_agent", lambda *args, **kwargs: True)
-    monkeypatch.setattr(sm, "is_sublist", lambda alt, current: False)
-
-    monkeypatch.setattr(sm, "compute_alternative_path", lambda *args, **kwargs: None)
-    monkeypatch.setattr(
-        sm,
-        "compute_best_available_path",
-        lambda *args, **kwargs: ["A", "X", "Y"],
-    )
-
-    # 5% improvement, lower than 10%
-    costs = {
-        tuple(["A", "B", "C", "D"]): 10.0,
-        tuple(["A", "X", "Y"]): 9.5,
-    }
-
-    monkeypatch.setattr(sm, "_remaining_path_from_node", lambda path, current_node: path)
-    monkeypatch.setattr(
-        sm,
-        "compute_path_effective_cost",
-        lambda graph, path, **kwargs: costs[tuple(path)],
-    )
-
-    updated_group = sm.update_group_paths(
-        sim_cfg,
-        risk_map={},
-        group=group,
-        env_info=env_info,
         threshold=0.5,
-        frame=0,
-        group_id="g1",
-        heuristic="h2",
-        beta=1.0,
-        horizon_k=2,
-        congestion_reroute_epsilon=0.10,
     )
 
-    assert updated_group.path == ["A", "B", "C", "D"]
+    assert captured == [[1]]
+    assert groups["g1"].agents == [1]
+    assert groups["g1"].current_nodes == {1: "A"}
 
 
-def test_low_awareness_does_not_reroute_due_to_congestion_only(monkeypatch):
-    sim_cfg = build_sim_cfg()
-    env_info = SimpleNamespace(graph={})
-    group = build_group(
-        awareness_level=0,
-        path=["A", "B", "C", "D"],
-        current_nodes={1: "A", 2: "A"},
-        agents=[1, 2],
+def test_process_frame_splits_group_and_processes_both_subgroups(monkeypatch):
+    processed_group_ids = []
+
+    lead_group = build_group(
+        agents=[1],
+        current_nodes={1: "B"},
+    )
+    lag_group = build_group(
+        agents=[2],
+        current_nodes={2: "A"},
     )
 
-    monkeypatch.setattr(sm, "validate_agent", lambda *args, **kwargs: True)
-    monkeypatch.setattr(sm, "is_sublist", lambda alt, current: False)
-
-    # No risk trigger
-    monkeypatch.setattr(sm, "compute_alternative_path", lambda *args, **kwargs: None)
-
-    # Even with a better option low awareness should not change
+    monkeypatch.setattr(sm, "get_risk_levels_by_frame", lambda *args, **kwargs: {})
+    monkeypatch.setattr(sm, "compute_current_nodes", lambda *args, **kwargs: None)
     monkeypatch.setattr(
         sm,
-        "compute_best_available_path",
-        lambda *args, **kwargs: ["A", "X", "Y"],
+        "split_group_by_progress_threshold",
+        lambda group, threshold: (lead_group, lag_group),
     )
-
-    monkeypatch.setattr(sm, "_remaining_path_from_node", lambda path, current_node: path)
     monkeypatch.setattr(
         sm,
-        "compute_path_effective_cost",
-        lambda graph, path, **kwargs: 1.0,
+        "next_split_group_id",
+        lambda groups, parent_group_id, suffix="lag": "g1__lag",
     )
-
-    updated_group = sm.update_group_paths(
-        sim_cfg,
-        risk_map={},
-        group=group,
-        env_info=env_info,
-        threshold=0.5,
-        frame=0,
-        group_id="g1",
-        heuristic="h2",
-        beta=1.0,
-        horizon_k=2,
-        congestion_reroute_epsilon=0.10,
-    )
-
-    assert updated_group.path == ["A", "B", "C", "D"]
-
-
-def test_high_awareness_still_reroutes_due_to_risk_trigger(monkeypatch):
-    sim_cfg = build_sim_cfg()
-    env_info = SimpleNamespace(graph={})
-    group = build_group(
-        awareness_level=1,
-        path=["A", "B", "C", "D"],
-        current_nodes={1: "A", 2: "A"},
-        agents=[1, 2],
-    )
-
-    monkeypatch.setattr(sm, "validate_agent", lambda *args, **kwargs: True)
-    monkeypatch.setattr(sm, "is_sublist", lambda alt, current: False)
-
-    # Risk trigger
     monkeypatch.setattr(
         sm,
-        "compute_alternative_path",
-        lambda *args, **kwargs: ["A", "X", "Y"],
-    )
-
-    monkeypatch.setattr(
-        sm,
-        "compute_best_available_path",
+        "release_group_reserved_edges",
         lambda *args, **kwargs: None,
     )
 
-    monkeypatch.setattr(
-        sm,
-        "set_journeys",
-        lambda simulation, curr_node, paths, waypoints, exit_ids: {
-            curr_node: [(999, paths[0])]
-        },
-    )
+    def fake_process_single_group(*args, **kwargs):
+        processed_group_ids.append(kwargs["group_id"])
 
-    updated_group = sm.update_group_paths(
-        sim_cfg,
-        risk_map={"C": 0.9},
-        group=group,
-        env_info=env_info,
-        threshold=0.5,
+    monkeypatch.setattr(sm, "process_single_group", fake_process_single_group)
+
+    groups = {"g1": build_group()}
+
+    sm.process_frame(
+        build_sim_cfg(),
+        groups,
+        env_info=SimpleNamespace(graph=None),
+        conn=None,
+        case_name="case",
+        mode=0,
         frame=0,
-        group_id="g1",
-        heuristic="h2",
-        beta=1.0,
-        horizon_k=2,
-        congestion_reroute_epsilon=0.10,
-    )
-
-    assert updated_group.path == ["A", "X", "Y"]
-
-
-def test_high_awareness_does_not_reroute_if_best_path_is_equivalent(monkeypatch):
-    sim_cfg = build_sim_cfg()
-    env_info = SimpleNamespace(graph={})
-    group = build_group(
-        awareness_level=1,
-        path=["A", "B", "C", "D"],
-        current_nodes={1: "A", 2: "A"},
-        agents=[1, 2],
-    )
-
-    monkeypatch.setattr(sm, "validate_agent", lambda *args, **kwargs: True)
-
-    monkeypatch.setattr(sm, "compute_alternative_path", lambda *args, **kwargs: None)
-    monkeypatch.setattr(
-        sm,
-        "compute_best_available_path",
-        lambda *args, **kwargs: ["A", "B", "C", "D"],
-    )
-
-    monkeypatch.setattr(sm, "is_sublist", lambda alt, current: True)
-
-    updated_group = sm.update_group_paths(
-        sim_cfg,
-        risk_map={},
-        group=group,
-        env_info=env_info,
         threshold=0.5,
-        frame=0,
-        group_id="g1",
         heuristic="h2",
-        beta=1.0,
-        horizon_k=2,
-        congestion_reroute_epsilon=0.10,
+        group_split_threshold=1,
     )
 
-    assert updated_group.path == ["A", "B", "C", "D"]
+    assert processed_group_ids == ["g1", "g1__lag"]
+    assert groups["g1"] is lead_group
+    assert groups["g1__lag"] is lag_group
 
 
-def test_process_frame_releases_own_reservations_before_reroute_evaluation(monkeypatch):
-    order = []
+def test_process_frame_skips_group_when_all_agents_are_inactive(monkeypatch):
+    called = False
 
     monkeypatch.setattr(sm, "get_risk_levels_by_frame", lambda *args, **kwargs: {})
     monkeypatch.setattr(sm, "compute_current_nodes", lambda *args, **kwargs: None)
-    monkeypatch.setattr(sm, "insert_agent_areas", lambda *args, **kwargs: None)
-    monkeypatch.setattr(sm, "update_agent_speed_on_stairs", lambda *args, **kwargs: None)
-    monkeypatch.setattr(sm, "record_group_path_data", lambda *args, **kwargs: None)
 
-    def fake_update_group_reserved_edges(env_info, group, **kwargs):
-        order.append(("reserve", tuple(group.path), kwargs.get("horizon_k")))
+    def fake_process_single_group(*args, **kwargs):
+        nonlocal called
+        called = True
 
-    monkeypatch.setattr(sm, "update_group_reserved_edges", fake_update_group_reserved_edges)
-    monkeypatch.setattr(
-        sm,
-        "release_group_reserved_edges",
-        lambda *args, **kwargs: order.append(("release", None, None)),
-    )
-    monkeypatch.setattr(
-        sm,
-        "restore_group_reserved_edges",
-        lambda *args, **kwargs: order.append(("restore", None, None)),
-    )
-
-    monkeypatch.setattr(
-        sm,
-        "update_group_paths",
-        lambda *args, **kwargs: args[2],  # no path change
-    )
+    monkeypatch.setattr(sm, "process_single_group", fake_process_single_group)
 
     sim_cfg = SimpleNamespace(
         simulation=SimpleNamespace(
-            agents=lambda: [SimpleNamespace(id=1), SimpleNamespace(id=2)]
+            agents=lambda: [],
         ),
         gamma=0.4,
     )
@@ -559,212 +237,72 @@ def test_process_frame_releases_own_reservations_before_reroute_evaluation(monke
         mode=0,
         frame=0,
         threshold=0.5,
-        heuristic="h2",
-        beta=1.0,
-        horizon_k=2,
     )
 
-    assert order == [
-        ("reserve", ("A", "B", "C"), 2),
-        ("release", None, None),
-        ("restore", None, None),
-    ]
+    assert called is False
+    assert groups["g1"].agents == []
 
 
-def test_process_frame_restores_previous_reservations_when_path_does_not_change(monkeypatch):
-    order = []
+def test_run_agent_simulation_processes_initial_frame(monkeypatch):
+    calls = []
 
-    monkeypatch.setattr(sm, "get_risk_levels_by_frame", lambda *args, **kwargs: {})
-    monkeypatch.setattr(sm, "compute_current_nodes", lambda *args, **kwargs: None)
-    monkeypatch.setattr(sm, "insert_agent_areas", lambda *args, **kwargs: None)
-    monkeypatch.setattr(sm, "update_agent_speed_on_stairs", lambda *args, **kwargs: None)
-    monkeypatch.setattr(sm, "record_group_path_data", lambda *args, **kwargs: None)
+    class FakeSimulation:
+        def __init__(self):
+            self._agent_count = 1
 
-    monkeypatch.setattr(
-        sm,
-        "update_group_reserved_edges",
-        lambda *args, **kwargs: order.append("reserve"),
-    )
-    monkeypatch.setattr(
-        sm,
-        "release_group_reserved_edges",
-        lambda *args, **kwargs: order.append("release"),
-    )
-    monkeypatch.setattr(
-        sm,
-        "restore_group_reserved_edges",
-        lambda *args, **kwargs: order.append("restore"),
-    )
+        def agent_count(self):
+            return self._agent_count
 
-    monkeypatch.setattr(
-        sm,
-        "update_group_paths",
-        lambda *args, **kwargs: args[2],  # no reroute
-    )
+        def iterate(self):
+            self._agent_count = 0
+
+        def iteration_count(self):
+            return 1
 
     sim_cfg = SimpleNamespace(
-        simulation=SimpleNamespace(
-            agents=lambda: [SimpleNamespace(id=1), SimpleNamespace(id=2)]
-        ),
+        simulation=FakeSimulation(),
+        every_nth_frame_simulation=1,
+        every_nth_frame_animation=1,
         gamma=0.4,
     )
 
-    groups = {"g1": build_group()}
+    def fake_process_frame(*args, **kwargs):
+        calls.append(kwargs["frame"])
 
-    sm.process_frame(
+    monkeypatch.setattr(sm, "process_frame", fake_process_frame)
+
+    sm.run_agent_simulation(
         sim_cfg,
-        groups,
+        log_every_frames=1,
+        agent_groups={"g1": build_group()},
         env_info=SimpleNamespace(graph=None),
         conn=None,
         case_name="case",
         mode=0,
-        frame=0,
         threshold=0.5,
-        heuristic="h2",
-        beta=1.0,
-        horizon_k=2,
     )
 
-    assert order == ["reserve", "release", "restore"]
+    assert calls == [0, 1]
 
 
-def test_process_frame_replaces_old_reservations_when_path_changes(monkeypatch):
-    order = []
+def test_set_agents_in_simulation_adds_agents():
+    added_params = []
 
-    monkeypatch.setattr(sm, "get_risk_levels_by_frame", lambda *args, **kwargs: {})
-    monkeypatch.setattr(sm, "compute_current_nodes", lambda *args, **kwargs: None)
-    monkeypatch.setattr(sm, "insert_agent_areas", lambda *args, **kwargs: None)
-    monkeypatch.setattr(sm, "update_agent_speed_on_stairs", lambda *args, **kwargs: None)
-    monkeypatch.setattr(sm, "record_group_path_data", lambda *args, **kwargs: None)
+    class FakeSimulation:
+        def add_agent(self, params):
+            added_params.append(params)
+            return SimpleNamespace(id=len(added_params))
 
-    def fake_update_group_reserved_edges(env_info, group, **kwargs):
-        order.append(("reserve", tuple(group.path), kwargs.get("horizon_k")))
-
-    monkeypatch.setattr(sm, "update_group_reserved_edges", fake_update_group_reserved_edges)
-    monkeypatch.setattr(
-        sm,
-        "release_group_reserved_edges",
-        lambda *args, **kwargs: order.append(("release", None, None)),
-    )
-    monkeypatch.setattr(
-        sm,
-        "restore_group_reserved_edges",
-        lambda *args, **kwargs: order.append(("restore", None, None)),
+    agents = sm.set_agents_in_simulation(
+        FakeSimulation(),
+        positions=[(1.0, 2.0), (3.0, 4.0)],
+        journey_id=10,
+        waypoint_id=20,
+        speed=1.5,
     )
 
-    def fake_update_group_paths(*args, **kwargs):
-        group = args[2]
-        group.path = ["A", "X", "D"]
-        return group
-
-    monkeypatch.setattr(sm, "update_group_paths", fake_update_group_paths)
-
-    sim_cfg = SimpleNamespace(
-        simulation=SimpleNamespace(
-            agents=lambda: [SimpleNamespace(id=1), SimpleNamespace(id=2)]
-        ),
-        gamma=0.4,
-    )
-
-    groups = {"g1": build_group()}
-
-    sm.process_frame(
-        sim_cfg,
-        groups,
-        env_info=SimpleNamespace(graph=None),
-        conn=None,
-        case_name="case",
-        mode=0,
-        frame=0,
-        threshold=0.5,
-        heuristic="h2",
-        beta=1.0,
-        horizon_k=2,
-    )
-
-    assert order == [
-        ("reserve", ("A", "B", "C"), 2),
-        ("release", None, None),
-        ("reserve", ("A", "X", "D"), 2),
-    ]
-
-
-def test_process_frame_does_not_restore_old_reservations_after_reroute(monkeypatch):
-    calls = {"restore": 0}
-
-    monkeypatch.setattr(sm, "get_risk_levels_by_frame", lambda *args, **kwargs: {})
-    monkeypatch.setattr(sm, "compute_current_nodes", lambda *args, **kwargs: None)
-    monkeypatch.setattr(sm, "insert_agent_areas", lambda *args, **kwargs: None)
-    monkeypatch.setattr(sm, "update_agent_speed_on_stairs", lambda *args, **kwargs: None)
-    monkeypatch.setattr(sm, "record_group_path_data", lambda *args, **kwargs: None)
-    monkeypatch.setattr(sm, "update_group_reserved_edges", lambda *args, **kwargs: None)
-    monkeypatch.setattr(sm, "release_group_reserved_edges", lambda *args, **kwargs: None)
-
-    def fake_restore_group_reserved_edges(*args, **kwargs):
-        calls["restore"] += 1
-
-    monkeypatch.setattr(sm, "restore_group_reserved_edges", fake_restore_group_reserved_edges)
-
-    def fake_update_group_paths(*args, **kwargs):
-        group = args[2]
-        group.path = ["A", "X", "D"]
-        return group
-
-    monkeypatch.setattr(sm, "update_group_paths", fake_update_group_paths)
-
-    sim_cfg = SimpleNamespace(
-        simulation=SimpleNamespace(
-            agents=lambda: [SimpleNamespace(id=1), SimpleNamespace(id=2)]
-        ),
-        gamma=0.4,
-    )
-
-    groups = {"g1": build_group()}
-
-    sm.process_frame(
-        sim_cfg,
-        groups,
-        env_info=SimpleNamespace(graph=None),
-        conn=None,
-        case_name="case",
-        mode=0,
-        frame=0,
-        threshold=0.5,
-        heuristic="h2",
-        beta=1.0,
-        horizon_k=2,
-    )
-
-    assert calls["restore"] == 0
-
-
-def test_split_group_by_progress_threshold_splits_lagging_agents():
-    group = build_group(
-        awareness_level=1,
-        path=["A", "B", "C", "D", "E"],
-        current_nodes={1: "D", 2: "D", 3: "B", 4: "A"},
-        agents=[1, 2, 3, 4],
-    )
-
-    result = sm.split_group_by_progress_threshold(group, threshold=1)
-
-    assert result is not None
-    lead_group, lag_group = result
-
-    assert lead_group.agents == [1, 2]
-    assert lag_group.agents == [3, 4]
-    assert lead_group.path == ["A", "B", "C", "D", "E"]
-    assert lag_group.path == ["A", "B", "C", "D", "E"]
-
-
-def test_split_group_by_progress_threshold_returns_none_when_dispersion_is_within_threshold():
-    group = build_group(
-        awareness_level=1,
-        path=["A", "B", "C", "D"],
-        current_nodes={1: "C", 2: "B", 3: "B"},
-        agents=[1, 2, 3],
-    )
-
-    result = sm.split_group_by_progress_threshold(group, threshold=1)
-
-    assert result is None
+    assert [agent.id for agent in agents] == [1, 2]
+    assert len(added_params) == 2
+    assert added_params[0].journey_id == 10
+    assert added_params[0].stage_id == 20
+    assert added_params[0].desired_speed == 1.5

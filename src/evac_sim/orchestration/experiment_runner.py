@@ -227,6 +227,7 @@ def run_single_mode(
         beta=beta,
         horizon_k=horizon_k,
         grouping_config=resources.grouping_config,
+        no_path_policy=resources.congestion_config.no_path_policy,
         logger=log,
     )
 
@@ -256,6 +257,7 @@ def run_single_mode(
             horizon_k=horizon_k,
             congestion_reroute_epsilon=congestion_reroute_epsilon,
             group_split_threshold=cfg.get("group_split_threshold", None),
+            no_path_policy=resources.congestion_config.no_path_policy,
         )
     except Exception:
         log.exception("Simulation failed | mode=%s", mode)
