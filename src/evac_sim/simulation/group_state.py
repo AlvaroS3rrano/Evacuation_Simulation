@@ -40,7 +40,11 @@ def reservation_horizon_for_heuristic(
 
 
 def uses_reservations(heuristic: str) -> bool:
-    return heuristic != "none"
+    return heuristic in {"h1", "h2"}
+
+
+def uses_temporal_reservations(heuristic: str) -> bool:
+    return heuristic == "h3"
 
 
 def safe_path_index(path: list | None, node: Any) -> int:

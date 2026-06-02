@@ -10,12 +10,17 @@ from evac_sim.simulation.group_state import (
     reservation_horizon_for_heuristic,
     set_group_speed,
     uses_reservations,
+    uses_temporal_reservations,
 )
 from evac_sim.simulation.simulation_logic import (
     release_group_reserved_edges,
     restore_group_reserved_edges,
     update_agent_speed_on_stairs,
     update_group_reserved_edges,
+)
+from evac_sim.simulation.temporal_capacity import (
+    release_temporal_path_reservation,
+    reserve_temporal_path,
 )
 
 
@@ -42,17 +47,25 @@ def process_single_group(
         heuristic,
         horizon_k,
     )
-    use_reservations = uses_reservations(heuristic)
+
+    use_edge_reservations = uses_reservations(heuristic)
+    use_temporal_reservations = uses_temporal_reservations(heuristic)
 
     waiting_before_update = getattr(group, "waiting_due_to_congestion", False)
 
-    if use_reservations and not waiting_before_update:
+    if use_edge_reservations and not waiting_before_update:
         update_group_reserved_edges(
             env_info,
             group,
             frame=frame,
             group_id=group_id,
             horizon_k=reservation_horizon,
+        )
+
+    if use_temporal_reservations:
+        release_temporal_path_reservation(
+            env_info.graph,
+            group_id=group_id,
         )
 
     agent_areas = {
@@ -72,7 +85,7 @@ def process_single_group(
     old_reserved_edges = set(group.reserved_edges)
     old_reserved_group_size = group.reserved_group_size
 
-    if use_reservations and old_reserved_edges:
+    if use_edge_reservations and old_reserved_edges:
         release_group_reserved_edges(env_info, group)
 
     group = update_group_paths(
@@ -90,7 +103,7 @@ def process_single_group(
         no_path_policy=no_path_policy,
     )
 
-    if use_reservations:
+    if use_edge_reservations:
         if getattr(group, "waiting_due_to_congestion", False):
             group.reserved_edges = set()
             group.reserved_group_size = 0
@@ -110,6 +123,24 @@ def process_single_group(
                 group_id=group_id,
                 horizon_k=reservation_horizon,
             )
+
+    elif use_temporal_reservations:
+        if getattr(group, "waiting_due_to_congestion", False):
+            release_temporal_path_reservation(
+                env_info.graph,
+                group_id=group_id,
+            )
+        else:
+            reserve_temporal_path(
+                env_info.graph,
+                group.path,
+                group_id=group_id,
+                group_size=len(group.agents),
+                current_frame=frame,
+            )
+
+        group.reserved_edges = set()
+        group.reserved_group_size = 0
 
     else:
         group.reserved_edges = set()

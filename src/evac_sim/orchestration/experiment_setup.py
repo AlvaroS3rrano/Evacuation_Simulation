@@ -23,7 +23,7 @@ from evac_sim.risk.risk_validation import validate_risk_inputs
 from evac_sim.routing.decision_policies import compute_initial_path
 from evac_sim.simulation.simulation_logic import update_group_reserved_edges
 from evac_sim.simulation.simulation_manager import set_agents_in_simulation
-
+from evac_sim.simulation.temporal_capacity import reserve_temporal_path
 from evac_sim.orchestration.experiment_models import (
     AgentPositioningConfig,
     ExperimentResources,
@@ -41,7 +41,7 @@ from evac_sim.orchestration.congestion_config import build_congestion_config
 from evac_sim.orchestration.edge_capacity import apply_congestion_settings_to_graph
 
 def _uses_reservations(heuristic: str) -> bool:
-    return heuristic != "none"
+    return heuristic in {"h1", "h2"}
 
 
 def _initial_reservation_horizon(
@@ -546,6 +546,15 @@ def _create_initial_group(
             frame=0,
             group_id=group_id,
             horizon_k=_initial_reservation_horizon(heuristic, horizon_k),
+        )
+
+    if heuristic == "h3" and not group.waiting_due_to_congestion:
+        reserve_temporal_path(
+            env_info.graph,
+            group.path,
+            group_id=group_id,
+            group_size=len(group.agents),
+            current_frame=0,
         )
 
     return group

@@ -14,11 +14,13 @@ from evac_sim.simulation.group_state import (
     ctx,
     remaining_path_from_node,
     uses_reservations,
+    uses_temporal_reservations,
 )
 from evac_sim.simulation.simulation_logic import (
     compute_current_nodes,
     release_group_reserved_edges,
 )
+from evac_sim.simulation.temporal_capacity import release_temporal_path_reservation
 
 logger = logging.getLogger(__name__)
 
@@ -41,6 +43,8 @@ def process_frame(
     no_path_policy: str = "raise",
 ) -> None:
     risks = get_risk_levels_by_frame(conn, case_name, frame)
+
+    env_info.graph.graph["current_frame"] = frame
 
     for original_group_id, original_group in list(groups.items()):
         try:
@@ -98,6 +102,11 @@ def process_frame(
 
                 if uses_reservations(heuristic):
                     release_group_reserved_edges(env_info, group)
+                elif uses_temporal_reservations(heuristic):
+                    release_temporal_path_reservation(
+                        env_info.graph,
+                        group_id=original_group_id,
+                    )
                 else:
                     group.reserved_edges = set()
                     group.reserved_group_size = 0

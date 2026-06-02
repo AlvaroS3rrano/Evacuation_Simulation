@@ -5,6 +5,7 @@ import networkx as nx
 from networkx.algorithms.simple_paths import shortest_simple_paths
 
 from evac_sim.routing.heuristics import compute_effective_edge_cost
+from evac_sim.simulation.temporal_capacity import compute_temporal_path_effective_cost
 
 import logging
 
@@ -67,6 +68,14 @@ def compute_path_effective_cost(
     """
     if not path or len(path) < 2:
         return float("inf")
+
+    if heuristic == "h3":
+        return compute_temporal_path_effective_cost(
+            G,
+            path,
+            group_size=group_size,
+            beta=beta,
+        )
 
     total = 0.0
 
@@ -142,6 +151,11 @@ def collect_k_shortest_paths(
     all_paths = []
 
     def edge_weight(u, v, edge_data):
+        if heuristic == "h3":
+            # Candidate generation uses base edge costs. The final ranking is
+            # computed afterwards with temporal node/edge capacity.
+            return edge_data["cost"]
+
         if heuristic == "h2":
             return compute_effective_edge_cost(
                 edge_data=edge_data,

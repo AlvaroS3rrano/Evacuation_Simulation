@@ -26,6 +26,23 @@ congestion_parallel_corridors:
     use_linear_congestion_cost: true
     block_edges_at_capacity: true
     no_path_policy: "wait"
+    temporal_capacity:
+      enabled: true
+      node_capacity_enabled: true
+      edge_flow_enabled: true
+      temporal_reservation_enabled: true
+      time_bucket_frames: 30
+      temporal_horizon_frames: 300
+      traversal_time_scale: 1.0
+      node_capacity_default: 20
+      edge_flow_capacity_default: 10
+      beta_edge: 1.0
+      beta_node: 1.0
+      edge_capacity_exponent: 1.0
+      node_capacity_exponent: 1.0
+      wait_penalty: 0.0
+      allow_waiting: true
+      block_at_capacity: true
 
   risk_iterations: 1500
   risk_increase_chance: 0.0
@@ -62,6 +79,23 @@ congestion_short_vs_wide:
     use_linear_congestion_cost: true
     block_edges_at_capacity: true
     no_path_policy: "wait"
+    temporal_capacity:
+      enabled: true
+      node_capacity_enabled: true
+      edge_flow_enabled: true
+      temporal_reservation_enabled: true
+      time_bucket_frames: 30
+      temporal_horizon_frames: 300
+      traversal_time_scale: 1.0
+      node_capacity_default: 20
+      edge_flow_capacity_default: 10
+      beta_edge: 1.0
+      beta_node: 1.0
+      edge_capacity_exponent: 1.0
+      node_capacity_exponent: 1.0
+      wait_penalty: 0.0
+      allow_waiting: true
+      block_at_capacity: true
 
   risk_iterations: 1500
   risk_increase_chance: 0.0
@@ -98,6 +132,23 @@ congestion_two_exits:
     use_linear_congestion_cost: true
     block_edges_at_capacity: true
     no_path_policy: "wait"
+    temporal_capacity:
+      enabled: true
+      node_capacity_enabled: true
+      edge_flow_enabled: true
+      temporal_reservation_enabled: true
+      time_bucket_frames: 30
+      temporal_horizon_frames: 300
+      traversal_time_scale: 1.0
+      node_capacity_default: 20
+      edge_flow_capacity_default: 10
+      beta_edge: 1.0
+      beta_node: 1.0
+      edge_capacity_exponent: 1.0
+      node_capacity_exponent: 1.0
+      wait_penalty: 0.0
+      allow_waiting: true
+      block_at_capacity: true
 
   risk_iterations: 1500
   risk_increase_chance: 0.0

@@ -35,6 +35,8 @@ def compute_effective_edge_cost(
         return base_cost + beta * projected_ratio
 
     if heuristic == "h3":
-        raise NotImplementedError("Heuristic 'h3' not implemented yet.")
+        # h3 is evaluated at full-path level because temporal capacity depends
+        # on the estimated arrival time to each future edge/node.
+        return base_cost
 
     raise ValueError(f"Unknown heuristic: {heuristic}")
