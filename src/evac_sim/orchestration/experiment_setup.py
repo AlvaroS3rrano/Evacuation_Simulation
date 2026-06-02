@@ -483,6 +483,38 @@ def _create_initial_group(
         exit_ids,
     )
 
+    if source not in journeys_ids or not journeys_ids[source]:
+        if no_path_policy == "wait" and heuristic != "none":
+            path = compute_initial_path(
+                targets,
+                group,
+                env_info,
+                source,
+                risk_per_node=risk_first_frame,
+                gamma=gamma,
+                heuristic="none",
+                beta=1.0,
+                group_size=group_size,
+                horizon_k=None,
+            )
+
+            waiting_due_to_congestion = True
+
+            if path is not None:
+                journeys_ids = set_journeys(
+                    simulation,
+                    source,
+                    [path],
+                    waypoints_ids,
+                    exit_ids,
+                )
+
+    if source not in journeys_ids or not journeys_ids[source]:
+        raise ValueError(
+            f"Could not create initial journey for group_id={group_id}, "
+            f"source={source}, path={path}"
+        )
+
     journey_id, best_path_source = journeys_ids[source][0]
     next_node = best_path_source[1]
     first_waypoint_id = waypoints_ids[next_node]

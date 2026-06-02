@@ -176,8 +176,6 @@ def collect_k_shortest_paths(
                     horizon_k=horizon_k,
                 )
 
-                all_paths.append((path, cost))
-
                 logger.info(
                     "Candidate path | source=%s target=%s heuristic=%s beta=%.2f group_size=%s horizon_k=%s path=%s cost=%.3f",
                     source,
@@ -189,6 +187,19 @@ def collect_k_shortest_paths(
                     path,
                     cost,
                 )
+
+                if not math.isfinite(cost):
+                    logger.info(
+                        "Skipping congestion-infeasible path | source=%s target=%s heuristic=%s path=%s cost=%s",
+                        source,
+                        target,
+                        heuristic,
+                        path,
+                        cost,
+                    )
+                    continue
+
+                all_paths.append((path, cost))
 
         except nx.NetworkXNoPath:
             continue
@@ -202,13 +213,22 @@ def compute_efficient_paths(paths, gamma):
     if not paths:
         return []
 
-    min_cost = min(path[1] for path in paths)
+    finite_paths = [
+        path_info
+        for path_info in paths
+        if math.isfinite(float(path_info[1]))
+    ]
+
+    if not finite_paths:
+        return []
+
+    min_cost = min(path_info[1] for path_info in finite_paths)
     max_allowed_cost = (1 + gamma) * min_cost
 
     efficient_paths = [
-        (path, cost, centrality)
-        for path, cost, centrality in paths
-        if cost <= max_allowed_cost
+        path_info
+        for path_info in finite_paths
+        if path_info[1] <= max_allowed_cost
     ]
 
     return efficient_paths
