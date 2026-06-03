@@ -6,7 +6,7 @@ import networkx as nx
 from shapely.geometry import Polygon
 
 from evac_sim.envs.environment import Environment
-from evac_sim.envs.utils import add_edges_with_capacity
+from evac_sim.envs.utils import add_edges_with_flow_capacity
 
 @lru_cache(maxsize=None)
 def get_management_building_basement():
@@ -1810,7 +1810,7 @@ def get_management_building_basement():
         ("283", "278", 2.0, 4),
     ]
 
-    add_edges_with_capacity(G, edges)
+    add_edges_with_flow_capacity(G, edges)
 
     specific_areas = {
         "1": Polygon([(27.4, 14.4), (27.4, 15.4), (26.4, 15.4), (26.4, 14.4)]),

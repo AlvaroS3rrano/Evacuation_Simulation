@@ -120,13 +120,21 @@ def get_remaining_path_for_group(group: AgentGroup):
     return group.path[max_idx:]
 
 
-def get_reserved_path_segment(group: AgentGroup, horizon_k: int | None = None):
+def get_static_reservation_path_segment(
+    group: AgentGroup,
+    horizon_k: int | None = None,
+):
+    """
+    Return the path segment reserved by static congestion heuristics.
+
+    h1 reserves the whole remaining path.
+    h2 reserves only the first horizon_k edges, represented as horizon_k + 1 nodes.
+    """
     remaining_path = get_remaining_path_for_group(group)
 
     if horizon_k is None:
         return remaining_path
 
-    # k edges => k + 1 nodes
     max_nodes = max(1, horizon_k + 1)
     return remaining_path[:max_nodes]
 
@@ -155,7 +163,13 @@ def _add_node_occupancy(env_info, node, delta: int) -> None:
     )
 
 
-def update_group_reserved_edges(
+def clear_group_static_reservation_state(group: AgentGroup) -> None:
+    group.reserved_edges = set()
+    group.reserved_nodes = set()
+    group.reserved_group_size = 0
+
+
+def update_group_static_reservations(
     env_info,
     group: AgentGroup,
     *,
@@ -165,27 +179,25 @@ def update_group_reserved_edges(
     horizon_k: int | None = None,
 ) -> None:
     """
-    Update static h1/h2 reservations.
+    Update static h1/h2 congestion reservations.
 
-    The function name is kept for compatibility, but the reservation model now
-    tracks:
-      - flow_occupancy on edges
-      - node_occupancy on destination nodes
+    Static reservations track aggregate usage without time buckets:
+      - flow_occupancy on each reserved edge
+      - node_occupancy on each reserved destination node
 
-    h1 reserves the whole remaining path.
-    h2 reserves only the first horizon_k edges and their destination nodes.
+    h1 reserves the full remaining path.
+    h2 reserves only the configured local horizon.
     """
     current_group_size = (
         group_size_override if group_size_override is not None else len(group.agents)
     )
-
     current_group_size = max(0, int(current_group_size))
 
     old_reserved_edges = getattr(group, "reserved_edges", set())
     old_reserved_nodes = getattr(group, "reserved_nodes", set())
     old_reserved_group_size = getattr(group, "reserved_group_size", 0)
 
-    reserved_path = get_reserved_path_segment(
+    reserved_path = get_static_reservation_path_segment(
         group,
         horizon_k=horizon_k,
     )
@@ -195,8 +207,6 @@ def update_group_reserved_edges(
         for u, v in zip(reserved_path, reserved_path[1:])
     }
 
-    # The cost model evaluates the destination node of each step u -> v.
-    # Therefore the static reservation model reserves the same target nodes.
     new_reserved_nodes = set(reserved_path[1:])
 
     edges_to_release = old_reserved_edges - new_reserved_edges
@@ -207,7 +217,6 @@ def update_group_reserved_edges(
     nodes_to_add = new_reserved_nodes - old_reserved_nodes
     kept_nodes = old_reserved_nodes & new_reserved_nodes
 
-    # 1) Release no longer reserved edges/nodes using old group size
     for edge in edges_to_release:
         _add_edge_flow_occupancy(
             env_info,
@@ -222,7 +231,6 @@ def update_group_reserved_edges(
             -old_reserved_group_size,
         )
 
-    # 2) Adjust kept reservations if group size changed
     size_delta = current_group_size - old_reserved_group_size
 
     if size_delta != 0:
@@ -240,7 +248,6 @@ def update_group_reserved_edges(
                 size_delta,
             )
 
-    # 3) Add newly reserved edges/nodes using current group size
     for edge in edges_to_add:
         _add_edge_flow_occupancy(
             env_info,
@@ -279,11 +286,9 @@ def update_group_reserved_edges(
     group.reserved_group_size = current_group_size
 
 
-def release_group_reserved_edges(env_info, group: AgentGroup) -> None:
+def release_group_static_reservations(env_info, group: AgentGroup) -> None:
     """
-    Release static h1/h2 reservations.
-
-    The function name is kept for compatibility.
+    Release all static h1/h2 reservations held by a group.
     """
     reserved_edges = getattr(group, "reserved_edges", set())
     reserved_nodes = getattr(group, "reserved_nodes", set())
@@ -304,11 +309,9 @@ def release_group_reserved_edges(env_info, group: AgentGroup) -> None:
         )
 
 
-def restore_group_reserved_edges(env_info, group: AgentGroup) -> None:
+def restore_group_static_reservations(env_info, group: AgentGroup) -> None:
     """
-    Restore static h1/h2 reservations.
-
-    The function name is kept for compatibility.
+    Restore static h1/h2 reservations after a temporary release.
     """
     reserved_edges = getattr(group, "reserved_edges", set())
     reserved_nodes = getattr(group, "reserved_nodes", set())

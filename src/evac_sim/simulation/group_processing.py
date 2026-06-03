@@ -9,14 +9,15 @@ from evac_sim.simulation.group_recording import record_group_path_data
 from evac_sim.simulation.group_state import (
     reservation_horizon_for_heuristic,
     set_group_speed,
-    uses_reservations,
+    uses_static_reservations,
     uses_temporal_reservations,
 )
 from evac_sim.simulation.simulation_logic import (
-    release_group_reserved_edges,
-    restore_group_reserved_edges,
+    clear_group_static_reservation_state,
+    release_group_static_reservations,
+    restore_group_static_reservations,
     update_agent_speed_on_stairs,
-    update_group_reserved_edges,
+    update_group_static_reservations,
 )
 from evac_sim.simulation.temporal_capacity import (
     release_temporal_path_reservation,
@@ -48,13 +49,13 @@ def process_single_group(
         horizon_k,
     )
 
-    use_edge_reservations = uses_reservations(heuristic)
+    use_edge_reservations = uses_static_reservations(heuristic)
     use_temporal_reservations = uses_temporal_reservations(heuristic)
 
     waiting_before_update = getattr(group, "waiting_due_to_congestion", False)
 
     if use_edge_reservations and not waiting_before_update:
-        update_group_reserved_edges(
+        update_group_static_reservations(
             env_info,
             group,
             frame=frame,
@@ -86,7 +87,7 @@ def process_single_group(
     old_reserved_group_size = group.reserved_group_size
 
     if use_edge_reservations and old_reserved_edges:
-        release_group_reserved_edges(env_info, group)
+        release_group_static_reservations(env_info, group)
 
     group = update_group_paths(
         sim_cfg,
@@ -105,18 +106,16 @@ def process_single_group(
 
     if use_edge_reservations:
         if getattr(group, "waiting_due_to_congestion", False):
-            group.reserved_edges = set()
-            group.reserved_group_size = 0
+            clear_group_static_reservation_state(group)
 
         elif group.path == old_path:
             group.reserved_edges = old_reserved_edges
             group.reserved_group_size = old_reserved_group_size
-            restore_group_reserved_edges(env_info, group)
+            restore_group_static_reservations(env_info, group)
 
         else:
-            group.reserved_edges = set()
-            group.reserved_group_size = 0
-            update_group_reserved_edges(
+            clear_group_static_reservation_state(group)
+            update_group_static_reservations(
                 env_info,
                 group,
                 frame=frame,
@@ -139,12 +138,10 @@ def process_single_group(
                 current_frame=frame,
             )
 
-        group.reserved_edges = set()
-        group.reserved_group_size = 0
+        clear_group_static_reservation_state(group)
 
     else:
-        group.reserved_edges = set()
-        group.reserved_group_size = 0
+        clear_group_static_reservation_state(group)
 
     if getattr(group, "waiting_due_to_congestion", False):
         set_group_speed(sim_cfg.simulation, group, 0.0)

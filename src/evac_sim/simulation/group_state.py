@@ -39,7 +39,7 @@ def reservation_horizon_for_heuristic(
     return None
 
 
-def uses_reservations(heuristic: str) -> bool:
+def uses_static_reservations(heuristic: str) -> bool:
     return heuristic in {"h1", "h2"}
 
 

@@ -13,12 +13,13 @@ from evac_sim.simulation.group_splitting import (
 from evac_sim.simulation.group_state import (
     ctx,
     remaining_path_from_node,
-    uses_reservations,
+    uses_static_reservations,
     uses_temporal_reservations,
 )
 from evac_sim.simulation.simulation_logic import (
+    clear_group_static_reservation_state,
     compute_current_nodes,
-    release_group_reserved_edges,
+    release_group_static_reservations,
 )
 from evac_sim.simulation.temporal_capacity import release_temporal_path_reservation
 
@@ -113,16 +114,15 @@ def process_frame(
                     lag_group_id,
                 )
 
-                if uses_reservations(heuristic):
-                    release_group_reserved_edges(env_info, group)
+                if uses_static_reservations(heuristic):
+                    release_group_static_reservations(env_info, group)
                 elif uses_temporal_reservations(heuristic):
                     release_temporal_path_reservation(
                         env_info.graph,
                         group_id=original_group_id,
                     )
                 else:
-                    group.reserved_edges = set()
-                    group.reserved_group_size = 0
+                    clear_group_static_reservation_state(group)
 
                 groups[original_group_id] = lead_group
                 groups[lag_group_id] = lag_group

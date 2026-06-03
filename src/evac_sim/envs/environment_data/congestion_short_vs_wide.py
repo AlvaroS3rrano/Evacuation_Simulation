@@ -6,7 +6,7 @@ import networkx as nx
 from shapely.geometry import Polygon
 
 from evac_sim.envs.environment import Environment, remove_obstacles_from_areas
-from evac_sim.envs.utils import add_edges_with_capacity
+from evac_sim.envs.utils import add_edges_with_flow_capacity
 
 
 @lru_cache(maxsize=None)
@@ -236,7 +236,7 @@ def get_short_vs_wide():
         ("37", "36", 5.0, 20),
     ]
 
-    add_edges_with_capacity(G, edges)
+    add_edges_with_flow_capacity(G, edges)
 
     specific_areas = {
         # Divided original area 1

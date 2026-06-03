@@ -6,7 +6,7 @@ import networkx as nx
 from shapely.geometry import Polygon
 
 from evac_sim.envs.environment import Environment
-from evac_sim.envs.utils import add_edges_with_capacity
+from evac_sim.envs.utils import add_edges_with_flow_capacity
 
 
 @lru_cache(maxsize=None)
@@ -526,7 +526,7 @@ def get_two_exits():
         ("54", "12", 7.0710678118654755, 25),
     ]
 
-    add_edges_with_capacity(G, edges)
+    add_edges_with_flow_capacity(G, edges)
 
     specific_areas = {
         # Original areas 1-4 subdivided into 5x5 cells

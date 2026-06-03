@@ -8,7 +8,7 @@ from evac_sim.simulation.group_state import (
     reservation_horizon_for_heuristic,
     safe_path_index,
     set_group_speed,
-    uses_reservations,
+    uses_static_reservations,
 )
 
 
@@ -34,13 +34,13 @@ def test_reservation_horizon_for_heuristic_h2_uses_explicit_value():
     assert reservation_horizon_for_heuristic("h2", 7) == 7
 
 
-def test_uses_reservations_is_false_for_none():
-    assert uses_reservations("none") is False
+def test_uses_static_reservations_is_false_for_none():
+    assert uses_static_reservations("none") is False
 
 
-def test_uses_reservations_is_true_for_h1_and_h2():
-    assert uses_reservations("h1") is True
-    assert uses_reservations("h2") is True
+def test_uses_static_reservations_is_true_for_h1_and_h2():
+    assert uses_static_reservations("h1") is True
+    assert uses_static_reservations("h2") is True
 
 
 def test_safe_path_index_returns_index_when_present():

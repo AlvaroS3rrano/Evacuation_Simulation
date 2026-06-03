@@ -12,7 +12,7 @@ from evac_sim.simulation.temporal_capacity import compute_temporal_path_effectiv
 logger = logging.getLogger(__name__)
 
 
-def _get_projected_group_size_for_edge(
+def _get_projected_group_size_for_step(
     *,
     edge_index: int,
     heuristic: str,
@@ -20,17 +20,11 @@ def _get_projected_group_size_for_edge(
     horizon_k: int | None,
 ) -> int:
     """
-    Return the projected group size that should be applied to an edge.
+    Return the group size projected onto one static path step.
 
-    h1:
-        The group is projected over the whole path.
-
-    h2:
-        The group is projected only over the first horizon_k edges.
-
-    none:
-        The value does not matter because compute_effective_edge_cost ignores
-        group_size when heuristic == "none".
+    h1 projects the group over the whole remaining path.
+    h2 projects the group only over the first horizon_k steps.
+    h3 is evaluated separately by temporal path scoring.
     """
     if heuristic == "h2":
         if horizon_k is None:
@@ -74,8 +68,8 @@ def compute_path_effective_cost(
 
     For h2:
         The current group is projected only over the first horizon_k edges.
-        Edges beyond the horizon still include their current occupancy, but
-        the current group is not added to them.
+        Steps beyond the horizon still include existing flow/node occupancy, but the
+        current group is not projected onto them.
 
     For h3:
         The path is evaluated with temporal node/edge capacity by estimated
@@ -98,7 +92,7 @@ def compute_path_effective_cost(
     total = 0.0
 
     for edge_index, (u, v) in enumerate(zip(path, path[1:])):
-        projected_group_size = _get_projected_group_size_for_edge(
+        projected_group_size = _get_projected_group_size_for_step(
             edge_index=edge_index,
             heuristic=heuristic,
             group_size=group_size,
@@ -195,10 +189,10 @@ def rescore_candidate_paths(
     horizon_k=None,
 ):
     """
-    Recompute candidate path costs using the active heuristic.
+    Recompute cached candidate path costs using the active heuristic.
 
-    Candidate paths may be cached, but their cost must be recomputed for
-    h1/h2/h3 because occupancy and temporal reservations change over time.
+    Candidate paths are static, but h1/h2/h3 costs depend on current congestion
+    state and must be recomputed at each routing decision.
     """
     rescored_paths = []
 
@@ -212,26 +206,7 @@ def rescore_candidate_paths(
             horizon_k=horizon_k,
         )
 
-        if logger.isEnabledFor(logging.DEBUG):
-            logger.debug(
-                "Candidate path scored | heuristic=%s beta=%.2f "
-                "group_size=%s horizon_k=%s path=%s cost=%.3f",
-                heuristic,
-                beta,
-                group_size,
-                horizon_k,
-                path,
-                cost,
-            )
-
         if not math.isfinite(cost):
-            if logger.isEnabledFor(logging.DEBUG):
-                logger.debug(
-                    "Skipping infeasible candidate path | heuristic=%s path=%s cost=%s",
-                    heuristic,
-                    path,
-                    cost,
-                )
             continue
 
         rescored_paths.append((path, cost))

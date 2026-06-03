@@ -11,7 +11,7 @@ SUPPORTED_NO_PATH_POLICIES = {"raise", "wait", "keep_current"}
 
 @dataclass(frozen=True)
 class CongestionConfig:
-    edge_capacity_multiplier: float = 1.0
+    edge_flow_capacity_multiplier: float = 1.0
 
     # Backward-compatible defaults:
     # If no `congestion` section exists, old h1/h2 cost behavior is preserved.
@@ -119,12 +119,12 @@ def build_congestion_config(
     if not isinstance(congestion_cfg, Mapping):
         raise TypeError("congestion must be a mapping when provided")
 
-    edge_capacity_multiplier = float(
-        congestion_cfg.get("edge_capacity_multiplier", 1.0)
+    edge_flow_capacity_multiplier = float(
+        congestion_cfg.get("edge_flow_capacity_multiplier", 1.0)
     )
 
-    if edge_capacity_multiplier <= 0:
-        raise ValueError("congestion.edge_capacity_multiplier must be > 0")
+    if edge_flow_capacity_multiplier <= 0:
+        raise ValueError("congestion.edge_flow_capacity_multiplier must be > 0")
 
     no_path_policy = str(
         congestion_cfg.get("no_path_policy", "wait")
@@ -138,7 +138,7 @@ def build_congestion_config(
         )
 
     return CongestionConfig(
-        edge_capacity_multiplier=edge_capacity_multiplier,
+        edge_flow_capacity_multiplier=edge_flow_capacity_multiplier,
         use_linear_congestion_cost=bool(
             congestion_cfg.get("use_linear_congestion_cost", True)
         ),

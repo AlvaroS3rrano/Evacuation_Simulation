@@ -6,7 +6,7 @@ import networkx as nx
 from shapely.geometry import Polygon
 
 from evac_sim.envs.environment import Environment, remove_obstacles_from_areas
-from evac_sim.envs.utils import add_edges_with_capacity
+from evac_sim.envs.utils import add_edges_with_flow_capacity
 
 
 @lru_cache(maxsize=None)
@@ -136,7 +136,7 @@ def get_parallel_corridors():
         ("25", "24", 2.0, 4),
     ]
 
-    add_edges_with_capacity(G, edges)
+    add_edges_with_flow_capacity(G, edges)
 
     specific_areas = {
         "1": Polygon([(7, 0), (0, 0), (0, 7), (4, 7), (7, 7)]),
