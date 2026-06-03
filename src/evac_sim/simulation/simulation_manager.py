@@ -25,6 +25,19 @@ from evac_sim.simulation.temporal_capacity import release_temporal_path_reservat
 logger = logging.getLogger(__name__)
 
 
+def _set_current_frame_on_graph(env_info, frame: int) -> None:
+    graph = getattr(env_info, "graph", None)
+
+    if graph is None:
+        return
+
+    graph_metadata = getattr(graph, "graph", None)
+
+    if graph_metadata is None:
+        return
+
+    graph_metadata["current_frame"] = frame
+
 def process_frame(
     sim_cfg,
     groups: dict,
@@ -44,7 +57,7 @@ def process_frame(
 ) -> None:
     risks = get_risk_levels_by_frame(conn, case_name, frame)
 
-    env_info.graph.graph["current_frame"] = frame
+    _set_current_frame_on_graph(env_info, frame)
 
     for original_group_id, original_group in list(groups.items()):
         try:

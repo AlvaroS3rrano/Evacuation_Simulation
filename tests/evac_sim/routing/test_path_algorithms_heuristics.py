@@ -7,19 +7,90 @@ from evac_sim.routing.path_algorithms import (
 )
 
 
+def _add_node(
+    G,
+    node,
+    *,
+    node_capacity=100,
+    node_occupancy=0,
+):
+    G.add_node(
+        node,
+        node_capacity=node_capacity,
+        node_occupancy=node_occupancy,
+    )
+
+
+def _add_edge(
+    G,
+    source,
+    target,
+    *,
+    cost=1.0,
+    flow_capacity=5,
+    flow_occupancy=0,
+    use_linear_congestion_cost=False,
+    block_edges_at_capacity=False,
+):
+    G.add_edge(
+        source,
+        target,
+        cost=cost,
+        flow_capacity=flow_capacity,
+        flow_occupancy=flow_occupancy,
+        use_linear_congestion_cost=use_linear_congestion_cost,
+        block_edges_at_capacity=block_edges_at_capacity,
+    )
+
 def _build_test_graph():
     G = nx.DiGraph()
 
+    for node in ["A", "B", "C", "D"]:
+        _add_node(
+            G,
+            node,
+            node_capacity=100,
+            node_occupancy=0,
+        )
+
     # Route 1: A -> B -> D
-    G.add_edge("A", "B", cost=1.0, occupancy=10, capacity=5)
-    G.add_edge("B", "D", cost=1.0, occupancy=0, capacity=5)
+    # Congested on A->B through flow_occupancy.
+    _add_edge(
+        G,
+        "A",
+        "B",
+        cost=1.0,
+        flow_occupancy=10,
+        flow_capacity=5,
+    )
+    _add_edge(
+        G,
+        "B",
+        "D",
+        cost=1.0,
+        flow_occupancy=0,
+        flow_capacity=5,
+    )
 
     # Route 2: A -> C -> D
-    G.add_edge("A", "C", cost=1.0, occupancy=0, capacity=5)
-    G.add_edge("C", "D", cost=1.0, occupancy=0, capacity=5)
+    _add_edge(
+        G,
+        "A",
+        "C",
+        cost=1.0,
+        flow_occupancy=0,
+        flow_capacity=5,
+    )
+    _add_edge(
+        G,
+        "C",
+        "D",
+        cost=1.0,
+        flow_occupancy=0,
+        flow_capacity=5,
+    )
 
     return G
-
 
 def test_collect_k_shortest_paths_none_keeps_base_cost_ranking():
     G = _build_test_graph()
@@ -62,7 +133,7 @@ def test_collect_k_shortest_paths_h1_penalizes_congested_route():
     assert cost_by_path[("A", "C", "D")] < cost_by_path[("A", "B", "D")]
 
 
-def test_collect_k_shortest_paths_h1_prefers_less_congested_path_first():
+def test_collect_k_shortest_paths_h1_scores_less_congested_path_best():
     G = _build_test_graph()
 
     paths = collect_k_shortest_paths(
@@ -74,7 +145,8 @@ def test_collect_k_shortest_paths_h1_prefers_less_congested_path_first():
         group_size=4,
     )
 
-    assert paths[0][0] == ["A", "C", "D"]
+    best_path = min(paths, key=lambda item: item[1])[0]
+    assert best_path == ["A", "C", "D"]
 
 
 def test_collect_k_shortest_paths_h2_penalizes_congested_route_inside_horizon():
@@ -96,7 +168,7 @@ def test_collect_k_shortest_paths_h2_penalizes_congested_route_inside_horizon():
     assert cost_by_path[("A", "C", "D")] < cost_by_path[("A", "B", "D")]
 
 
-def test_collect_k_shortest_paths_h2_prefers_less_congested_path_first_inside_horizon():
+def test_collect_k_shortest_paths_h2_scores_less_congested_path_best_inside_horizon():
     G = _build_test_graph()
 
     paths = collect_k_shortest_paths(
@@ -109,7 +181,8 @@ def test_collect_k_shortest_paths_h2_prefers_less_congested_path_first_inside_ho
         horizon_k=1,
     )
 
-    assert paths[0][0] == ["A", "C", "D"]
+    best_path = min(paths, key=lambda item: item[1])[0]
+    assert best_path == ["A", "C", "D"]
 
 
 def test_collect_k_shortest_paths_h1_and_h2_match_when_horizon_covers_full_path():
@@ -139,9 +212,13 @@ def test_collect_k_shortest_paths_h1_and_h2_match_when_horizon_covers_full_path(
 
 def test_compute_path_effective_cost_none_returns_base_path_cost():
     G = nx.DiGraph()
-    G.add_edge("A", "B", cost=1.0, occupancy=10, capacity=5)
-    G.add_edge("B", "C", cost=2.0, occupancy=10, capacity=5)
-    G.add_edge("C", "D", cost=3.0, occupancy=10, capacity=5)
+
+    for node in ["A", "B", "C", "D"]:
+        _add_node(G, node)
+
+    _add_edge(G, "A", "B", cost=1.0, flow_occupancy=10, flow_capacity=5)
+    _add_edge(G, "B", "C", cost=2.0, flow_occupancy=10, flow_capacity=5)
+    _add_edge(G, "C", "D", cost=3.0, flow_occupancy=10, flow_capacity=5)
 
     cost = compute_path_effective_cost(
         G,
@@ -157,9 +234,18 @@ def test_compute_path_effective_cost_none_returns_base_path_cost():
 
 def test_compute_path_effective_cost_h1_projects_group_over_full_path():
     G = nx.DiGraph()
-    G.add_edge("A", "B", cost=1.0, occupancy=0, capacity=5)
-    G.add_edge("B", "C", cost=1.0, occupancy=0, capacity=5)
-    G.add_edge("C", "D", cost=1.0, occupancy=0, capacity=5)
+
+    for node in ["A", "B", "C", "D"]:
+        _add_node(
+            G,
+            node,
+            node_capacity=5,
+            node_occupancy=0,
+        )
+
+    _add_edge(G, "A", "B", cost=1.0, flow_occupancy=0, flow_capacity=5)
+    _add_edge(G, "B", "C", cost=1.0, flow_occupancy=0, flow_capacity=5)
+    _add_edge(G, "C", "D", cost=1.0, flow_occupancy=0, flow_capacity=5)
 
     cost = compute_path_effective_cost(
         G,
@@ -177,9 +263,18 @@ def test_compute_path_effective_cost_h1_projects_group_over_full_path():
 
 def test_compute_path_effective_cost_h2_projects_group_only_inside_horizon():
     G = nx.DiGraph()
-    G.add_edge("A", "B", cost=1.0, occupancy=0, capacity=5)
-    G.add_edge("B", "C", cost=1.0, occupancy=0, capacity=5)
-    G.add_edge("C", "D", cost=1.0, occupancy=0, capacity=5)
+
+    for node in ["A", "B", "C", "D"]:
+        _add_node(
+            G,
+            node,
+            node_capacity=5,
+            node_occupancy=0,
+        )
+
+    _add_edge(G, "A", "B", cost=1.0, flow_occupancy=0, flow_capacity=5)
+    _add_edge(G, "B", "C", cost=1.0, flow_occupancy=0, flow_capacity=5)
+    _add_edge(G, "C", "D", cost=1.0, flow_occupancy=0, flow_capacity=5)
 
     cost = compute_path_effective_cost(
         G,
@@ -200,9 +295,18 @@ def test_compute_path_effective_cost_h2_projects_group_only_inside_horizon():
 
 def test_compute_path_effective_cost_h2_includes_existing_occupancy_beyond_horizon():
     G = nx.DiGraph()
-    G.add_edge("A", "B", cost=1.0, occupancy=0, capacity=5)
-    G.add_edge("B", "C", cost=1.0, occupancy=10, capacity=5)
-    G.add_edge("C", "D", cost=1.0, occupancy=0, capacity=5)
+
+    for node in ["A", "B", "C", "D"]:
+        _add_node(
+            G,
+            node,
+            node_capacity=100,
+            node_occupancy=0,
+        )
+
+    _add_edge(G, "A", "B", cost=1.0, flow_occupancy=0, flow_capacity=5)
+    _add_edge(G, "B", "C", cost=1.0, flow_occupancy=10, flow_capacity=5)
+    _add_edge(G, "C", "D", cost=1.0, flow_occupancy=0, flow_capacity=5)
 
     cost = compute_path_effective_cost(
         G,
@@ -226,8 +330,17 @@ def test_compute_path_effective_cost_h2_includes_existing_occupancy_beyond_horiz
 
 def test_compute_path_effective_cost_h2_with_zero_horizon_does_not_project_group():
     G = nx.DiGraph()
-    G.add_edge("A", "B", cost=1.0, occupancy=0, capacity=5)
-    G.add_edge("B", "C", cost=1.0, occupancy=0, capacity=5)
+
+    for node in ["A", "B", "C"]:
+        _add_node(
+            G,
+            node,
+            node_capacity=5,
+            node_occupancy=0,
+        )
+
+    _add_edge(G, "A", "B", cost=1.0, flow_occupancy=0, flow_capacity=5)
+    _add_edge(G, "B", "C", cost=1.0, flow_occupancy=0, flow_capacity=5)
 
     cost = compute_path_effective_cost(
         G,
@@ -243,7 +356,10 @@ def test_compute_path_effective_cost_h2_with_zero_horizon_does_not_project_group
 
 def test_compute_path_effective_cost_h2_requires_horizon_k():
     G = nx.DiGraph()
-    G.add_edge("A", "B", cost=1.0, occupancy=0, capacity=5)
+
+    _add_node(G, "A")
+    _add_node(G, "B")
+    _add_edge(G, "A", "B", cost=1.0, flow_occupancy=0, flow_capacity=5)
 
     with pytest.raises(ValueError):
         compute_path_effective_cost(

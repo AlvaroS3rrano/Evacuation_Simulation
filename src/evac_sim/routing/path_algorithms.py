@@ -5,7 +5,7 @@ import math
 import networkx as nx
 from networkx.algorithms.simple_paths import shortest_simple_paths
 
-from evac_sim.routing.heuristics import compute_effective_edge_cost
+from evac_sim.routing.heuristics import compute_effective_step_cost
 from evac_sim.simulation.temporal_capacity import compute_temporal_path_effective_cost
 
 
@@ -105,8 +105,9 @@ def compute_path_effective_cost(
             horizon_k=horizon_k,
         )
 
-        total += compute_effective_edge_cost(
+        total += compute_effective_step_cost(
             edge_data=G[u][v],
+            target_node_data=G.nodes[v],
             heuristic=heuristic,
             beta=beta,
             group_size=projected_group_size,

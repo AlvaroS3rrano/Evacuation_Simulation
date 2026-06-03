@@ -126,9 +126,34 @@ def get_reserved_path_segment(group: AgentGroup, horizon_k: int | None = None):
     if horizon_k is None:
         return remaining_path
 
-    # k edges => k+1 nodes
+    # k edges => k + 1 nodes
     max_nodes = max(1, horizon_k + 1)
     return remaining_path[:max_nodes]
+
+
+def _add_edge_flow_occupancy(env_info, edge: tuple, delta: int) -> None:
+    u, v = edge
+
+    if not env_info.graph.has_edge(u, v):
+        return
+
+    edge_data = env_info.graph[u][v]
+    edge_data["flow_occupancy"] = max(
+        0,
+        int(edge_data.get("flow_occupancy", 0)) + delta,
+    )
+
+
+def _add_node_occupancy(env_info, node, delta: int) -> None:
+    if node not in env_info.graph.nodes:
+        return
+
+    node_data = env_info.graph.nodes[node]
+    node_data["node_occupancy"] = max(
+        0,
+        int(node_data.get("node_occupancy", 0)) + delta,
+    )
+
 
 def update_group_reserved_edges(
     env_info,
@@ -139,97 +164,166 @@ def update_group_reserved_edges(
     group_size_override: int | None = None,
     horizon_k: int | None = None,
 ) -> None:
+    """
+    Update static h1/h2 reservations.
+
+    The function name is kept for compatibility, but the reservation model now
+    tracks:
+      - flow_occupancy on edges
+      - node_occupancy on destination nodes
+
+    h1 reserves the whole remaining path.
+    h2 reserves only the first horizon_k edges and their destination nodes.
+    """
     current_group_size = (
         group_size_override if group_size_override is not None else len(group.agents)
     )
+
+    current_group_size = max(0, int(current_group_size))
+
     old_reserved_edges = getattr(group, "reserved_edges", set())
+    old_reserved_nodes = getattr(group, "reserved_nodes", set())
     old_reserved_group_size = getattr(group, "reserved_group_size", 0)
 
-    reserved_path = get_reserved_path_segment(group, horizon_k=horizon_k)
-    new_reserved_edges = {(u, v) for u, v in zip(reserved_path, reserved_path[1:])}
-
-    to_release = old_reserved_edges - new_reserved_edges
-    to_add = new_reserved_edges - old_reserved_edges
-    kept_edges = old_reserved_edges & new_reserved_edges
-
-    # 1) Release edges no longer reserved using OLD reserved size
-    for u, v in to_release:
-        if env_info.graph.has_edge(u, v):
-            env_info.graph[u][v]["occupancy"] = max(
-                0,
-                env_info.graph[u][v].get("occupancy", 0) - old_reserved_group_size
-            )
-
-    # 2) If group size changed, adjust kept edges by delta
-    size_delta = current_group_size - old_reserved_group_size
-    if size_delta != 0:
-        for u, v in kept_edges:
-            if env_info.graph.has_edge(u, v):
-                env_info.graph[u][v]["occupancy"] = max(
-                    0,
-                    env_info.graph[u][v].get("occupancy", 0) + size_delta
-                )
-
-    # 3) Add newly reserved edges using CURRENT size
-    for u, v in to_add:
-        if env_info.graph.has_edge(u, v):
-            env_info.graph[u][v]["occupancy"] = env_info.graph[u][v].get("occupancy", 0) + current_group_size
-
-    logger.info(
-        "Reservation update | frame=%s group=%s agents=%d old_edges=%d new_edges=%d add=%d release=%d delta=%d",
-        frame,
-        group_id,
-        current_group_size,
-        len(old_reserved_edges),
-        len(new_reserved_edges),
-        len(to_add),
-        len(to_release),
-        size_delta,
+    reserved_path = get_reserved_path_segment(
+        group,
+        horizon_k=horizon_k,
     )
 
-    for u, v in sorted(to_add):
-        if env_info.graph.has_edge(u, v):
-            logger.debug(
-                "Reserve edge | frame=%s group=%s edge=(%s,%s) occupancy=%s",
-                frame,
-                group_id,
-                u,
-                v,
-                env_info.graph[u][v]["occupancy"],
+    new_reserved_edges = {
+        (u, v)
+        for u, v in zip(reserved_path, reserved_path[1:])
+    }
+
+    # The cost model evaluates the destination node of each step u -> v.
+    # Therefore the static reservation model reserves the same target nodes.
+    new_reserved_nodes = set(reserved_path[1:])
+
+    edges_to_release = old_reserved_edges - new_reserved_edges
+    edges_to_add = new_reserved_edges - old_reserved_edges
+    kept_edges = old_reserved_edges & new_reserved_edges
+
+    nodes_to_release = old_reserved_nodes - new_reserved_nodes
+    nodes_to_add = new_reserved_nodes - old_reserved_nodes
+    kept_nodes = old_reserved_nodes & new_reserved_nodes
+
+    # 1) Release no longer reserved edges/nodes using old group size
+    for edge in edges_to_release:
+        _add_edge_flow_occupancy(
+            env_info,
+            edge,
+            -old_reserved_group_size,
+        )
+
+    for node in nodes_to_release:
+        _add_node_occupancy(
+            env_info,
+            node,
+            -old_reserved_group_size,
+        )
+
+    # 2) Adjust kept reservations if group size changed
+    size_delta = current_group_size - old_reserved_group_size
+
+    if size_delta != 0:
+        for edge in kept_edges:
+            _add_edge_flow_occupancy(
+                env_info,
+                edge,
+                size_delta,
             )
 
-    for u, v in sorted(to_release):
-        if env_info.graph.has_edge(u, v):
-            logger.debug(
-                "Release edge | frame=%s group=%s edge=(%s,%s) occupancy=%s",
-                frame,
-                group_id,
-                u,
-                v,
-                env_info.graph[u][v]["occupancy"],
+        for node in kept_nodes:
+            _add_node_occupancy(
+                env_info,
+                node,
+                size_delta,
             )
+
+    # 3) Add newly reserved edges/nodes using current group size
+    for edge in edges_to_add:
+        _add_edge_flow_occupancy(
+            env_info,
+            edge,
+            current_group_size,
+        )
+
+    for node in nodes_to_add:
+        _add_node_occupancy(
+            env_info,
+            node,
+            current_group_size,
+        )
+
+    if logger.isEnabledFor(logging.DEBUG):
+        logger.debug(
+            "Static reservation update | frame=%s group=%s agents=%d "
+            "old_edges=%d new_edges=%d old_nodes=%d new_nodes=%d "
+            "edge_add=%d edge_release=%d node_add=%d node_release=%d delta=%d",
+            frame,
+            group_id,
+            current_group_size,
+            len(old_reserved_edges),
+            len(new_reserved_edges),
+            len(old_reserved_nodes),
+            len(new_reserved_nodes),
+            len(edges_to_add),
+            len(edges_to_release),
+            len(nodes_to_add),
+            len(nodes_to_release),
+            size_delta,
+        )
 
     group.reserved_edges = new_reserved_edges
+    group.reserved_nodes = new_reserved_nodes
     group.reserved_group_size = current_group_size
 
+
 def release_group_reserved_edges(env_info, group: AgentGroup) -> None:
+    """
+    Release static h1/h2 reservations.
+
+    The function name is kept for compatibility.
+    """
     reserved_edges = getattr(group, "reserved_edges", set())
+    reserved_nodes = getattr(group, "reserved_nodes", set())
     reserved_group_size = getattr(group, "reserved_group_size", 0)
 
-    for u, v in reserved_edges:
-        if env_info.graph.has_edge(u, v):
-            env_info.graph[u][v]["occupancy"] = max(
-                0,
-                env_info.graph[u][v].get("occupancy", 0) - reserved_group_size
-            )
+    for edge in reserved_edges:
+        _add_edge_flow_occupancy(
+            env_info,
+            edge,
+            -reserved_group_size,
+        )
+
+    for node in reserved_nodes:
+        _add_node_occupancy(
+            env_info,
+            node,
+            -reserved_group_size,
+        )
 
 
 def restore_group_reserved_edges(env_info, group: AgentGroup) -> None:
+    """
+    Restore static h1/h2 reservations.
+
+    The function name is kept for compatibility.
+    """
     reserved_edges = getattr(group, "reserved_edges", set())
+    reserved_nodes = getattr(group, "reserved_nodes", set())
     reserved_group_size = getattr(group, "reserved_group_size", 0)
 
-    for u, v in reserved_edges:
-        if env_info.graph.has_edge(u, v):
-            env_info.graph[u][v]["occupancy"] = (
-                env_info.graph[u][v].get("occupancy", 0) + reserved_group_size
-            )
+    for edge in reserved_edges:
+        _add_edge_flow_occupancy(
+            env_info,
+            edge,
+            reserved_group_size,
+        )
+
+    for node in reserved_nodes:
+        _add_node_occupancy(
+            env_info,
+            node,
+            reserved_group_size,
+        )

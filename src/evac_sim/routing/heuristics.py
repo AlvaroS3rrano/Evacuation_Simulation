@@ -1,42 +1,85 @@
 from __future__ import annotations
 
 
-def compute_effective_edge_cost(
+def _positive_int(value, default: int = 1) -> int:
+    try:
+        return max(1, int(value))
+    except (TypeError, ValueError):
+        return max(1, int(default))
+
+
+def _non_negative_int(value, default: int = 0) -> int:
+    try:
+        return max(0, int(value))
+    except (TypeError, ValueError):
+        return max(0, int(default))
+
+
+def compute_effective_step_cost(
+    *,
     edge_data: dict,
+    target_node_data: dict,
     heuristic: str = "none",
     beta: float = 1.0,
     group_size: int = 0,
 ) -> float:
+    """
+    Compute static congestion cost for one path step u -> v.
+
+    h1/h2:
+      - edge flow capacity: flow_occupancy / flow_capacity
+      - target node capacity: node_occupancy / node_capacity
+
+    h3 is evaluated at full-path temporal level.
+    """
     if heuristic is None:
         heuristic = "none"
 
-    base_cost = edge_data["cost"]
+    base_cost = float(edge_data["cost"])
 
-    if heuristic == "none":
+    if heuristic in {"none", "h3"}:
         return base_cost
 
-    capacity = max(1, int(edge_data.get("capacity", 1)))
-    occupancy = int(edge_data.get("occupancy", 0))
-    projected_occupancy = occupancy + max(0, int(group_size))
-    projected_ratio = projected_occupancy / capacity
+    if heuristic not in {"h1", "h2"}:
+        raise ValueError(f"Unknown heuristic: {heuristic}")
 
-    if heuristic in {"h1", "h2"}:
-        if (
-            edge_data.get("block_edges_at_capacity", False)
-            and projected_occupancy > capacity
-        ):
-            return float("inf")
+    projected_group_size = _non_negative_int(group_size)
 
-        if edge_data.get("use_linear_congestion_cost", False):
-            return base_cost * (1.0 + beta * projected_ratio)
+    flow_capacity = _positive_int(
+        edge_data.get("flow_capacity", 1),
+        default=1,
+    )
+    flow_occupancy = _non_negative_int(
+        edge_data.get("flow_occupancy", 0),
+        default=0,
+    )
 
-        # Legacy behavior kept for backward compatibility when no `congestion`
-        # section is provided in the config.
-        return base_cost + beta * projected_ratio
+    node_capacity = _positive_int(
+        target_node_data.get("node_capacity", 1),
+        default=1,
+    )
+    node_occupancy = _non_negative_int(
+        target_node_data.get("node_occupancy", 0),
+        default=0,
+    )
 
-    if heuristic == "h3":
-        # h3 is evaluated at full-path level because temporal capacity depends
-        # on the estimated arrival time to each future edge/node.
-        return base_cost
+    projected_flow_occupancy = flow_occupancy + projected_group_size
+    projected_node_occupancy = node_occupancy + projected_group_size
 
-    raise ValueError(f"Unknown heuristic: {heuristic}")
+    flow_ratio = projected_flow_occupancy / flow_capacity
+    node_ratio = projected_node_occupancy / node_capacity
+
+    # A path step is constrained by its worst bottleneck: either the passage
+    # flow capacity or the destination area capacity.
+    projected_ratio = max(flow_ratio, node_ratio)
+
+    if edge_data.get("block_edges_at_capacity", False) and (
+        projected_flow_occupancy > flow_capacity
+        or projected_node_occupancy > node_capacity
+    ):
+        return float("inf")
+
+    if edge_data.get("use_linear_congestion_cost", False):
+        return base_cost * (1.0 + beta * projected_ratio)
+
+    return base_cost + beta * projected_ratio

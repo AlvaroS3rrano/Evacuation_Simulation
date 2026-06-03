@@ -34,6 +34,7 @@ class DummyGroup:
         self.current_nodes = {}
         self.agents = [1, 2] if agents is None else agents
         self.reserved_edges = set()
+        self.reserved_nodes = set()
         self.reserved_group_size = 0
         self.initial_agents_ids = list(self.agents)
 

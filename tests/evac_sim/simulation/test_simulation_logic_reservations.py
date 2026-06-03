@@ -11,11 +11,19 @@ from evac_sim.simulation.simulation_logic import (
 class DummyEnv:
     def __init__(self):
         self.graph = nx.DiGraph()
-        self.graph.add_edge("A", "B", occupancy=0, capacity=5, cost=1.0)
-        self.graph.add_edge("B", "C", occupancy=0, capacity=5, cost=1.0)
-        self.graph.add_edge("C", "D", occupancy=0, capacity=5, cost=1.0)
-        self.graph.add_edge("B", "X", occupancy=0, capacity=5, cost=1.0)
-        self.graph.add_edge("X", "D", occupancy=0, capacity=5, cost=1.0)
+
+        for node in ["A", "B", "C", "D", "X"]:
+            self.graph.add_node(
+                node,
+                node_capacity=5,
+                node_occupancy=0,
+            )
+
+        self.graph.add_edge("A", "B", flow_occupancy=0, flow_capacity=5, cost=1.0)
+        self.graph.add_edge("B", "C", flow_occupancy=0, flow_capacity=5, cost=1.0)
+        self.graph.add_edge("C", "D", flow_occupancy=0, flow_capacity=5, cost=1.0)
+        self.graph.add_edge("B", "X", flow_occupancy=0, flow_capacity=5, cost=1.0)
+        self.graph.add_edge("X", "D", flow_occupancy=0, flow_capacity=5, cost=1.0)
 
 
 def build_group(path, current_nodes, agents=None):
@@ -30,6 +38,7 @@ def build_group(path, current_nodes, agents=None):
         awareness_level=0,
     )
     group.reserved_edges = set()
+    group.reserved_nodes = set()
     group.reserved_group_size = 0
     group.initial_agents_ids = list(agents)
     return group
@@ -57,10 +66,16 @@ def test_update_group_reserved_edges_reserves_full_remaining_path_initially():
 
     update_group_reserved_edges(env, group, frame=0, group_id="g1")
 
-    assert env.graph["A"]["B"]["occupancy"] == 2
-    assert env.graph["B"]["C"]["occupancy"] == 2
-    assert env.graph["C"]["D"]["occupancy"] == 2
+    assert env.graph["A"]["B"]["flow_occupancy"] == 2
+    assert env.graph["B"]["C"]["flow_occupancy"] == 2
+    assert env.graph["C"]["D"]["flow_occupancy"] == 2
+
+    assert env.graph.nodes["B"]["node_occupancy"] == 2
+    assert env.graph.nodes["C"]["node_occupancy"] == 2
+    assert env.graph.nodes["D"]["node_occupancy"] == 2
+
     assert group.reserved_edges == {("A", "B"), ("B", "C"), ("C", "D")}
+    assert group.reserved_nodes == {"B", "C", "D"}
     assert group.reserved_group_size == 2
 
 
@@ -77,10 +92,16 @@ def test_update_group_reserved_edges_releases_passed_edges_when_group_advances()
     group.current_nodes = {1: "B", 2: "B"}
     update_group_reserved_edges(env, group, frame=1, group_id="g1")
 
-    assert env.graph["A"]["B"]["occupancy"] == 0
-    assert env.graph["B"]["C"]["occupancy"] == 2
-    assert env.graph["C"]["D"]["occupancy"] == 2
+    assert env.graph["A"]["B"]["flow_occupancy"] == 0
+    assert env.graph["B"]["C"]["flow_occupancy"] == 2
+    assert env.graph["C"]["D"]["flow_occupancy"] == 2
+
+    assert env.graph.nodes["B"]["node_occupancy"] == 0
+    assert env.graph.nodes["C"]["node_occupancy"] == 2
+    assert env.graph.nodes["D"]["node_occupancy"] == 2
+
     assert group.reserved_edges == {("B", "C"), ("C", "D")}
+    assert group.reserved_nodes == {"C", "D"}
 
 
 def test_update_group_reserved_edges_replaces_reservation_after_reroute():
@@ -98,11 +119,17 @@ def test_update_group_reserved_edges_replaces_reservation_after_reroute():
 
     update_group_reserved_edges(env, group, frame=1, group_id="g1")
 
-    assert env.graph["B"]["C"]["occupancy"] == 0
-    assert env.graph["C"]["D"]["occupancy"] == 0
-    assert env.graph["B"]["X"]["occupancy"] == 2
-    assert env.graph["X"]["D"]["occupancy"] == 2
+    assert env.graph["B"]["C"]["flow_occupancy"] == 0
+    assert env.graph["C"]["D"]["flow_occupancy"] == 0
+    assert env.graph["B"]["X"]["flow_occupancy"] == 2
+    assert env.graph["X"]["D"]["flow_occupancy"] == 2
+
+    assert env.graph.nodes["C"]["node_occupancy"] == 0
+    assert env.graph.nodes["X"]["node_occupancy"] == 2
+    assert env.graph.nodes["D"]["node_occupancy"] == 2
+
     assert group.reserved_edges == {("B", "X"), ("X", "D")}
+    assert group.reserved_nodes == {"X", "D"}
 
 
 def test_update_group_reserved_edges_adjusts_occupancy_when_group_size_changes():
@@ -120,9 +147,14 @@ def test_update_group_reserved_edges_adjusts_occupancy_when_group_size_changes()
 
     update_group_reserved_edges(env, group, frame=1, group_id="g1")
 
-    assert env.graph["A"]["B"]["occupancy"] == 1
-    assert env.graph["B"]["C"]["occupancy"] == 1
-    assert env.graph["C"]["D"]["occupancy"] == 1
+    assert env.graph["A"]["B"]["flow_occupancy"] == 1
+    assert env.graph["B"]["C"]["flow_occupancy"] == 1
+    assert env.graph["C"]["D"]["flow_occupancy"] == 1
+
+    assert env.graph.nodes["B"]["node_occupancy"] == 1
+    assert env.graph.nodes["C"]["node_occupancy"] == 1
+    assert env.graph.nodes["D"]["node_occupancy"] == 1
+
     assert group.reserved_group_size == 1
 
 
@@ -141,9 +173,14 @@ def test_update_group_reserved_edges_never_makes_occupancy_negative():
 
     update_group_reserved_edges(env, group, frame=2, group_id="g1")
 
-    assert env.graph["A"]["B"]["occupancy"] >= 0
-    assert env.graph["B"]["C"]["occupancy"] >= 0
-    assert env.graph["C"]["D"]["occupancy"] >= 0
+    assert env.graph["A"]["B"]["flow_occupancy"] >= 0
+    assert env.graph["B"]["C"]["flow_occupancy"] >= 0
+    assert env.graph["C"]["D"]["flow_occupancy"] >= 0
+
+    assert env.graph.nodes["B"]["node_occupancy"] >= 0
+    assert env.graph.nodes["C"]["node_occupancy"] >= 0
+    assert env.graph.nodes["D"]["node_occupancy"] >= 0
+
 
 def test_get_reserved_path_segment_without_horizon_returns_full_remaining_path():
     group = build_group(
@@ -181,7 +218,7 @@ def test_get_reserved_path_segment_with_horizon_2_returns_two_edges_ahead():
     assert reserved_segment == ["A", "B", "C"]
 
 
-def test_update_group_reserved_edges_with_horizon_limits_reserved_edges():
+def test_update_group_reserved_edges_with_horizon_limits_reserved_edges_and_nodes():
     env = DummyEnv()
     group = build_group(
         path=["A", "B", "C", "D"],
@@ -191,13 +228,19 @@ def test_update_group_reserved_edges_with_horizon_limits_reserved_edges():
 
     update_group_reserved_edges(env, group, frame=0, group_id="g1", horizon_k=1)
 
-    assert env.graph["A"]["B"]["occupancy"] == 2
-    assert env.graph["B"]["C"]["occupancy"] == 0
-    assert env.graph["C"]["D"]["occupancy"] == 0
+    assert env.graph["A"]["B"]["flow_occupancy"] == 2
+    assert env.graph["B"]["C"]["flow_occupancy"] == 0
+    assert env.graph["C"]["D"]["flow_occupancy"] == 0
+
+    assert env.graph.nodes["B"]["node_occupancy"] == 2
+    assert env.graph.nodes["C"]["node_occupancy"] == 0
+    assert env.graph.nodes["D"]["node_occupancy"] == 0
+
     assert group.reserved_edges == {("A", "B")}
+    assert group.reserved_nodes == {"B"}
 
 
-def test_update_group_reserved_edges_with_horizon_2_reserves_only_first_two_edges():
+def test_update_group_reserved_edges_with_horizon_2_reserves_only_first_two_edges_and_nodes():
     env = DummyEnv()
     group = build_group(
         path=["A", "B", "C", "D"],
@@ -207,10 +250,16 @@ def test_update_group_reserved_edges_with_horizon_2_reserves_only_first_two_edge
 
     update_group_reserved_edges(env, group, frame=0, group_id="g1", horizon_k=2)
 
-    assert env.graph["A"]["B"]["occupancy"] == 2
-    assert env.graph["B"]["C"]["occupancy"] == 2
-    assert env.graph["C"]["D"]["occupancy"] == 0
+    assert env.graph["A"]["B"]["flow_occupancy"] == 2
+    assert env.graph["B"]["C"]["flow_occupancy"] == 2
+    assert env.graph["C"]["D"]["flow_occupancy"] == 0
+
+    assert env.graph.nodes["B"]["node_occupancy"] == 2
+    assert env.graph.nodes["C"]["node_occupancy"] == 2
+    assert env.graph.nodes["D"]["node_occupancy"] == 0
+
     assert group.reserved_edges == {("A", "B"), ("B", "C")}
+    assert group.reserved_nodes == {"B", "C"}
 
 
 def test_update_group_reserved_edges_with_horizon_moves_window_when_group_advances():
@@ -226,10 +275,16 @@ def test_update_group_reserved_edges_with_horizon_moves_window_when_group_advanc
     group.current_nodes = {1: "B", 2: "B"}
     update_group_reserved_edges(env, group, frame=1, group_id="g1", horizon_k=1)
 
-    assert env.graph["A"]["B"]["occupancy"] == 0
-    assert env.graph["B"]["C"]["occupancy"] == 2
-    assert env.graph["C"]["D"]["occupancy"] == 0
+    assert env.graph["A"]["B"]["flow_occupancy"] == 0
+    assert env.graph["B"]["C"]["flow_occupancy"] == 2
+    assert env.graph["C"]["D"]["flow_occupancy"] == 0
+
+    assert env.graph.nodes["B"]["node_occupancy"] == 0
+    assert env.graph.nodes["C"]["node_occupancy"] == 2
+    assert env.graph.nodes["D"]["node_occupancy"] == 0
+
     assert group.reserved_edges == {("B", "C")}
+    assert group.reserved_nodes == {"C"}
 
 
 def test_update_group_reserved_edges_with_horizon_replaces_window_after_reroute():
@@ -247,7 +302,13 @@ def test_update_group_reserved_edges_with_horizon_replaces_window_after_reroute(
 
     update_group_reserved_edges(env, group, frame=1, group_id="g1", horizon_k=1)
 
-    assert env.graph["B"]["C"]["occupancy"] == 0
-    assert env.graph["B"]["X"]["occupancy"] == 2
-    assert env.graph["X"]["D"]["occupancy"] == 0
+    assert env.graph["B"]["C"]["flow_occupancy"] == 0
+    assert env.graph["B"]["X"]["flow_occupancy"] == 2
+    assert env.graph["X"]["D"]["flow_occupancy"] == 0
+
+    assert env.graph.nodes["C"]["node_occupancy"] == 0
+    assert env.graph.nodes["X"]["node_occupancy"] == 2
+    assert env.graph.nodes["D"]["node_occupancy"] == 0
+
     assert group.reserved_edges == {("B", "X")}
+    assert group.reserved_nodes == {"X"}

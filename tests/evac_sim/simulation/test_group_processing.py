@@ -8,7 +8,7 @@ def build_group(path=None):
     if path is None:
         path = ["A", "B", "C"]
 
-    return AgentGroup(
+    group = AgentGroup(
         agents=[1, 2],
         path=path,
         current_nodes={1: "A", 2: "A"},
@@ -16,6 +16,8 @@ def build_group(path=None):
         awareness_level=0,
         initial_agents_ids=[1, 2],
     )
+    group.reserved_nodes = set()
+    return group
 
 
 def test_process_single_group_passes_horizon_to_reservation_updates(monkeypatch):

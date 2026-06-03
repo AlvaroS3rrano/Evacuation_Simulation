@@ -51,6 +51,7 @@ class AgentGroup:
     agents_in_stairs: list[Any] = field(default_factory=list)
     initial_agents_ids: list[Any] = field(default_factory=list)
     reserved_edges: set[tuple[Any, Any]] = field(default_factory=set)
+    reserved_nodes: set[Any] = field(default_factory=set)
     reserved_group_size: int = 0
 
     waiting_due_to_congestion: bool = False
