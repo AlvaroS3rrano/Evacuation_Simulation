@@ -27,7 +27,7 @@ def run() -> None:
         "1.0",
         "--out-dir",
         "./runs/profile_h3_short_vs_wide_cprofile",
-        "-v",
+        # "-v",
     ])
 
 

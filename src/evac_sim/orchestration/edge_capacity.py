@@ -55,25 +55,19 @@ def apply_temporal_capacity_settings_to_graph(
     graph.graph["temporal_capacity_config"] = temporal_cfg
     reset_temporal_capacity_state(graph)
 
-    for _, _, edge_data in graph.edges(data=True):
-        base_flow_capacity = int(
-            edge_data.get(
-                "base_flow_capacity",
-                edge_data.get(
-                    "flow_capacity",
-                    edge_data.get(
-                        "capacity",
-                        temporal_cfg.edge_flow_capacity_default,
-                    ),
+    for _, node_data in graph.nodes(data=True):
+        base_node_capacity = int(
+            node_data.get(
+                "base_node_capacity",
+                node_data.get(
+                    "node_capacity",
+                    temporal_cfg.node_capacity_default,
                 ),
             )
         )
 
-        edge_data["base_flow_capacity"] = max(1, base_flow_capacity)
-        edge_data["flow_capacity"] = max(
-            1,
-            int(math.ceil(edge_data["base_flow_capacity"])),
-        )
+        node_data["base_node_capacity"] = max(1, base_node_capacity)
+        node_data["node_capacity"] = max(1, int(node_data["base_node_capacity"]))
 
     for _, node_data in graph.nodes(data=True):
         base_node_capacity = int(

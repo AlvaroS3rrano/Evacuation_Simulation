@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass, field
+from functools import cached_property
 from typing import Any
-
 
 @dataclass(frozen=True)
 class TemporalCapacityConfig:
@@ -38,9 +38,12 @@ class TemporalCapacityConfig:
     allow_waiting: bool = True
     block_at_capacity: bool = True
 
-    @property
+    @cached_property
     def horizon_buckets(self) -> int:
-        return max(0, int(math.ceil(self.temporal_horizon_frames / self.time_bucket_frames)))
+        return max(
+            0,
+            int(math.ceil(self.temporal_horizon_frames / self.time_bucket_frames)),
+        )
 
     def bucket_for_frame(self, frame: int | float) -> int:
         return int(math.floor(float(frame) / self.time_bucket_frames))
@@ -129,10 +132,102 @@ def get_temporal_capacity_state(G: Any) -> TemporalCapacityState | None:
 def reset_temporal_capacity_state(G: Any) -> TemporalCapacityState:
     state = TemporalCapacityState()
     G.graph["temporal_capacity_state"] = state
+    reset_temporal_capacity_runtime_cache(G)
     return state
 
+def reset_temporal_capacity_runtime_cache(G: Any) -> None:
+    G.graph.pop("temporal_capacity_runtime_cache", None)
+
+
+def _normalise_capacity(value: Any, default: int = 1) -> int:
+    try:
+        return max(1, int(math.ceil(float(value))))
+    except (TypeError, ValueError):
+        return max(1, int(default))
+
+
+def _build_temporal_capacity_runtime_cache(
+    G: Any,
+    cfg: TemporalCapacityConfig,
+) -> dict[str, dict]:
+    """
+    Build fast lookup dictionaries for temporal capacity evaluation.
+
+    This avoids repeated NetworkX view lookups and repeated capacity conversions
+    inside compute_temporal_path_effective_cost, which is called very frequently.
+    """
+    edge_cost: dict[tuple[Any, Any], float] = {}
+    edge_traversal_frames: dict[tuple[Any, Any], int] = {}
+    edge_flow_capacity: dict[tuple[Any, Any], int] = {}
+
+    for u, v, edge_data in G.edges(data=True):
+        edge_key = (u, v)
+
+        cost = float(edge_data.get("cost", 1.0))
+        edge_cost[edge_key] = cost
+        edge_traversal_frames[edge_key] = max(
+            1,
+            int(math.ceil(cost * cfg.traversal_time_scale)),
+        )
+
+        flow_capacity = edge_data.get(
+            "flow_capacity",
+            edge_data.get("capacity", cfg.edge_flow_capacity_default),
+        )
+
+        edge_flow_capacity[edge_key] = (
+            10**12
+            if not cfg.edge_flow_enabled
+            else _normalise_capacity(
+                flow_capacity,
+                default=cfg.edge_flow_capacity_default,
+            )
+        )
+
+    node_capacity: dict[Any, int] = {}
+
+    for node, node_data in G.nodes(data=True):
+        capacity = node_data.get(
+            "node_capacity",
+            cfg.node_capacity_default,
+        )
+
+        node_capacity[node] = (
+            10**12
+            if not cfg.node_capacity_enabled
+            else _normalise_capacity(
+                capacity,
+                default=cfg.node_capacity_default,
+            )
+        )
+
+    cache = {
+        "edge_cost": edge_cost,
+        "edge_traversal_frames": edge_traversal_frames,
+        "edge_flow_capacity": edge_flow_capacity,
+        "node_capacity": node_capacity,
+    }
+
+    G.graph["temporal_capacity_runtime_cache"] = cache
+
+    return cache
+
+
+def _get_temporal_capacity_runtime_cache(
+    G: Any,
+    cfg: TemporalCapacityConfig,
+) -> dict[str, dict]:
+    cache = G.graph.get("temporal_capacity_runtime_cache")
+
+    if cache is not None:
+        return cache
+
+    return _build_temporal_capacity_runtime_cache(G, cfg)
 
 def _capacity_as_int(value: Any, default: int = 1) -> int:
+    """
+    Slow fallback used only when a graph was not normalised beforehand.
+    """
     try:
         return max(1, int(math.ceil(float(value))))
     except (TypeError, ValueError):
@@ -144,13 +239,24 @@ def _edge_flow_capacity(G: Any, u: Any, v: Any, cfg: TemporalCapacityConfig) -> 
         return 10**12
 
     edge_data = G[u][v]
-    return _capacity_as_int(
-        edge_data.get(
-            "flow_capacity",
+
+    flow_capacity = edge_data.get("flow_capacity")
+    if isinstance(flow_capacity, int):
+        return flow_capacity
+
+    if flow_capacity is not None:
+        flow_capacity = _capacity_as_int(
+            flow_capacity,
+            default=cfg.edge_flow_capacity_default,
+        )
+    else:
+        flow_capacity = _capacity_as_int(
             edge_data.get("capacity", cfg.edge_flow_capacity_default),
-        ),
-        default=cfg.edge_flow_capacity_default,
-    )
+            default=cfg.edge_flow_capacity_default,
+        )
+
+    edge_data["flow_capacity"] = flow_capacity
+    return flow_capacity
 
 
 def _node_capacity(G: Any, node: Any, cfg: TemporalCapacityConfig) -> int:
@@ -158,14 +264,24 @@ def _node_capacity(G: Any, node: Any, cfg: TemporalCapacityConfig) -> int:
         return 10**12
 
     node_data = G.nodes[node]
-    return _capacity_as_int(
-        node_data.get(
-            "node_capacity",
-            node_data.get("capacity", cfg.node_capacity_default),
-        ),
-        default=cfg.node_capacity_default,
-    )
 
+    node_capacity = node_data.get("node_capacity")
+    if isinstance(node_capacity, int):
+        return node_capacity
+
+    if node_capacity is not None:
+        node_capacity = _capacity_as_int(
+            node_capacity,
+            default=cfg.node_capacity_default,
+        )
+    else:
+        node_capacity = _capacity_as_int(
+            node_data.get("capacity", cfg.node_capacity_default),
+            default=cfg.node_capacity_default,
+        )
+
+    node_data["node_capacity"] = node_capacity
+    return node_capacity
 
 def _edge_traversal_frames(edge_data: dict, cfg: TemporalCapacityConfig) -> int:
     base_cost = float(edge_data.get("cost", 1.0))
@@ -261,101 +377,142 @@ def compute_temporal_path_effective_cost(
     """
     Compute a temporal node/edge-capacity-aware path cost.
 
-    h3 evaluates each edge and destination node at the estimated future bucket
-    when the group is expected to reach it.
+    Optimised version:
+      - uses precomputed graph lookup dictionaries
+      - avoids repeated NetworkX edge/node view access
+      - inlines projected value and feasibility checks
+      - avoids per-edge helper function calls in the hot loop
     """
     if not path or len(path) < 2:
         return float("inf")
 
     cfg = get_temporal_capacity_config(G)
 
+    runtime_cache = _get_temporal_capacity_runtime_cache(G, cfg)
+    edge_cost = runtime_cache["edge_cost"]
+    edge_traversal_frames = runtime_cache["edge_traversal_frames"]
+
     if not cfg.enabled:
-        return sum(float(G[u][v]["cost"]) for u, v in zip(path, path[1:]))
+        return sum(
+            edge_cost[(u, v)]
+            for u, v in zip(path, path[1:])
+        )
 
     if current_frame is None:
         current_frame = int(G.graph.get("current_frame", 0))
 
     state = get_temporal_capacity_state(G)
-    current_bucket = cfg.bucket_for_frame(current_frame)
 
-    arrival_frame = float(current_frame)
+    if state is None:
+        edge_flow_reservations = {}
+        node_occupancy_reservations = {}
+    else:
+        edge_flow_reservations = state.edge_flow
+        node_occupancy_reservations = state.node_occupancy
+
+    edge_flow_capacity = runtime_cache["edge_flow_capacity"]
+    node_capacity = runtime_cache["node_capacity"]
+
+    time_bucket_frames = cfg.time_bucket_frames
+    current_bucket = int(current_frame // time_bucket_frames)
+    last_bucket = current_bucket + cfg.horizon_buckets
+
+    arrival_frame = int(current_frame)
     total = 0.0
+
     effective_group_size = max(0, int(group_size))
 
     beta_edge = beta if cfg.beta_edge is None else cfg.beta_edge
     beta_node = beta if cfg.beta_node is None else cfg.beta_node
 
-    for u, v in zip(path, path[1:]):
-        edge_data = G[u][v]
-        base_cost = float(edge_data["cost"])
-        traversal_frames = _edge_traversal_frames(edge_data, cfg)
+    edge_exponent = cfg.edge_capacity_exponent
+    node_exponent = cfg.node_capacity_exponent
 
-        bucket = cfg.bucket_for_frame(arrival_frame)
+    block_at_capacity = cfg.block_at_capacity
+    allow_waiting = cfg.allow_waiting
+    wait_penalty = cfg.wait_penalty
+
+    for u, v in zip(path, path[1:]):
+        edge_key = (u, v)
+
+        base_cost = edge_cost[edge_key]
+        traversal_frames = edge_traversal_frames[edge_key]
+
+        bucket = int(arrival_frame // time_bucket_frames)
         wait_frames = 0
 
-        if _within_horizon(bucket, current_bucket, cfg):
-            projected_edge_flow, edge_capacity, projected_node_occupancy, node_capacity = (
-                _projected_values(
-                    G=G,
-                    state=state,
-                    u=u,
-                    v=v,
-                    bucket=bucket,
-                    group_size=effective_group_size,
-                    cfg=cfg,
-                )
+        if current_bucket <= bucket <= last_bucket:
+            e_capacity = edge_flow_capacity[edge_key]
+            n_capacity = node_capacity[v]
+
+            projected_edge_flow = (
+                edge_flow_reservations.get((u, v, bucket), 0)
+                + effective_group_size
+            )
+            projected_node_occupancy = (
+                node_occupancy_reservations.get((v, bucket), 0)
+                + effective_group_size
             )
 
-            feasible = _is_feasible(
-                projected_edge_flow=projected_edge_flow,
-                edge_capacity=edge_capacity,
-                projected_node_occupancy=projected_node_occupancy,
-                node_capacity=node_capacity,
+            feasible = (
+                projected_edge_flow <= e_capacity
+                and projected_node_occupancy <= n_capacity
             )
 
-            if cfg.block_at_capacity and not feasible:
-                if not cfg.allow_waiting:
+            if block_at_capacity and not feasible:
+                if not allow_waiting:
                     return float("inf")
 
-                feasible_bucket = _first_feasible_bucket(
-                    G=G,
-                    state=state,
-                    u=u,
-                    v=v,
-                    start_bucket=bucket,
-                    current_bucket=current_bucket,
-                    group_size=effective_group_size,
-                    cfg=cfg,
-                )
+                feasible_bucket = None
+
+                for candidate_bucket in range(bucket, last_bucket + 1):
+                    candidate_edge_flow = (
+                        edge_flow_reservations.get((u, v, candidate_bucket), 0)
+                        + effective_group_size
+                    )
+                    candidate_node_occupancy = (
+                        node_occupancy_reservations.get((v, candidate_bucket), 0)
+                        + effective_group_size
+                    )
+
+                    if (
+                        candidate_edge_flow <= e_capacity
+                        and candidate_node_occupancy <= n_capacity
+                    ):
+                        feasible_bucket = candidate_bucket
+                        projected_edge_flow = candidate_edge_flow
+                        projected_node_occupancy = candidate_node_occupancy
+                        break
 
                 if feasible_bucket is None:
                     return float("inf")
 
-                wait_frames = max(0, feasible_bucket - bucket) * cfg.time_bucket_frames
+                wait_frames = max(0, feasible_bucket - bucket) * time_bucket_frames
                 arrival_frame += wait_frames
                 bucket = feasible_bucket
 
-                projected_edge_flow, edge_capacity, projected_node_occupancy, node_capacity = (
-                    _projected_values(
-                        G=G,
-                        state=state,
-                        u=u,
-                        v=v,
-                        bucket=bucket,
-                        group_size=effective_group_size,
-                        cfg=cfg,
-                    )
-                )
+            edge_ratio = projected_edge_flow / e_capacity
+            node_ratio = projected_node_occupancy / n_capacity
 
-            edge_ratio = projected_edge_flow / edge_capacity
-            node_ratio = projected_node_occupancy / node_capacity
+            if edge_exponent == 1.0:
+                edge_penalty = edge_ratio
+            else:
+                edge_penalty = edge_ratio ** edge_exponent
+
+            if node_exponent == 1.0:
+                node_penalty = node_ratio
+            else:
+                node_penalty = node_ratio ** node_exponent
 
             total += base_cost * (
                 1.0
-                + beta_edge * (edge_ratio ** cfg.edge_capacity_exponent)
-                + beta_node * (node_ratio ** cfg.node_capacity_exponent)
+                + beta_edge * edge_penalty
+                + beta_node * node_penalty
             )
-            total += cfg.wait_penalty * wait_frames
+
+            if wait_penalty:
+                total += wait_penalty * wait_frames
+
         else:
             total += base_cost
 
@@ -374,6 +531,8 @@ def reserve_temporal_path(
 ) -> bool:
     """
     Reserve temporal edge-flow and destination-node buckets for a group path.
+
+    Optimised version using runtime capacity lookup dictionaries.
     """
     if not path or len(path) < 2:
         return False
@@ -387,56 +546,73 @@ def reserve_temporal_path(
 
     state.release_group(group_id)
 
-    current_bucket = cfg.bucket_for_frame(current_frame)
+    runtime_cache = _get_temporal_capacity_runtime_cache(G, cfg)
+    edge_traversal_frames = runtime_cache["edge_traversal_frames"]
+    edge_flow_capacity = runtime_cache["edge_flow_capacity"]
+    node_capacity = runtime_cache["node_capacity"]
+
+    time_bucket_frames = cfg.time_bucket_frames
+    current_bucket = int(current_frame // time_bucket_frames)
+    last_bucket = current_bucket + cfg.horizon_buckets
+
     state.cleanup_before_bucket(current_bucket)
+
+    edge_flow_reservations = state.edge_flow
+    node_occupancy_reservations = state.node_occupancy
 
     edge_keys: set[tuple[Any, Any, int]] = set()
     node_keys: set[tuple[Any, int]] = set()
 
-    arrival_frame = float(current_frame)
+    arrival_frame = int(current_frame)
     effective_group_size = max(0, int(group_size))
 
     for u, v in zip(path, path[1:]):
-        edge_data = G[u][v]
-        bucket = cfg.bucket_for_frame(arrival_frame)
+        edge_key_static = (u, v)
+        bucket = int(arrival_frame // time_bucket_frames)
 
-        if _within_horizon(bucket, current_bucket, cfg):
+        if current_bucket <= bucket <= last_bucket:
+            e_capacity = edge_flow_capacity[edge_key_static]
+            n_capacity = node_capacity[v]
+
             if cfg.block_at_capacity:
-                projected_edge_flow, edge_capacity, projected_node_occupancy, node_capacity = (
-                    _projected_values(
-                        G=G,
-                        state=state,
-                        u=u,
-                        v=v,
-                        bucket=bucket,
-                        group_size=effective_group_size,
-                        cfg=cfg,
-                    )
+                projected_edge_flow = (
+                    edge_flow_reservations.get((u, v, bucket), 0)
+                    + effective_group_size
+                )
+                projected_node_occupancy = (
+                    node_occupancy_reservations.get((v, bucket), 0)
+                    + effective_group_size
                 )
 
-                feasible = _is_feasible(
-                    projected_edge_flow=projected_edge_flow,
-                    edge_capacity=edge_capacity,
-                    projected_node_occupancy=projected_node_occupancy,
-                    node_capacity=node_capacity,
+                feasible = (
+                    projected_edge_flow <= e_capacity
+                    and projected_node_occupancy <= n_capacity
                 )
 
                 if not feasible and cfg.allow_waiting:
-                    feasible_bucket = _first_feasible_bucket(
-                        G=G,
-                        state=state,
-                        u=u,
-                        v=v,
-                        start_bucket=bucket,
-                        current_bucket=current_bucket,
-                        group_size=effective_group_size,
-                        cfg=cfg,
-                    )
+                    feasible_bucket = None
+
+                    for candidate_bucket in range(bucket, last_bucket + 1):
+                        candidate_edge_flow = (
+                            edge_flow_reservations.get((u, v, candidate_bucket), 0)
+                            + effective_group_size
+                        )
+                        candidate_node_occupancy = (
+                            node_occupancy_reservations.get((v, candidate_bucket), 0)
+                            + effective_group_size
+                        )
+
+                        if (
+                            candidate_edge_flow <= e_capacity
+                            and candidate_node_occupancy <= n_capacity
+                        ):
+                            feasible_bucket = candidate_bucket
+                            break
 
                     if feasible_bucket is None:
                         return False
 
-                    arrival_frame += max(0, feasible_bucket - bucket) * cfg.time_bucket_frames
+                    arrival_frame += max(0, feasible_bucket - bucket) * time_bucket_frames
                     bucket = feasible_bucket
 
                 elif not feasible:
@@ -448,12 +624,14 @@ def reserve_temporal_path(
             edge_keys.add(edge_key)
             node_keys.add(node_key)
 
-            state.edge_flow[edge_key] = state.edge_flow.get(edge_key, 0) + effective_group_size
-            state.node_occupancy[node_key] = (
-                state.node_occupancy.get(node_key, 0) + effective_group_size
+            edge_flow_reservations[edge_key] = (
+                edge_flow_reservations.get(edge_key, 0) + effective_group_size
+            )
+            node_occupancy_reservations[node_key] = (
+                node_occupancy_reservations.get(node_key, 0) + effective_group_size
             )
 
-        arrival_frame += _edge_traversal_frames(edge_data, cfg)
+        arrival_frame += edge_traversal_frames[edge_key_static]
 
     state.group_reservations[group_id] = (
         edge_keys,
