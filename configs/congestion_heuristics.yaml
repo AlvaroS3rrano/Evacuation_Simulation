@@ -22,7 +22,8 @@ congestion_parallel_corridors:
     seed: 3201
 
   congestion:
-    edge_capacity_multiplier: 1.0
+    node_capacity_multiplier: 1.0
+    edge_flow_capacity_multiplier: 1.0
     use_linear_congestion_cost: true
     block_edges_at_capacity: true
     no_path_policy: "wait"
@@ -75,7 +76,8 @@ congestion_short_vs_wide:
     seed: 3201
 
   congestion:
-    edge_capacity_multiplier: 1.0
+    node_capacity_multiplier: 1.0
+    edge_flow_capacity_multiplier: 1.0
     use_linear_congestion_cost: true
     block_edges_at_capacity: true
     no_path_policy: "wait"
@@ -128,7 +130,8 @@ congestion_two_exits:
     seed: 3201
 
   congestion:
-    edge_capacity_multiplier: 1.0
+    node_capacity_multiplier: 1.0
+    edge_flow_capacity_multiplier: 1.0
     use_linear_congestion_cost: true
     block_edges_at_capacity: true
     no_path_policy: "wait"

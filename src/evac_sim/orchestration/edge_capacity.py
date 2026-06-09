@@ -33,15 +33,23 @@ def apply_edge_flow_capacity_multiplier(
             int(math.ceil(edge_data["base_flow_capacity"] * multiplier)),
         )
         edge_data["flow_capacity_multiplier"] = multiplier
+        edge_data.setdefault("flow_occupancy", 0)
 
 
-def apply_node_capacity_settings(
+def apply_node_capacity_multiplier(
     graph: Any,
     congestion_config: CongestionConfig,
 ) -> None:
     """
-    Normalise node_capacity values used by h1/h2/h3.
+    Apply a multiplier to node_capacity values.
+
+    The original value is preserved in base_node_capacity.
     """
+    multiplier = congestion_config.node_capacity_multiplier
+
+    if multiplier <= 0:
+        raise ValueError("Node capacity multiplier must be > 0")
+
     temporal_cfg = congestion_config.temporal_capacity
 
     for _, node_data in graph.nodes(data=True):
@@ -58,8 +66,9 @@ def apply_node_capacity_settings(
         node_data["base_node_capacity"] = max(1, base_node_capacity)
         node_data["node_capacity"] = max(
             1,
-            int(math.ceil(node_data["base_node_capacity"])),
+            int(math.ceil(node_data["base_node_capacity"] * multiplier)),
         )
+        node_data["node_capacity_multiplier"] = multiplier
         node_data.setdefault("node_occupancy", 0)
 
 
@@ -81,18 +90,17 @@ def apply_congestion_settings_to_graph(
     """
     Apply congestion settings to the copied graph used by one simulation run.
     """
+    apply_node_capacity_multiplier(
+        graph,
+        congestion_config,
+    )
+
     apply_edge_flow_capacity_multiplier(
         graph,
         congestion_config.edge_flow_capacity_multiplier,
     )
 
-    apply_node_capacity_settings(
-        graph,
-        congestion_config,
-    )
-
     for _, _, edge_data in graph.edges(data=True):
-        edge_data.setdefault("flow_occupancy", 0)
         edge_data["use_linear_congestion_cost"] = (
             congestion_config.use_linear_congestion_cost
         )

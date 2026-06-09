@@ -11,10 +11,9 @@ SUPPORTED_NO_PATH_POLICIES = {"raise", "wait", "keep_current"}
 
 @dataclass(frozen=True)
 class CongestionConfig:
+    node_capacity_multiplier: float = 1.0
     edge_flow_capacity_multiplier: float = 1.0
 
-    # Backward-compatible defaults:
-    # If no `congestion` section exists, old h1/h2 cost behavior is preserved.
     use_linear_congestion_cost: bool = False
     block_edges_at_capacity: bool = False
     no_path_policy: str = "raise"
@@ -102,15 +101,12 @@ def build_congestion_config(
     """
     Build optional congestion configuration from a case config.
 
-    If the `congestion` section is missing, default values preserve the previous
-    behavior:
-      - capacities are not scaled
-      - h1/h2 use the legacy additive congestion cost
-      - saturated edges are not blocked
-      - missing initial paths still raise errors
-      - h3 temporal capacity is disabled
-    """
+    The current capacity model uses:
+      - node_capacity_multiplier for node_capacity
+      - edge_flow_capacity_multiplier for edge flow_capacity
 
+    The legacy edge_capacity_multiplier key is intentionally not supported.
+    """
     congestion_cfg = cfg.get("congestion")
 
     if congestion_cfg is None:
@@ -119,9 +115,24 @@ def build_congestion_config(
     if not isinstance(congestion_cfg, Mapping):
         raise TypeError("congestion must be a mapping when provided")
 
+    if "edge_capacity_multiplier" in congestion_cfg:
+        raise ValueError(
+            "congestion.edge_capacity_multiplier is deprecated and no longer "
+            "supported. Use congestion.edge_flow_capacity_multiplier for edge "
+            "flow_capacity and congestion.node_capacity_multiplier for "
+            "node_capacity."
+        )
+
+    node_capacity_multiplier = float(
+        congestion_cfg.get("node_capacity_multiplier", 1.0)
+    )
+
     edge_flow_capacity_multiplier = float(
         congestion_cfg.get("edge_flow_capacity_multiplier", 1.0)
     )
+
+    if node_capacity_multiplier <= 0:
+        raise ValueError("congestion.node_capacity_multiplier must be > 0")
 
     if edge_flow_capacity_multiplier <= 0:
         raise ValueError("congestion.edge_flow_capacity_multiplier must be > 0")
@@ -138,6 +149,7 @@ def build_congestion_config(
         )
 
     return CongestionConfig(
+        node_capacity_multiplier=node_capacity_multiplier,
         edge_flow_capacity_multiplier=edge_flow_capacity_multiplier,
         use_linear_congestion_cost=bool(
             congestion_cfg.get("use_linear_congestion_cost", True)
