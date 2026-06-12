@@ -60,7 +60,7 @@ def _try_resume_waiting_group(
     if best_path is None:
         mark_group_waiting_due_to_congestion(group, frame=frame)
 
-        logger.info(
+        logger.debug(
             "Group keeps waiting due to congestion | %s | current_node=%s no_path_count=%d",
             ctx(frame=frame, group_id=group_id, agents=len(agent_ids)),
             curr_node,
@@ -78,7 +78,7 @@ def _try_resume_waiting_group(
 
     clear_group_waiting_due_to_congestion(group)
 
-    logger.info(
+    logger.debug(
         "Waiting group resumed | %s | current_node=%s path=%s",
         ctx(frame=frame, group_id=group_id, agents=len(agent_ids)),
         curr_node,
@@ -249,7 +249,7 @@ def update_group_paths(
 
             clear_group_waiting_due_to_congestion(group)
 
-            logger.info(
+            logger.debug(
                 "Reroute applied | %s | reason=%s | curr=%s next=%s | old_len=%d new_len=%d",
                 ctx(frame=frame, group_id=group_id, agents=len(agent_ids)),
                 reroute_reason,
@@ -262,9 +262,9 @@ def update_group_paths(
             return group
 
     if (
-        no_path_policy == "wait"
-        and heuristic != "none"
-        and group.awareness_level == 1
+            no_path_policy == "wait"
+            and heuristic in {"h2", "h3"}
+            and group.awareness_level == 1
     ):
         curr_node = representative_current_node(group)
 
@@ -285,7 +285,7 @@ def update_group_paths(
             if best_path is None:
                 mark_group_waiting_due_to_congestion(group, frame=frame)
 
-                logger.info(
+                logger.debug(
                     "Group waits due to no congestion-feasible path | %s | current_node=%s",
                     ctx(frame=frame, group_id=group_id, agents=len(agent_ids)),
                     curr_node,

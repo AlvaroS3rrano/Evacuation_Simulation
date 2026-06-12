@@ -10,8 +10,10 @@ from evac_sim.cli import main
 PROFILE_DIR = Path("runs/profiling")
 PROFILE_DIR.mkdir(parents=True, exist_ok=True)
 
-PROFILE_FILE = PROFILE_DIR / "h3_short_vs_wide.prof"
-TEXT_REPORT = PROFILE_DIR / "h3_short_vs_wide_top.txt"
+HEURISTIC = "h1"
+
+PROFILE_FILE = PROFILE_DIR / f"{HEURISTIC}_short_vs_wide.prof"
+TEXT_REPORT = PROFILE_DIR / f"{HEURISTIC}_short_vs_wide_top.txt"
 
 
 def run() -> None:
@@ -22,11 +24,11 @@ def run() -> None:
         "--case",
         "congestion_short_vs_wide",
         "--heuristic",
-        "h3",
+        HEURISTIC,
         "--beta",
         "1.0",
         "--out-dir",
-        "./runs/profile_h3_short_vs_wide_cprofile",
+        f"./runs/profile_{HEURISTIC}_short_vs_wide_cprofile",
         # "-v",
     ])
 

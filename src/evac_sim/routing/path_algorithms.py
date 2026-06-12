@@ -89,25 +89,46 @@ def compute_path_effective_cost(
             beta=beta,
         )
 
+    if heuristic == "none":
+        return sum(
+            float(G[u][v]["cost"])
+            for u, v in zip(path, path[1:])
+        )
+
     total = 0.0
 
-    for edge_index, (u, v) in enumerate(zip(path, path[1:])):
-        projected_group_size = _get_projected_group_size_for_step(
-            edge_index=edge_index,
-            heuristic=heuristic,
-            group_size=group_size,
-            horizon_k=horizon_k,
-        )
+    if heuristic == "h1":
+        for u, v in zip(path, path[1:]):
+            total += compute_effective_step_cost(
+                edge_data=G[u][v],
+                target_node_data=G.nodes[v],
+                heuristic=heuristic,
+                beta=beta,
+                group_size=group_size,
+            )
 
-        total += compute_effective_step_cost(
-            edge_data=G[u][v],
-            target_node_data=G.nodes[v],
-            heuristic=heuristic,
-            beta=beta,
-            group_size=projected_group_size,
-        )
+        return total
 
-    return total
+    if heuristic == "h2":
+        if horizon_k is None:
+            raise ValueError("horizon_k must be provided when heuristic='h2'")
+
+        for edge_index, (u, v) in enumerate(zip(path, path[1:])):
+            if edge_index >= horizon_k:
+                total += float(G[u][v]["cost"])
+                continue
+
+            total += compute_effective_step_cost(
+                edge_data=G[u][v],
+                target_node_data=G.nodes[v],
+                heuristic=heuristic,
+                beta=beta,
+                group_size=group_size,
+            )
+
+        return total
+
+    raise ValueError(f"Unknown heuristic: {heuristic}")
 
 
 def centrality_measures(G, all_paths):
@@ -181,12 +202,13 @@ def collect_k_shortest_base_paths(
 
 def rescore_candidate_paths(
     G,
-    candidate_paths,
+    paths,
     *,
-    heuristic="none",
-    beta=1.0,
-    group_size=0,
-    horizon_k=None,
+    heuristic: str = "none",
+    beta: float = 1.0,
+    group_size: int = 0,
+    horizon_k: int | None = None,
+    max_candidates: int | None = None,
 ):
     """
     Recompute cached candidate path costs using the active heuristic.
@@ -194,9 +216,12 @@ def rescore_candidate_paths(
     Candidate paths are static, but h1/h2/h3 costs depend on current congestion
     state and must be recomputed at each routing decision.
     """
-    rescored_paths = []
+    if max_candidates is not None and max_candidates > 0:
+        paths = paths[:max_candidates]
 
-    for path, _base_cost in candidate_paths:
+    scored_paths = []
+
+    for path in paths:
         cost = compute_path_effective_cost(
             G,
             path,
@@ -206,12 +231,11 @@ def rescore_candidate_paths(
             horizon_k=horizon_k,
         )
 
-        if not math.isfinite(cost):
-            continue
+        scored_paths.append((path, cost))
 
-        rescored_paths.append((path, cost))
+    scored_paths.sort(key=lambda item: item[1])
 
-    return rescored_paths
+    return scored_paths
 
 
 def collect_k_shortest_paths(

@@ -21,7 +21,7 @@ from evac_sim.io.run_paths import RunPaths
 from evac_sim.risk.risk_simulation import simulate_risk
 from evac_sim.risk.risk_validation import validate_risk_inputs
 from evac_sim.routing.decision_policies import compute_initial_path
-from evac_sim.simulation.simulation_logic import update_group_reserved_edges
+from evac_sim.simulation.simulation_logic import update_group_static_reservations
 from evac_sim.simulation.simulation_manager import set_agents_in_simulation
 from evac_sim.simulation.temporal_capacity import reserve_temporal_path
 from evac_sim.orchestration.experiment_models import (
@@ -540,7 +540,7 @@ def _create_initial_group(
     group.no_path_count = 1 if waiting_due_to_congestion else 0
 
     if _uses_reservations(heuristic) and not group.waiting_due_to_congestion:
-        update_group_reserved_edges(
+        update_group_static_reservations(
             env_info,
             group,
             frame=0,

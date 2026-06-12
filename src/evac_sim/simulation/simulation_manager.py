@@ -188,7 +188,7 @@ def run_agent_simulation(
     Advance the simulation and periodically process agent movements and path updates.
     """
     sim = sim_cfg.simulation
-    max_frames = 10000
+    max_frames = 20000
 
     logger.info("Simulation start | agents=%d", sim.agent_count())
 

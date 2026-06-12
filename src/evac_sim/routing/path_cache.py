@@ -21,7 +21,12 @@ STATIC_CANDIDATE_K_DYNAMIC = 50
 # decision. This is intentionally lower than STATIC_CANDIDATE_K_DYNAMIC because
 # h1/h2/h3 costs are recomputed very frequently during simulation.
 SCORED_CANDIDATE_LIMIT_NONE = 15
-SCORED_CANDIDATE_LIMIT_DYNAMIC = 25
+
+SCORED_CANDIDATE_LIMIT_BY_HEURISTIC = {
+    "h1": 5,
+    "h2": 10,
+    "h3": 15,
+}
 
 DYNAMIC_HEURISTICS = {"h1", "h2", "h3"}
 
@@ -45,10 +50,10 @@ def _candidate_pool_size(heuristic: str) -> int:
 
 
 def _scored_candidate_limit(heuristic: str) -> int:
-    if heuristic in DYNAMIC_HEURISTICS:
-        return SCORED_CANDIDATE_LIMIT_DYNAMIC
-
-    return SCORED_CANDIDATE_LIMIT_NONE
+    return SCORED_CANDIDATE_LIMIT_BY_HEURISTIC.get(
+        heuristic,
+        SCORED_CANDIDATE_LIMIT_NONE,
+    )
 
 
 def _graph_candidate_cache(currentG) -> dict:
@@ -241,6 +246,7 @@ def get_alternative_paths_for_node(
             beta=beta,
             group_size=group_size,
             horizon_k=horizon_k,
+            max_candidates=_scored_candidate_limit(heuristic)
         )
 
         all_paths.extend(scored_candidates)
