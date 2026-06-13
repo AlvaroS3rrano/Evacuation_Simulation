@@ -20,6 +20,7 @@ congestion_parallel_corridors:
     mean_group_size: 3
     std_group_size: 2
     seed: 3201
+    order_by_route_proximity: true
 
   congestion:
     node_capacity_multiplier: 1.0
@@ -74,6 +75,7 @@ congestion_short_vs_wide:
     mean_group_size: 3
     std_group_size: 2
     seed: 3201
+    order_by_route_proximity: true
 
   congestion:
     node_capacity_multiplier: 1.0
@@ -128,6 +130,7 @@ congestion_two_exits:
     mean_group_size: 3
     std_group_size: 2
     seed: 3201
+    order_by_route_proximity: true
 
   congestion:
     node_capacity_multiplier: 1.0

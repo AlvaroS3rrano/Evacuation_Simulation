@@ -11,10 +11,6 @@ SUPPORTED_GROUP_SIZE_DISTRIBUTIONS = {"fixed", "normal", "uniform"}
 class GroupDistributionConfig:
     """
     Optional configuration for splitting agents from one source into groups.
-
-    This commit only adds the config model. The actual group splitting logic
-    will be implemented later, so simulations keep their current behavior
-    unless this config is explicitly consumed.
     """
 
     max_group_size: int
@@ -23,6 +19,7 @@ class GroupDistributionConfig:
     mean_group_size: float | None = None
     std_group_size: float | None = None
     seed: int | None = None
+    order_by_route_proximity: bool = True
 
 
 def build_group_distribution_config(
@@ -104,4 +101,7 @@ def build_group_distribution_config(
         mean_group_size=mean_group_size,
         std_group_size=std_group_size,
         seed=seed,
+        order_by_route_proximity=bool(
+            grouping_cfg.get("order_by_route_proximity", True)
+        ),
     )

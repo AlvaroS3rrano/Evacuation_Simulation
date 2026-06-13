@@ -219,6 +219,7 @@ def run_single_mode(
         positions=resources.positions,
         exit_ids=exit_ids,
         waypoints_ids=waypoints_ids,
+        waypoints=resources.waypoints,
         env_info=resources.env_info,
         risk_first_frame=resources.risk_first_frame,
         gamma=resources.gamma,

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Mapping
 
 import numpy as np
 
@@ -14,6 +14,7 @@ class GroupPositionBatch:
     source: Any
     source_index: int
     positions: np.ndarray
+    order_index: int = 0
 
 
 def _clamp_group_size(
@@ -83,6 +84,42 @@ def _sample_group_size(
     )
 
 
+def _sort_positions_by_route_proximity(
+    source_positions: np.ndarray,
+    target_xy: tuple[float, float] | None,
+) -> np.ndarray:
+    """
+    Sort positions from closest to farthest relative to the next route node.
+
+    This makes the first generated groups contain the agents that are physically
+    closer to the next waypoint, reducing the chance that rear agents are
+    assigned before front agents.
+    """
+    if target_xy is None:
+        return source_positions
+
+    if len(source_positions) == 0:
+        return source_positions
+
+    positions_xy = np.asarray(source_positions, dtype=float)
+
+    if positions_xy.ndim != 2 or positions_xy.shape[1] < 2:
+        raise ValueError(
+            "source_positions must be a 2D array with at least x/y columns"
+        )
+
+    target = np.asarray(target_xy, dtype=float)
+
+    distances = np.linalg.norm(
+        positions_xy[:, :2] - target[:2],
+        axis=1,
+    )
+
+    ordered_indices = np.argsort(distances, kind="stable")
+
+    return source_positions[ordered_indices]
+
+
 def _split_source_positions(
     *,
     source: Any,
@@ -90,21 +127,28 @@ def _split_source_positions(
     source_positions: np.ndarray,
     grouping_config: GroupDistributionConfig,
     rng: np.random.Generator,
+    route_sort_target: tuple[float, float] | None = None,
 ) -> list[GroupPositionBatch]:
     source_positions = np.asarray(source_positions)
 
     if len(source_positions) == 0:
         return []
 
-    shuffled_indices = rng.permutation(len(source_positions))
-    shuffled_positions = source_positions[shuffled_indices]
+    if grouping_config.order_by_route_proximity:
+        ordered_positions = _sort_positions_by_route_proximity(
+            source_positions,
+            route_sort_target,
+        )
+    else:
+        shuffled_indices = rng.permutation(len(source_positions))
+        ordered_positions = source_positions[shuffled_indices]
 
     batches: list[GroupPositionBatch] = []
     offset = 0
     group_index = 0
 
-    while offset < len(shuffled_positions):
-        remaining_agents = len(shuffled_positions) - offset
+    while offset < len(ordered_positions):
+        remaining_agents = len(ordered_positions) - offset
 
         group_size = _sample_group_size(
             remaining_agents=remaining_agents,
@@ -112,7 +156,7 @@ def _split_source_positions(
             rng=rng,
         )
 
-        group_positions = shuffled_positions[offset : offset + group_size]
+        group_positions = ordered_positions[offset : offset + group_size]
 
         batches.append(
             GroupPositionBatch(
@@ -120,6 +164,7 @@ def _split_source_positions(
                 source=source,
                 source_index=source_index,
                 positions=group_positions,
+                order_index=group_index,
             )
         )
 
@@ -134,6 +179,7 @@ def build_group_position_batches(
     sources: list[Any],
     positions: dict[Any, np.ndarray],
     grouping_config: GroupDistributionConfig | None,
+    route_sort_targets_by_source: Mapping[Any, tuple[float, float]] | None = None,
 ) -> list[GroupPositionBatch]:
     """
     Build position batches used to create initial AgentGroup objects.
@@ -149,6 +195,7 @@ def build_group_position_batches(
                 source=source,
                 source_index=source_index,
                 positions=positions[source],
+                order_index=0,
             )
             for source_index, source in enumerate(sources)
         ]
@@ -156,6 +203,7 @@ def build_group_position_batches(
     rng = np.random.default_rng(grouping_config.seed)
 
     batches: list[GroupPositionBatch] = []
+    route_sort_targets_by_source = route_sort_targets_by_source or {}
 
     for source_index, source in enumerate(sources):
         batches.extend(
@@ -165,6 +213,7 @@ def build_group_position_batches(
                 source_positions=positions[source],
                 grouping_config=grouping_config,
                 rng=rng,
+                route_sort_target=route_sort_targets_by_source.get(source),
             )
         )
 

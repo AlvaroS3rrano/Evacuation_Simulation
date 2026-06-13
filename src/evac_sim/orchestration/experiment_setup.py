@@ -314,6 +314,49 @@ def compute_initial_priority_cost(
     algorithm: int,
     gamma: float,
 ) -> float:
+    path = compute_initial_priority_path(
+        source=source,
+        targets=targets,
+        env_info=env_info,
+        algorithm=algorithm,
+        gamma=gamma,
+    )
+
+    if path is None or len(path) < 2:
+        return float("inf")
+
+    return sum(env_info.graph[u][v]["cost"] for u, v in zip(path, path[1:]))
+
+def _extract_waypoint_xy(
+    waypoints: dict[Any, Any],
+    node: Any,
+) -> tuple[float, float] | None:
+    waypoint = waypoints.get(node)
+
+    if waypoint is None:
+        return None
+
+    if isinstance(waypoint, (list, tuple)) and waypoint:
+        coords = waypoint[0]
+    else:
+        coords = waypoint
+
+    coords_array = np.asarray(coords, dtype=float)
+
+    if coords_array.ndim != 1 or len(coords_array) < 2:
+        return None
+
+    return float(coords_array[0]), float(coords_array[1])
+
+
+def compute_initial_priority_path(
+    *,
+    source: Any,
+    targets: list[Any],
+    env_info: EnvironmentInfo,
+    algorithm: int,
+    gamma: float,
+) -> list | None:
     dummy_group = AgentGroup(
         agents=[],
         path=None,
@@ -322,7 +365,7 @@ def compute_initial_priority_cost(
         awareness_level=0,
     )
 
-    path = compute_initial_path(
+    return compute_initial_path(
         targets,
         dummy_group,
         env_info,
@@ -334,11 +377,48 @@ def compute_initial_priority_cost(
         group_size=1,
     )
 
-    if path is None or len(path) < 2:
-        return float("inf")
 
-    return sum(env_info.graph[u][v]["cost"] for u, v in zip(path, path[1:]))
+def build_route_sort_targets_by_source(
+    *,
+    sources: list[Any],
+    targets: list[Any],
+    waypoints: dict[Any, Any],
+    env_info: EnvironmentInfo,
+    mode: int,
+    mode_type: int,
+    gamma: float,
+) -> dict[Any, tuple[float, float]]:
+    route_sort_targets_by_source: dict[Any, tuple[float, float]] = {}
 
+    for source_index, source in enumerate(sources):
+        algorithm, _ = _resolve_group_strategy(
+            mode,
+            mode_type,
+            source_index,
+        )
+
+        path = compute_initial_priority_path(
+            source=source,
+            targets=targets,
+            env_info=env_info,
+            algorithm=algorithm,
+            gamma=gamma,
+        )
+
+        if path is None or len(path) < 2:
+            continue
+
+        next_node = path[1]
+
+        target_xy = _extract_waypoint_xy(
+            waypoints,
+            next_node,
+        )
+
+        if target_xy is not None:
+            route_sort_targets_by_source[source] = target_xy
+
+    return route_sort_targets_by_source
 
 def _resolve_group_strategy(
     mode: int,
@@ -386,6 +466,7 @@ def _build_group_candidates(
             "group_id": batch.group_id,
             "source": batch.source,
             "source_index": batch.source_index,
+            "group_order": batch.order_index,
             "group_positions": batch.positions,
             "group_size": group_size,
             "algorithm": algorithm,
@@ -398,8 +479,9 @@ def _build_group_candidates(
     for source_candidates in candidates_by_source.values():
         source_candidates.sort(
             key=lambda g: (
-                str(g["group_id"]),
+                g["group_order"],
                 -g["group_size"],
+                str(g["group_id"]),
             )
         )
 
@@ -593,6 +675,7 @@ def build_agent_groups(
     positions: dict[Any, np.ndarray],
     exit_ids: dict[Any, Any],
     waypoints_ids: dict[Any, Any],
+    waypoints: dict[Any, Any],
     env_info: EnvironmentInfo,
     risk_first_frame: dict[Any, float],
     gamma: float,
@@ -606,10 +689,27 @@ def build_agent_groups(
 ) -> dict[str, AgentGroup]:
     agent_groups: dict[str, AgentGroup] = {}
 
+    route_sort_targets_by_source: dict[Any, tuple[float, float]] = {}
+
+    if (
+            grouping_config is not None
+            and grouping_config.order_by_route_proximity
+    ):
+        route_sort_targets_by_source = build_route_sort_targets_by_source(
+            sources=sources,
+            targets=targets,
+            waypoints=waypoints,
+            env_info=env_info,
+            mode=mode,
+            mode_type=mode_type,
+            gamma=gamma,
+        )
+
     group_batches = build_group_position_batches(
         sources=sources,
         positions=positions,
         grouping_config=grouping_config,
+        route_sort_targets_by_source=route_sort_targets_by_source,
     )
 
     group_candidates = _build_group_candidates(
@@ -628,6 +728,7 @@ def build_agent_groups(
                 (
                     g["group_id"],
                     g["source"],
+                    g["group_order"],
                     g["group_size"],
                     round(g["base_exit_cost"], 3),
                 )
