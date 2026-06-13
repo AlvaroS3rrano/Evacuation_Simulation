@@ -200,6 +200,25 @@ def collect_k_shortest_base_paths(
     return all_paths
 
 
+def _extract_path_from_candidate(candidate):
+    """
+    Return the path part from either a raw path or a scored/base candidate.
+
+    Supported inputs:
+      - ["A", "B", "C"]
+      - (["A", "B", "C"], cost)
+      - (["A", "B", "C"], cost, centrality)
+    """
+    if (
+        isinstance(candidate, (list, tuple))
+        and candidate
+        and isinstance(candidate[0], (list, tuple))
+    ):
+        return list(candidate[0])
+
+    return list(candidate)
+
+
 def rescore_candidate_paths(
     G,
     paths,
@@ -213,15 +232,22 @@ def rescore_candidate_paths(
     """
     Recompute cached candidate path costs using the active heuristic.
 
-    Candidate paths are static, but h1/h2/h3 costs depend on current congestion
-    state and must be recomputed at each routing decision.
+    Candidate paths may arrive either as raw paths or as cached tuples:
+      - path
+      - (path, base_cost)
+      - (path, base_cost, centrality)
+
+    h1/h2/h3 costs depend on current congestion state and must be recomputed at
+    each routing decision.
     """
     if max_candidates is not None and max_candidates > 0:
         paths = paths[:max_candidates]
 
     scored_paths = []
 
-    for path in paths:
+    for candidate in paths:
+        path = _extract_path_from_candidate(candidate)
+
         cost = compute_path_effective_cost(
             G,
             path,

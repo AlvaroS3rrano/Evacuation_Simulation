@@ -67,6 +67,26 @@ def remaining_path_from_node(path: list | None, current_node: Any) -> list:
     except ValueError:
         return list(path)
 
+def truncate_path_at_first_exit(
+    path: list,
+    exit_nodes: set[Any],
+) -> list:
+    """
+    Truncate a path as soon as it reaches any configured exit.
+
+    This prevents paths such as [..., "31", "35"] when both "31" and "35" are
+    exits. JuPedSim cannot use an exit as an intermediate waypoint, and
+    logically the agent should be considered evacuated when it reaches the first
+    exit in the path.
+    """
+    if not path or len(path) < 2:
+        return path
+
+    for idx, node in enumerate(path[1:], start=1):
+        if node in exit_nodes:
+            return path[:idx + 1]
+
+    return path
 
 def validate_agent(
     agent_id: int,
@@ -142,17 +162,42 @@ def apply_group_path(
 ) -> None:
     simulation = sim_cfg.simulation
 
+    journey_path = remaining_path_from_node(
+        full_path,
+        current_node,
+    )
+
+    journey_path = truncate_path_at_first_exit(
+        journey_path,
+        set(sim_cfg.exit_ids),
+    )
+
+    if not journey_path or len(journey_path) < 2:
+        raise ValueError(
+            f"Cannot create journey because the path is too short after alignment: "
+            f"current_node={current_node}, full_path={full_path}, "
+            f"journey_path={journey_path}"
+        )
+
+    if journey_path[0] != current_node:
+        raise ValueError(
+            f"Cannot create journey because the path does not start at current_node: "
+            f"current_node={current_node}, full_path={full_path}, "
+            f"journey_path={journey_path}"
+        )
+
     journeys = set_journeys(
         simulation,
         current_node,
-        [full_path],
+        [journey_path],
         sim_cfg.waypoints_ids,
         sim_cfg.exit_ids,
     )
 
     if current_node not in journeys or not journeys[current_node]:
         raise ValueError(
-            f"Could not create journey for current_node={current_node}, path={full_path}"
+            f"Could not create journey for current_node={current_node}, "
+            f"full_path={full_path}, journey_path={journey_path}"
         )
 
     new_jid, _ = journeys[current_node][0]
@@ -160,11 +205,17 @@ def apply_group_path(
     for agent_id in group.agents:
         node = group.current_nodes.get(agent_id)
 
-        try:
-            node_idx = full_path.index(node)
-            next_stage_node = full_path[min(node_idx + 1, len(full_path) - 1)]
-        except ValueError:
-            next_stage_node = full_path[1] if len(full_path) > 1 else full_path[0]
+        node_idx = safe_path_index(
+            journey_path,
+            node,
+        )
+
+        if node_idx >= 0:
+            next_stage_node = journey_path[
+                min(node_idx + 1, len(journey_path) - 1)
+            ]
+        else:
+            next_stage_node = journey_path[1]
 
         stage_id = sim_cfg.waypoints_ids.get(
             next_stage_node,
@@ -176,6 +227,10 @@ def apply_group_path(
                 f"No stage found for next_stage_node={next_stage_node}"
             )
 
-        simulation.switch_agent_journey(agent_id, new_jid, stage_id)
+        simulation.switch_agent_journey(
+            agent_id,
+            new_jid,
+            stage_id,
+        )
 
-    group.path = full_path
+    group.path = journey_path

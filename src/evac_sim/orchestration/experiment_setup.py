@@ -363,7 +363,7 @@ def _build_group_candidates(
     env_info: EnvironmentInfo,
     gamma: float,
 ) -> list[dict[str, Any]]:
-    candidates: list[dict[str, Any]] = []
+    candidates_by_source: dict[Any, list[dict[str, Any]]] = {}
 
     for batch in group_batches:
         algorithm, awareness_level = _resolve_group_strategy(
@@ -382,28 +382,51 @@ def _build_group_candidates(
             gamma=gamma,
         )
 
-        candidates.append(
-            {
-                "group_id": batch.group_id,
-                "source": batch.source,
-                "group_positions": batch.positions,
-                "group_size": group_size,
-                "algorithm": algorithm,
-                "awareness_level": awareness_level,
-                "base_exit_cost": base_exit_cost,
-            }
+        candidate = {
+            "group_id": batch.group_id,
+            "source": batch.source,
+            "source_index": batch.source_index,
+            "group_positions": batch.positions,
+            "group_size": group_size,
+            "algorithm": algorithm,
+            "awareness_level": awareness_level,
+            "base_exit_cost": base_exit_cost,
+        }
+
+        candidates_by_source.setdefault(batch.source, []).append(candidate)
+
+    for source_candidates in candidates_by_source.values():
+        source_candidates.sort(
+            key=lambda g: (
+                str(g["group_id"]),
+                -g["group_size"],
+            )
         )
 
-    candidates.sort(
-        key=lambda g: (
-            g["base_exit_cost"],
-            -g["group_size"],
-            str(g["source"]),
-            str(g["group_id"]),
-        )
+    source_order = sorted(
+        candidates_by_source,
+        key=lambda source: (
+            candidates_by_source[source][0]["base_exit_cost"],
+            candidates_by_source[source][0]["source_index"],
+            str(source),
+        ),
     )
 
-    return candidates
+    interleaved_candidates: list[dict[str, Any]] = []
+
+    max_groups_per_source = max(
+        len(source_candidates)
+        for source_candidates in candidates_by_source.values()
+    )
+
+    for group_index in range(max_groups_per_source):
+        for source in source_order:
+            source_candidates = candidates_by_source[source]
+
+            if group_index < len(source_candidates):
+                interleaved_candidates.append(source_candidates[group_index])
+
+    return interleaved_candidates
 
 
 def _create_initial_group(
