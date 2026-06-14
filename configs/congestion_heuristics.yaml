@@ -9,7 +9,7 @@ congestion_parallel_corridors:
   sources: ["1", "9"]
   agents: [45, 45]
   targets: ["23", "18"]
-  mode_type: 0
+  mode_type: 5
   master_seed: 3101
 
   grouping:
@@ -64,7 +64,7 @@ congestion_short_vs_wide:
   sources: ["27", "3"]
   agents: [45, 45]
   targets: ["35", "31"]
-  mode_type: 0
+  mode_type: 5
   master_seed: 3102
 
   grouping:
@@ -119,7 +119,7 @@ congestion_two_exits:
   sources: ["1", "3", "7", "10"]
   agents: [25, 25, 25, 25]
   targets: ["17", "63", "64", "65", "18", "66"]
-  mode_type: 0
+  mode_type: 5
   master_seed: 3103
 
   grouping:

@@ -126,15 +126,18 @@ def allocate_positions(
 
 def build_modes(mode_type: int) -> list[int]:
     mode_indices = {
-        0: [0, 1, 2, 3],
-        1: [0, 1],
-        2: [0, 1],
-        3: [2, 3],
+        0: [0, 1, 2, 3],  # all combinations
+        1: [0, 1],        # two groups with different strategies
+        2: [0, 1],        # efficient low/high
+        3: [2, 3],        # agile low/high
         4: [2],
+        5: [1],           # efficient high only
+        6: [3],           # agile high only
     }
 
     if mode_type not in mode_indices:
         raise ValueError(f"Unsupported mode_type: {mode_type}")
+
     return mode_indices[mode_type]
 
 
