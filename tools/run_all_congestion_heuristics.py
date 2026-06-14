@@ -78,14 +78,14 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--horizon-k",
         type=int,
-        default=3,
+        default=5,
         help="Horizon k for h2.",
     )
 
     parser.add_argument(
         "--congestion-reroute-epsilon",
         type=float,
-        default=0.1,
+        default=0.15,
         help="Congestion reroute epsilon.",
     )
 

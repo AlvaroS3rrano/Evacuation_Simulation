@@ -58,6 +58,9 @@ class AgentGroup:
     waiting_since_frame: int | None = None
     no_path_count: int = 0
 
+    last_congestion_reroute_frame: int | None = None
+    last_congestion_reroute_edge: tuple[Any, Any] | None = None
+
     def __post_init__(self) -> None:
         if self.algorithm not in (0, 1):
             raise ValueError("algorithm must be 0 (shortest path) or 1 (centrality-based path)")

@@ -10,7 +10,7 @@ from evac_sim.cli import main
 PROFILE_DIR = Path("runs/profiling")
 PROFILE_DIR.mkdir(parents=True, exist_ok=True)
 
-HEURISTIC = "h3"
+HEURISTIC = "h1"
 
 PROFILE_FILE = PROFILE_DIR / f"{HEURISTIC}_short_vs_wide.prof"
 TEXT_REPORT = PROFILE_DIR / f"{HEURISTIC}_short_vs_wide_top.txt"
@@ -22,7 +22,7 @@ def run() -> None:
         "--config",
         "congestion_heuristics.yaml",
         "--case",
-        "congestion_short_vs_wide",
+        "congestion_two_exits",
         "--heuristic",
         HEURISTIC,
         "--beta",

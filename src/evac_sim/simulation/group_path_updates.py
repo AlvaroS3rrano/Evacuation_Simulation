@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import math
 from typing import Any
 
 from evac_sim.core.agent_group import AgentGroup
@@ -23,6 +24,159 @@ from evac_sim.simulation.group_state import (
 
 logger = logging.getLogger(__name__)
 
+H2_REROUTE_COOLDOWN_FRAMES = 120
+H2_MAX_DETOUR_FACTOR = 1.35
+H2_BACKTRACK_REQUIRED_COST_FACTOR = 0.60
+
+
+def _path_base_cost(G, path: list | None) -> float:
+    if not path or len(path) < 2:
+        return float("inf")
+
+    try:
+        return compute_path_effective_cost(
+            G,
+            path,
+            heuristic="none",
+        )
+    except (KeyError, TypeError):
+        return float("inf")
+
+
+def _is_immediate_backtrack(
+    *,
+    current_path: list,
+    curr_node: Any,
+    candidate_path: list,
+) -> bool:
+    if not candidate_path or len(candidate_path) < 2:
+        return False
+
+    current_idx = safe_path_index(
+        current_path,
+        curr_node,
+    )
+
+    if current_idx <= 0:
+        return False
+
+    previous_node = current_path[current_idx - 1]
+
+    return candidate_path[1] == previous_node
+
+
+def _undoes_last_h2_reroute(
+    *,
+    group: AgentGroup,
+    curr_node: Any,
+    candidate_path: list,
+) -> bool:
+    if not candidate_path or len(candidate_path) < 2:
+        return False
+
+    last_edge = getattr(
+        group,
+        "last_congestion_reroute_edge",
+        None,
+    )
+
+    if last_edge is None:
+        return False
+
+    candidate_edge = (
+        curr_node,
+        candidate_path[1],
+    )
+
+    return candidate_edge == (
+        last_edge[1],
+        last_edge[0],
+    )
+
+
+def _is_h2_reroute_on_cooldown(
+    *,
+    group: AgentGroup,
+    frame: int,
+) -> bool:
+    last_frame = getattr(
+        group,
+        "last_congestion_reroute_frame",
+        None,
+    )
+
+    if last_frame is None:
+        return False
+
+    return frame - last_frame < H2_REROUTE_COOLDOWN_FRAMES
+
+
+def _should_accept_h2_congestion_reroute(
+    *,
+    G,
+    group: AgentGroup,
+    current_path: list,
+    current_remaining: list,
+    candidate_path: list,
+    curr_node: Any,
+    frame: int,
+    current_cost: float,
+    candidate_cost: float,
+) -> bool:
+    """
+    Keep h2 local, but prevent unstable reroutes.
+
+    h2 should avoid immediate congestion, but it should not:
+      - reroute every few frames,
+      - go straight back to the previous node,
+      - undo the previous reroute,
+      - take a very long detour just because the local horizon is cheaper.
+    """
+    if not candidate_path or len(candidate_path) < 2:
+        return False
+
+    if candidate_path[0] != curr_node:
+        return False
+
+    if _is_h2_reroute_on_cooldown(
+        group=group,
+        frame=frame,
+    ):
+        return False
+
+    current_base_cost = _path_base_cost(
+        G,
+        current_remaining,
+    )
+
+    candidate_base_cost = _path_base_cost(
+        G,
+        candidate_path,
+    )
+
+    if (
+        math.isfinite(current_base_cost)
+        and math.isfinite(candidate_base_cost)
+        and candidate_base_cost > H2_MAX_DETOUR_FACTOR * current_base_cost
+    ):
+        return False
+
+    is_backtrack = _is_immediate_backtrack(
+        current_path=current_path,
+        curr_node=curr_node,
+        candidate_path=candidate_path,
+    )
+
+    undoes_last_reroute = _undoes_last_h2_reroute(
+        group=group,
+        curr_node=curr_node,
+        candidate_path=candidate_path,
+    )
+
+    if is_backtrack or undoes_last_reroute:
+        return candidate_cost <= H2_BACKTRACK_REQUIRED_COST_FACTOR * current_cost
+
+    return True
 
 def _try_resume_waiting_group(
     *,
@@ -229,7 +383,20 @@ def update_group_paths(
                     horizon_k=horizon_k,
                 )
 
-                if best_cost <= (1.0 - congestion_reroute_epsilon) * current_cost:
+                if (
+                        best_cost <= (1.0 - congestion_reroute_epsilon) * current_cost
+                        and _should_accept_h2_congestion_reroute(
+                    G=env_info.graph,
+                    group=group,
+                    current_path=current_path,
+                    current_remaining=current_remaining,
+                    candidate_path=best_path,
+                    curr_node=curr_node,
+                    frame=frame,
+                    current_cost=current_cost,
+                    candidate_cost=best_cost,
+                )
+                ):
                     selected_alt_path = best_path
                     reroute_reason = "congestion"
 
@@ -246,6 +413,13 @@ def update_group_paths(
                 current_node=curr_node,
                 full_path=full_path,
             )
+
+            if reroute_reason == "congestion" and len(selected_alt_path) >= 2:
+                group.last_congestion_reroute_frame = frame
+                group.last_congestion_reroute_edge = (
+                    curr_node,
+                    selected_alt_path[1],
+                )
 
             clear_group_waiting_due_to_congestion(group)
 
