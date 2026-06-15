@@ -176,7 +176,7 @@ def _should_accept_h2_congestion_reroute(
     )
 
     if is_backtrack or undoes_last_reroute:
-        return candidate_cost <= H2_BACKTRACK_REQUIRED_COST_FACTOR * current_cost
+        return False
 
     return True
 
@@ -189,14 +189,6 @@ def _existing_capacity_schedule_status(
     current_node: Any,
     frame: int,
 ) -> str:
-    """
-    Return the status of the current capacity reservation for the next edge.
-
-    Possible values:
-      - "ready": the next edge is reserved and can be used now.
-      - "pending": the next edge is reserved, but the time window starts later.
-      - "none": there is no useful reservation for the next edge.
-    """
     manager = get_capacity_reservation_manager(env_info.graph)
 
     manager.release_passed_resources(
@@ -231,9 +223,17 @@ def _existing_capacity_schedule_status(
         return "ready"
 
     next_edge = ("edge", group.path[current_index], group.path[current_index + 1])
+    current_bucket = manager.bucket_for_frame(frame)
 
     for interval in schedule.intervals:
-        if interval.resource == next_edge and frame <= interval.end_frame:
+        if interval.resource != next_edge:
+            continue
+
+        if interval.start_bucket <= current_bucket <= interval.end_bucket:
+            group.reserved_schedule = schedule
+            return "ready"
+
+        if current_bucket < interval.start_bucket:
             group.reserved_schedule = schedule
             return "pending"
 
@@ -277,7 +277,7 @@ def _reserve_capacity_for_path(
         horizon_k,
     )
 
-    schedule = manager.find_earliest_feasible_schedule(
+    attempt = manager.attempt_earliest_feasible_schedule(
         reservation_path,
         group_size=len(group.agents),
         start_frame=frame,
@@ -285,15 +285,18 @@ def _reserve_capacity_for_path(
         ignore_group_id=group_id,
     )
 
-    if schedule is None:
+    if attempt.schedule is None:
         group.reserved_schedule = None
+        group.waiting_resource = attempt.blocked_resource
 
         logger.info(
             "Path capacity blocked | %s | current_node=%s blocked_resource=%s "
-            "path=%s reason=no_feasible_schedule",
+            "retry_frame=%s reason=%s path=%s",
             ctx(frame=frame, group_id=group_id, agents=len(group.agents)),
             current_node,
-            getattr(group, "waiting_resource", None),
+            attempt.blocked_resource,
+            attempt.earliest_retry_frame,
+            attempt.reason,
             reservation_path[:8],
         )
 
@@ -303,31 +306,44 @@ def _reserve_capacity_for_path(
         group_id,
         reservation_path,
         len(group.agents),
-        schedule,
+        attempt.schedule,
     )
 
     if not reserved:
         group.reserved_schedule = None
+        group.waiting_resource = attempt.blocked_resource
 
         logger.warning(
-            "Path capacity reservation race/failure | %s | current_node=%s path=%s",
+            "Path capacity reservation race/failure | %s | current_node=%s "
+            "blocked_resource=%s path=%s",
             ctx(frame=frame, group_id=group_id, agents=len(group.agents)),
             current_node,
+            attempt.blocked_resource,
             reservation_path[:8],
         )
 
         return False, False
 
-    if schedule.first_departure_frame > frame:
+    group.reserved_schedule = attempt.schedule
+    group.waiting_resource = attempt.blocked_resource
+
+    if attempt.schedule.first_departure_frame > frame:
         logger.info(
-            "Capacity pending | %s | current_node=%s wait_frames=%s path=%s",
+            "Capacity pending | %s | current_node=%s blocked_resource=%s "
+            "wait_frames=%s path=%s",
             ctx(frame=frame, group_id=group_id, agents=len(group.agents)),
             current_node,
-            schedule.first_departure_frame - frame,
+            attempt.blocked_resource,
+            attempt.schedule.first_departure_frame - frame,
             reservation_path[:8],
         )
 
-    return True, schedule.first_departure_frame <= frame
+        return True, False
+
+    manager.remove_group_from_waiting_queues(group_id)
+    group.waiting_resource = None
+
+    return True, True
 
 
 def _apply_path_with_capacity_check(
@@ -364,6 +380,7 @@ def _apply_path_with_capacity_check(
         mark_group_waiting_due_to_congestion(
             group,
             frame=frame,
+            resource=getattr(group, "waiting_resource", None),
         )
         return False
 
@@ -381,6 +398,7 @@ def _apply_path_with_capacity_check(
     mark_group_waiting_due_to_congestion(
         group,
         frame=frame,
+        resource=getattr(group, "waiting_resource", None),
     )
     return False
 
@@ -405,6 +423,7 @@ def _try_resume_waiting_group(
         mark_group_waiting_due_to_congestion(
             group,
             frame=frame,
+            resource=getattr(group, "waiting_resource", None),
         )
         return group
 
@@ -442,6 +461,7 @@ def _try_resume_waiting_group(
         mark_group_waiting_due_to_congestion(
             group,
             frame=frame,
+            resource=getattr(group, "waiting_resource", None),
         )
 
         logger.debug(
@@ -528,6 +548,7 @@ def update_group_paths(
             mark_group_waiting_due_to_congestion(
                 group,
                 frame=frame,
+                resource=getattr(group, "waiting_resource", None),
             )
 
         return group
@@ -544,6 +565,7 @@ def update_group_paths(
             mark_group_waiting_due_to_congestion(
                 group,
                 frame=frame,
+                resource=getattr(group, "waiting_resource", None),
             )
 
         return group
@@ -740,6 +762,7 @@ def update_group_paths(
                 mark_group_waiting_due_to_congestion(
                     group,
                     frame=frame,
+                    resource=getattr(group, "waiting_resource", None),
                 )
 
                 logger.debug(

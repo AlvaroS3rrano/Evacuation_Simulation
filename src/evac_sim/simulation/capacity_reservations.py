@@ -35,6 +35,25 @@ class PathSchedule:
         return max(0, self.first_departure_frame - self.start_frame)
 
 
+@dataclass
+class ScheduleAttempt:
+    schedule: PathSchedule | None
+    blocked_resource: Resource | None = None
+    earliest_retry_frame: int | None = None
+    reason: str = "unknown"
+
+    @property
+    def feasible(self) -> bool:
+        return self.schedule is not None
+
+    @property
+    def can_depart_now(self) -> bool:
+        if self.schedule is None:
+            return False
+
+        return self.schedule.first_departure_frame <= self.schedule.start_frame
+
+
 @dataclass(order=True)
 class QueueEntry:
     priority: float
@@ -235,24 +254,31 @@ class CapacityReservationManager:
 
         return list(path[: max(1, horizon_edges + 1)])
 
-    def find_earliest_feasible_schedule(
-        self,
-        path: list[Any],
-        group_size: int,
-        start_frame: int,
-        *,
-        horizon_edges: int | None = None,
-        ignore_group_id: Any | None = None,
-    ) -> PathSchedule | None:
-        path = self._limited_path_for_horizon(path, horizon_edges)
+    def attempt_earliest_feasible_schedule(
+            self,
+            path: list[Any],
+            group_size: int,
+            start_frame: int,
+            *,
+            horizon_edges: int | None = None,
+            ignore_group_id: Any | None = None,
+    ) -> ScheduleAttempt:
+        path = self._limited_path_for_horizon(
+            path,
+            horizon_edges,
+        )
 
         if not path or len(path) < 2:
-            return None
+            return ScheduleAttempt(
+                schedule=None,
+                reason="invalid_path",
+            )
 
         group_size = max(1, int(group_size))
         cursor = int(start_frame)
         intervals: list[ReservationInterval] = []
         first_departure_frame: int | None = None
+        first_blocked_resource: Resource | None = None
 
         for edge_index, (u, v) in enumerate(zip(path, path[1:])):
             edge_resource = ("edge", u, v)
@@ -268,8 +294,28 @@ class CapacityReservationManager:
                 ignore_group_id=ignore_group_id,
             )
 
+            if blocked_resource is not None and first_blocked_resource is None:
+                first_blocked_resource = blocked_resource
+
             if step_start is None:
-                return None
+                earliest_retry_frame = None
+
+                if first_blocked_resource is not None:
+                    wait_time = self.estimate_wait_time(
+                        first_blocked_resource,
+                        group_size,
+                        start_frame,
+                    )
+
+                    if wait_time is not None:
+                        earliest_retry_frame = int(start_frame) + wait_time
+
+                return ScheduleAttempt(
+                    schedule=None,
+                    blocked_resource=first_blocked_resource,
+                    earliest_retry_frame=earliest_retry_frame,
+                    reason="blocked",
+                )
 
             if first_departure_frame is None:
                 first_departure_frame = step_start
@@ -286,6 +332,7 @@ class CapacityReservationManager:
                     path_edge_index=edge_index,
                 )
             )
+
             intervals.append(
                 self._build_interval(
                     node_resource,
@@ -298,13 +345,38 @@ class CapacityReservationManager:
 
             cursor = edge_end
 
-        return PathSchedule(
+        schedule = PathSchedule(
             path=path,
             start_frame=int(start_frame),
             arrival_frame=cursor,
             intervals=intervals,
             first_departure_frame=first_departure_frame or int(start_frame),
+            blocked_resource=first_blocked_resource,
         )
+
+        return ScheduleAttempt(
+            schedule=schedule,
+            blocked_resource=first_blocked_resource,
+            earliest_retry_frame=schedule.first_departure_frame,
+            reason="ready" if schedule.first_departure_frame <= int(start_frame) else "future",
+        )
+
+    def find_earliest_feasible_schedule(
+            self,
+            path: list[Any],
+            group_size: int,
+            start_frame: int,
+            *,
+            horizon_edges: int | None = None,
+            ignore_group_id: Any | None = None,
+    ) -> PathSchedule | None:
+        return self.attempt_earliest_feasible_schedule(
+            path,
+            group_size,
+            start_frame,
+            horizon_edges=horizon_edges,
+            ignore_group_id=ignore_group_id,
+        ).schedule
 
     def can_reserve_path(
         self,
@@ -353,7 +425,10 @@ class CapacityReservationManager:
         return True
 
     def release_group(self, group_id: Any) -> None:
+        self.remove_group_from_waiting_queues(group_id)
+
         schedule = self.group_reservations.pop(group_id, None)
+
         if schedule is None:
             return
 
@@ -372,32 +447,37 @@ class CapacityReservationManager:
                 self.reservations.pop(interval.resource, None)
 
     def release_passed_resources(
-        self,
-        group_id: Any,
-        current_node: Any,
-        frame: int,
+            self,
+            group_id: Any,
+            current_node: Any,
+            frame: int,
     ) -> None:
         schedule = self.group_reservations.get(group_id)
+
         if schedule is None:
             return
 
         current_index = -1
+
         if current_node in schedule.path:
             current_index = schedule.path.index(current_node)
+
+        current_bucket = self.bucket_for_frame(frame)
 
         keep: list[ReservationInterval] = []
 
         for interval in schedule.intervals:
-            expired = interval.end_frame <= frame
+            expired = interval.end_bucket < current_bucket
             passed_by_node = (
-                current_index >= 0
-                and interval.path_edge_index is not None
-                and interval.path_edge_index < current_index
+                    current_index >= 0
+                    and interval.path_edge_index is not None
+                    and interval.path_edge_index < current_index
             )
 
             if expired or passed_by_node:
                 for bucket in range(interval.start_bucket, interval.end_bucket + 1):
                     group_map = self.reservations.get(interval.resource, {}).get(bucket)
+
                     if group_map:
                         group_map.pop(group_id, None)
             else:
@@ -409,13 +489,14 @@ class CapacityReservationManager:
             self.group_reservations.pop(group_id, None)
 
     def has_valid_next_reservation(
-        self,
-        group_id: Any,
-        path: list[Any],
-        current_node: Any,
-        frame: int,
+            self,
+            group_id: Any,
+            path: list[Any],
+            current_node: Any,
+            frame: int,
     ) -> bool:
         schedule = self.group_reservations.get(group_id)
+
         if schedule is None:
             return False
 
@@ -428,12 +509,13 @@ class CapacityReservationManager:
             return True
 
         next_edge = ("edge", path[idx], path[idx + 1])
+        current_bucket = self.bucket_for_frame(frame)
 
         for interval in schedule.intervals:
-            if (
-                interval.resource == next_edge
-                and interval.start_frame <= frame <= interval.end_frame
-            ):
+            if interval.resource != next_edge:
+                continue
+
+            if interval.start_bucket <= current_bucket <= interval.end_bucket:
                 return True
 
         return False
@@ -455,21 +537,36 @@ class CapacityReservationManager:
     def get_waiting_queue(self, resource: Resource) -> list[Any]:
         return [entry.group_id for entry in self.waiting_queues.get(resource, [])]
 
-    def enqueue_waiting_group(
-        self,
-        resource: Resource,
-        group_id: Any,
-        priority: float,
-        *,
-        frame: int = 0,
-    ) -> None:
-        queue = self.waiting_queues[resource]
+    def remove_group_from_waiting_queues(self, group_id: Any) -> None:
+        for resource, queue in list(self.waiting_queues.items()):
+            filtered_queue = [
+                entry
+                for entry in queue
+                if entry.group_id != group_id
+            ]
 
-        if any(entry.group_id == group_id for entry in queue):
-            return
+            if len(filtered_queue) == len(queue):
+                continue
+
+            heapq.heapify(filtered_queue)
+
+            if filtered_queue:
+                self.waiting_queues[resource] = filtered_queue
+            else:
+                self.waiting_queues.pop(resource, None)
+
+    def enqueue_waiting_group(
+            self,
+            resource: Resource,
+            group_id: Any,
+            priority: float,
+            *,
+            frame: int = 0,
+    ) -> None:
+        self.remove_group_from_waiting_queues(group_id)
 
         heapq.heappush(
-            queue,
+            self.waiting_queues[resource],
             QueueEntry(
                 priority=float(priority),
                 enqueued_frame=int(frame),

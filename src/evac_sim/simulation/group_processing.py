@@ -47,14 +47,6 @@ def _get_existing_next_edge_schedule(
     current_node: Any,
     frame: int,
 ) -> PathSchedule | None:
-    """
-    Return the current reservation schedule if it already contains a reservation
-    for the next edge of the group's current path.
-
-    This is important when a group has a future reservation. In that case, the
-    group must wait, but the reservation should not be released and recreated on
-    every frame.
-    """
     schedule = manager.group_reservations.get(group_id)
 
     if schedule is None:
@@ -69,12 +61,16 @@ def _get_existing_next_edge_schedule(
         return schedule
 
     next_edge = ("edge", group.path[current_index], group.path[current_index + 1])
+    current_bucket = manager.bucket_for_frame(frame)
 
     for interval in schedule.intervals:
         if interval.resource != next_edge:
             continue
 
-        if frame <= interval.end_frame:
+        if interval.start_bucket <= current_bucket <= interval.end_bucket:
+            return schedule
+
+        if current_bucket < interval.start_bucket:
             return schedule
 
     return None
@@ -159,7 +155,7 @@ def ensure_group_has_capacity_to_move(
     if len(remaining_path) < 2:
         return True
 
-    schedule = manager.find_earliest_feasible_schedule(
+    attempt = manager.attempt_earliest_feasible_schedule(
         remaining_path,
         group_size=len(group.agents),
         start_frame=frame,
@@ -167,17 +163,28 @@ def ensure_group_has_capacity_to_move(
         ignore_group_id=group_id,
     )
 
-    if schedule is None:
+    if attempt.schedule is None:
         group.reserved_schedule = None
+        group.waiting_resource = attempt.blocked_resource
 
         logger.info(
             "Capacity blocked | %s | current_node=%s blocked_resource=%s "
-            "remaining_path=%s reason=no_feasible_schedule",
+            "retry_frame=%s reason=%s remaining_path=%s",
             ctx(frame=frame, group_id=group_id, agents=len(group.agents)),
             current_node,
-            getattr(group, "waiting_resource", None),
+            attempt.blocked_resource,
+            attempt.earliest_retry_frame,
+            attempt.reason,
             remaining_path[:8],
         )
+
+        if attempt.blocked_resource is not None:
+            manager.enqueue_waiting_group(
+                attempt.blocked_resource,
+                group_id,
+                float(frame),
+                frame=frame,
+            )
 
         return False
 
@@ -185,35 +192,43 @@ def ensure_group_has_capacity_to_move(
         group_id,
         remaining_path,
         len(group.agents),
-        schedule,
+        attempt.schedule,
     )
 
     if not reserved:
         group.reserved_schedule = None
+        group.waiting_resource = attempt.blocked_resource
 
         logger.warning(
             "Capacity reservation race/failure | %s | current_node=%s "
-            "remaining_path=%s schedule=%s",
+            "blocked_resource=%s remaining_path=%s schedule=%s",
             ctx(frame=frame, group_id=group_id, agents=len(group.agents)),
             current_node,
+            attempt.blocked_resource,
             remaining_path[:8],
-            _schedule_debug_summary(schedule),
+            _schedule_debug_summary(attempt.schedule),
         )
 
         return False
 
-    group.reserved_schedule = schedule
+    group.reserved_schedule = attempt.schedule
+    group.waiting_resource = attempt.blocked_resource
 
-    if schedule.first_departure_frame > frame:
+    if attempt.schedule.first_departure_frame > frame:
         logger.info(
-            "Capacity pending | %s | current_node=%s wait_frames=%s schedule=%s",
+            "Capacity pending | %s | current_node=%s blocked_resource=%s "
+            "wait_frames=%s schedule=%s",
             ctx(frame=frame, group_id=group_id, agents=len(group.agents)),
             current_node,
-            schedule.first_departure_frame - frame,
-            _schedule_debug_summary(schedule),
+            attempt.blocked_resource,
+            attempt.schedule.first_departure_frame - frame,
+            _schedule_debug_summary(attempt.schedule),
         )
 
         return False
+
+    manager.remove_group_from_waiting_queues(group_id)
+    group.waiting_resource = None
 
     return True
 
