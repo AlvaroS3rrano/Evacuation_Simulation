@@ -29,6 +29,7 @@ class GroupDiagnostics:
     stopped_frames: list[int] = field(default_factory=list)
     resumed_frames: list[int] = field(default_factory=list)
     capacity_blocked_frames: list[int] = field(default_factory=list)
+    capacity_ready_frames: list[int] = field(default_factory=list)
     future_reservation_frames: list[int] = field(default_factory=list)
     backtrack_frames: list[int] = field(default_factory=list)
     blocked_resources: dict[str, int] = field(default_factory=dict)
@@ -124,6 +125,8 @@ def _event_name_for_line(line: str) -> str | None:
         return "path_capacity_future_reservation_skipped"
     if "Capacity pending" in line:
         return "capacity_pending"
+    if "Capacity ready" in line:
+        return "capacity_ready"
     if "Capacity reservation race/failure" in line:
         return "capacity_race_failure"
     if "Path capacity reservation race/failure" in line:
@@ -171,6 +174,8 @@ def _update_group_diagnostics(
         diag.resumed_frames.append(frame)
     elif event_name in {"capacity_blocked", "path_capacity_blocked"} and frame is not None:
         diag.capacity_blocked_frames.append(frame)
+    elif event_name == "capacity_ready" and frame is not None:
+        diag.capacity_ready_frames.append(frame)
     elif event_name in {"capacity_future_reservation_skipped", "path_capacity_future_reservation_skipped"} and frame is not None:
         diag.future_reservation_frames.append(frame)
     elif event_name == "reroute_backtrack" and frame is not None:
@@ -345,20 +350,21 @@ def write_markdown_report(*, report_path: Path, diagnostics: list[HeuristicDiagn
     lines.append("## Summary")
     lines.append("")
     lines.append(
-        "| Heuristic | Status | Duration (s) | Stopped | Resumed | Blocked | Pending | Future skipped | Backtracks | Stuck groups | Main reason |"
+        "| Heuristic | Status | Duration (s) | Stopped | Resumed | Ready | Blocked | Pending | Future skipped | Backtracks | Stuck groups | Main reason |"
     )
-    lines.append("|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|")
+    lines.append("|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|")
 
     for diag in diagnostics:
         counts = diag.counts
         reason = diag.reasons[0] if diag.reasons else ""
         lines.append(
-            "| {heuristic} | {status} | {duration:.2f} | {stopped} | {resumed} | {blocked} | {pending} | {future} | {backtracks} | {stuck} | {reason} |".format(
+            "| {heuristic} | {status} | {duration:.2f} | {stopped} | {resumed} | {ready} | {blocked} | {pending} | {future} | {backtracks} | {stuck} | {reason} |".format(
                 heuristic=diag.heuristic,
                 status=diag.status,
                 duration=diag.duration_seconds,
                 stopped=counts.get("group_stopped", 0),
                 resumed=counts.get("group_resumed", 0),
+                ready=counts.get("capacity_ready", 0),
                 blocked=counts.get("capacity_blocked", 0) + counts.get("path_capacity_blocked", 0),
                 pending=counts.get("capacity_pending", 0),
                 future=counts.get("capacity_future_reservation_skipped", 0)
@@ -394,19 +400,20 @@ def write_markdown_report(*, report_path: Path, diagnostics: list[HeuristicDiagn
         ]
         if suspicious_groups:
             lines.append("")
-            lines.append("| Group | Last frame | Stopped | Resumed | Backtracks | Last node | Last event | Last path head | Blocked resources |")
-            lines.append("|---|---:|---:|---:|---:|---|---|---|---|")
+            lines.append("| Group | Last frame | Stopped | Resumed | Ready | Backtracks | Last node | Last event | Last path head | Blocked resources |")
+            lines.append("|---|---:|---:|---:|---:|---:|---|---|---|---|")
             for group in sorted(
                 suspicious_groups,
                 key=lambda g: (g.last_frame if g.last_frame is not None else -1, g.group_id),
                 reverse=True,
             )[:30]:
                 lines.append(
-                    "| {group_id} | {last_frame} | {stopped} | {resumed} | {backtracks} | {last_node} | {last_event} | `{path}` | {resources} |".format(
+                    "| {group_id} | {last_frame} | {stopped} | {resumed} | {ready} | {backtracks} | {last_node} | {last_event} | `{path}` | {resources} |".format(
                         group_id=group.group_id,
                         last_frame=group.last_frame,
                         stopped=group.stopped_count,
                         resumed=group.resumed_count,
+                        ready=len(group.capacity_ready_frames),
                         backtracks=len(group.backtrack_frames),
                         last_node=group.last_current_node,
                         last_event=group.last_event,
@@ -512,6 +519,7 @@ def main() -> None:
         print(
             f"{heuristic}: {diag.status} | stopped={diag.counts.get('group_stopped', 0)} "
             f"resumed={diag.counts.get('group_resumed', 0)} "
+            f"ready={diag.counts.get('capacity_ready', 0)} "
             f"blocked={diag.counts.get('capacity_blocked', 0) + diag.counts.get('path_capacity_blocked', 0)} "
             f"future_skipped={diag.counts.get('capacity_future_reservation_skipped', 0) + diag.counts.get('path_capacity_future_reservation_skipped', 0)} "
             f"backtracks={diag.counts.get('reroute_backtrack', 0)} "
@@ -538,7 +546,6 @@ def main() -> None:
         json.dumps(serialisable, indent=2, ensure_ascii=False),
         encoding="utf-8",
     )
-    write_markdown_report(report_path=md_report, diagnostics=diagnostics)
     write_markdown_report(report_path=md_report, diagnostics=diagnostics)
 
     print("\nReports generated:")

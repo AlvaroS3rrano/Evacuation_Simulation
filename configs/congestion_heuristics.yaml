@@ -133,8 +133,8 @@ congestion_two_exits:
     order_by_route_proximity: true
 
   congestion:
-    node_capacity_multiplier: 0.5
-    edge_flow_capacity_multiplier: 0.5
+    node_capacity_multiplier: 1
+    edge_flow_capacity_multiplier: 1
     use_linear_congestion_cost: true
     block_edges_at_capacity: true
     no_path_policy: "wait"

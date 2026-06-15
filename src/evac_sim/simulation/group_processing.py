@@ -119,6 +119,17 @@ def ensure_group_has_capacity_to_move(
         frame,
     ):
         group.reserved_schedule = manager.group_reservations.get(group_id)
+        group.waiting_resource = None
+
+        manager.remove_group_from_waiting_queues(group_id)
+
+        logger.info(
+            "Capacity ready | %s | current_node=%s schedule=%s",
+            ctx(frame=frame, group_id=group_id, agents=len(group.agents)),
+            current_node,
+            _schedule_debug_summary(group.reserved_schedule),
+        )
+
         return True
 
     existing_schedule = _get_existing_next_edge_schedule(
@@ -239,6 +250,13 @@ def ensure_group_has_capacity_to_move(
     manager.remove_group_from_waiting_queues(group_id)
     group.waiting_resource = None
 
+    logger.info(
+        "Capacity ready | %s | current_node=%s schedule=%s",
+        ctx(frame=frame, group_id=group_id, agents=len(group.agents)),
+        current_node,
+        _schedule_debug_summary(attempt.schedule),
+    )
+
     return True
 
 
@@ -283,6 +301,12 @@ def process_single_group(
         agent_areas=agent_areas,
     )
 
+    was_waiting_before_update = getattr(
+        group,
+        "waiting_due_to_congestion",
+        False,
+    )
+
     group = update_group_paths(
         sim_cfg,
         risks,
@@ -308,21 +332,28 @@ def process_single_group(
     )
 
     if not has_capacity:
+        was_waiting = getattr(
+            group,
+            "waiting_due_to_congestion",
+            False,
+        )
+
         mark_group_waiting_due_to_congestion(
             group,
             frame=frame,
             resource=getattr(group, "waiting_resource", None),
         )
 
-        logger.info(
-            "Group stopped | %s | current_node=%s path_head=%s "
-            "waiting_resource=%s waiting_since=%s reason=no_capacity",
-            ctx(frame=frame, group_id=group_id, agents=len(group.agents)),
-            representative_current_node(group),
-            group.path[:8] if group.path else None,
-            getattr(group, "waiting_resource", None),
-            getattr(group, "waiting_since_frame", None),
-        )
+        if not was_waiting:
+            logger.info(
+                "Group stopped | %s | current_node=%s path_head=%s "
+                "waiting_resource=%s waiting_since=%s reason=no_capacity",
+                ctx(frame=frame, group_id=group_id, agents=len(group.agents)),
+                representative_current_node(group),
+                group.path[:8] if group.path else None,
+                getattr(group, "waiting_resource", None),
+                getattr(group, "waiting_since_frame", None),
+            )
 
         set_group_speed(
             sim_cfg.simulation,
@@ -330,7 +361,11 @@ def process_single_group(
             0.0,
         )
     else:
-        was_waiting = getattr(group, "waiting_due_to_congestion", False)
+        was_waiting = was_waiting_before_update or getattr(
+            group,
+            "waiting_due_to_congestion",
+            False,
+        )
 
         clear_group_waiting_due_to_congestion(group)
 

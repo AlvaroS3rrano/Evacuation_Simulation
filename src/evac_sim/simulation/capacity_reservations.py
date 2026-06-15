@@ -144,6 +144,22 @@ class CapacityReservationManager:
             if group_id != ignore_group_id
         )
 
+    def _reservation_amount(
+        self,
+        resource: Resource,
+        group_size: int,
+    ) -> int:
+        capacity = self._resource_capacity(resource)
+        return min(max(1, int(group_size)), capacity)
+
+    def _capacity_batches(
+        self,
+        resource: Resource,
+        group_size: int,
+    ) -> int:
+        capacity = self._resource_capacity(resource)
+        return max(1, int(math.ceil(max(1, int(group_size)) / capacity)))
+
     def _has_capacity(
         self,
         resource: Resource,
@@ -152,13 +168,18 @@ class CapacityReservationManager:
         *,
         ignore_group_id: Any | None = None,
     ) -> bool:
+        reservation_amount = self._reservation_amount(
+            resource,
+            group_size,
+        )
+
         return (
             self._reserved_amount(
                 resource,
                 bucket,
                 ignore_group_id=ignore_group_id,
             )
-            + group_size
+            + reservation_amount
             <= self._resource_capacity(resource)
         )
 
@@ -197,7 +218,7 @@ class CapacityReservationManager:
             end_frame=end_frame,
             start_bucket=buckets[0],
             end_bucket=buckets[-1],
-            amount=group_size,
+            amount=self._reservation_amount(resource, group_size),
             path_edge_index=path_edge_index,
         )
 
@@ -208,6 +229,7 @@ class CapacityReservationManager:
         node_resource: Resource,
         earliest_start_frame: int,
         traversal_frames: int,
+        node_hold_frames: int,
         group_size: int,
         ignore_group_id: Any | None,
     ) -> tuple[int | None, Resource | None]:
@@ -219,7 +241,7 @@ class CapacityReservationManager:
         for bucket in range(candidate_bucket, last_bucket + 1):
             step_start = max(earliest_start_frame, self._bucket_start_frame(bucket))
             edge_end = step_start + traversal_frames
-            node_end = edge_end + self.node_hold_frames
+            node_end = edge_end + node_hold_frames
 
             edge_ok = self._interval_has_capacity(
                 edge_resource,
@@ -283,13 +305,23 @@ class CapacityReservationManager:
         for edge_index, (u, v) in enumerate(zip(path, path[1:])):
             edge_resource = ("edge", u, v)
             node_resource = ("node", v)
-            traversal_frames = self._edge_traversal_frames(u, v)
+
+            base_traversal_frames = self._edge_traversal_frames(u, v)
+            traversal_frames = base_traversal_frames * self._capacity_batches(
+                edge_resource,
+                group_size,
+            )
+            node_hold_frames = self.node_hold_frames * self._capacity_batches(
+                node_resource,
+                group_size,
+            )
 
             step_start, blocked_resource = self._first_feasible_start_for_step(
                 edge_resource=edge_resource,
                 node_resource=node_resource,
                 earliest_start_frame=cursor,
                 traversal_frames=traversal_frames,
+                node_hold_frames=node_hold_frames,
                 group_size=group_size,
                 ignore_group_id=ignore_group_id,
             )
@@ -321,7 +353,7 @@ class CapacityReservationManager:
                 first_departure_frame = step_start
 
             edge_end = step_start + traversal_frames
-            node_end = edge_end + self.node_hold_frames
+            node_end = edge_end + node_hold_frames
 
             intervals.append(
                 self._build_interval(
