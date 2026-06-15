@@ -11,6 +11,7 @@ from evac_sim.routing.decision_policies import (
 )
 from evac_sim.routing.path_algorithms import compute_path_effective_cost
 from evac_sim.routing.utils import is_sublist
+from evac_sim.simulation.capacity_reservations import get_capacity_reservation_manager
 from evac_sim.simulation.group_state import (
     apply_group_path,
     clear_group_waiting_due_to_congestion,
@@ -18,6 +19,7 @@ from evac_sim.simulation.group_state import (
     mark_group_waiting_due_to_congestion,
     remaining_path_from_node,
     representative_current_node,
+    reservation_horizon_for_heuristic,
     safe_path_index,
     validate_agent,
 )
@@ -178,6 +180,186 @@ def _should_accept_h2_congestion_reroute(
 
     return True
 
+
+def _existing_capacity_schedule_status(
+    *,
+    env_info,
+    group: AgentGroup,
+    group_id: Any,
+    current_node: Any,
+    frame: int,
+) -> str:
+    """
+    Return the status of the current capacity reservation for the next edge.
+
+    Possible values:
+      - "ready": the next edge is reserved and can be used now.
+      - "pending": the next edge is reserved, but the time window starts later.
+      - "none": there is no useful reservation for the next edge.
+    """
+    manager = get_capacity_reservation_manager(env_info.graph)
+
+    manager.release_passed_resources(
+        group_id,
+        current_node,
+        frame,
+    )
+
+    if manager.has_valid_next_reservation(
+        group_id,
+        group.path,
+        current_node,
+        frame,
+    ):
+        group.reserved_schedule = manager.group_reservations.get(group_id)
+        return "ready"
+
+    schedule = manager.group_reservations.get(group_id)
+
+    if schedule is None:
+        group.reserved_schedule = None
+        return "none"
+
+    if not group.path or current_node not in group.path:
+        group.reserved_schedule = None
+        return "none"
+
+    current_index = group.path.index(current_node)
+
+    if current_index >= len(group.path) - 1:
+        group.reserved_schedule = schedule
+        return "ready"
+
+    next_edge = ("edge", group.path[current_index], group.path[current_index + 1])
+
+    for interval in schedule.intervals:
+        if interval.resource == next_edge and frame <= interval.end_frame:
+            group.reserved_schedule = schedule
+            return "pending"
+
+    group.reserved_schedule = None
+    return "none"
+
+
+def _reserve_capacity_for_path(
+    *,
+    env_info,
+    group: AgentGroup,
+    group_id: Any,
+    current_node: Any,
+    full_path: list,
+    heuristic: str,
+    horizon_k: int | None,
+    frame: int,
+) -> tuple[bool, bool]:
+    """
+    Reserve capacity for the path before it is applied.
+
+    Returns:
+      - reserved: whether a reservation was created or not needed.
+      - can_depart_now: whether the first reserved edge can be used now.
+    """
+    if heuristic == "none":
+        return True, True
+
+    reservation_path = remaining_path_from_node(
+        full_path,
+        current_node,
+    )
+
+    if not reservation_path or len(reservation_path) < 2:
+        return True, True
+
+    manager = get_capacity_reservation_manager(env_info.graph)
+
+    horizon_edges = reservation_horizon_for_heuristic(
+        heuristic,
+        horizon_k,
+    )
+
+    schedule = manager.find_earliest_feasible_schedule(
+        reservation_path,
+        group_size=len(group.agents),
+        start_frame=frame,
+        horizon_edges=horizon_edges,
+        ignore_group_id=group_id,
+    )
+
+    if schedule is None:
+        group.reserved_schedule = None
+        return False, False
+
+    reserved = manager.reserve_path(
+        group_id,
+        reservation_path,
+        len(group.agents),
+        schedule,
+    )
+
+    if not reserved:
+        group.reserved_schedule = None
+        return False, False
+
+    group.reserved_schedule = schedule
+
+    return True, schedule.first_departure_frame <= frame
+
+
+def _apply_path_with_capacity_check(
+    *,
+    sim_cfg,
+    env_info,
+    group: AgentGroup,
+    group_id: Any,
+    current_node: Any,
+    full_path: list,
+    heuristic: str,
+    horizon_k: int | None,
+    frame: int,
+) -> bool:
+    """
+    Apply a new group path only after capacity has been reserved.
+
+    If a feasible reservation exists but starts in a future frame, the path is
+    still applied, but the group remains waiting with speed 0 until the time
+    window becomes available.
+    """
+    reserved, can_depart_now = _reserve_capacity_for_path(
+        env_info=env_info,
+        group=group,
+        group_id=group_id,
+        current_node=current_node,
+        full_path=full_path,
+        heuristic=heuristic,
+        horizon_k=horizon_k,
+        frame=frame,
+    )
+
+    if not reserved:
+        mark_group_waiting_due_to_congestion(
+            group,
+            frame=frame,
+        )
+        return False
+
+    apply_group_path(
+        sim_cfg=sim_cfg,
+        group=group,
+        current_node=current_node,
+        full_path=full_path,
+    )
+
+    if can_depart_now:
+        clear_group_waiting_due_to_congestion(group)
+        return True
+
+    mark_group_waiting_due_to_congestion(
+        group,
+        frame=frame,
+    )
+    return False
+
+
 def _try_resume_waiting_group(
     *,
     sim_cfg,
@@ -195,8 +377,27 @@ def _try_resume_waiting_group(
     curr_node = representative_current_node(group)
 
     if curr_node is None:
-        mark_group_waiting_due_to_congestion(group, frame=frame)
+        mark_group_waiting_due_to_congestion(
+            group,
+            frame=frame,
+        )
         return group
+
+    if heuristic != "none":
+        schedule_status = _existing_capacity_schedule_status(
+            env_info=env_info,
+            group=group,
+            group_id=group_id,
+            current_node=curr_node,
+            frame=frame,
+        )
+
+        if schedule_status == "ready":
+            clear_group_waiting_due_to_congestion(group)
+            return group
+
+        if schedule_status == "pending":
+            return group
 
     best_path = compute_best_available_path(
         exits=sim_cfg.exit_names,
@@ -209,10 +410,14 @@ def _try_resume_waiting_group(
         heuristic=heuristic,
         beta=beta,
         horizon_k=horizon_k,
+        group_id=group_id,
     )
 
     if best_path is None:
-        mark_group_waiting_due_to_congestion(group, frame=frame)
+        mark_group_waiting_due_to_congestion(
+            group,
+            frame=frame,
+        )
 
         logger.debug(
             "Group keeps waiting due to congestion | %s | current_node=%s no_path_count=%d",
@@ -223,21 +428,32 @@ def _try_resume_waiting_group(
 
         return group
 
-    apply_group_path(
+    can_depart_now = _apply_path_with_capacity_check(
         sim_cfg=sim_cfg,
+        env_info=env_info,
         group=group,
+        group_id=group_id,
         current_node=curr_node,
         full_path=best_path,
+        heuristic=heuristic,
+        horizon_k=horizon_k,
+        frame=frame,
     )
 
-    clear_group_waiting_due_to_congestion(group)
-
-    logger.debug(
-        "Waiting group resumed | %s | current_node=%s path=%s",
-        ctx(frame=frame, group_id=group_id, agents=len(agent_ids)),
-        curr_node,
-        best_path,
-    )
+    if can_depart_now:
+        logger.debug(
+            "Waiting group resumed | %s | current_node=%s path=%s",
+            ctx(frame=frame, group_id=group_id, agents=len(agent_ids)),
+            curr_node,
+            best_path,
+        )
+    else:
+        logger.debug(
+            "Waiting group reserved future path or keeps waiting | %s | current_node=%s path=%s",
+            ctx(frame=frame, group_id=group_id, agents=len(agent_ids)),
+            curr_node,
+            best_path,
+        )
 
     return group
 
@@ -257,6 +473,8 @@ def update_group_paths(
     horizon_k: int | None = None,
     no_path_policy: str = "raise",
 ) -> AgentGroup:
+    env_info.graph.graph["current_frame"] = frame
+
     agent_ids = group.agents
 
     if not agent_ids:
@@ -282,19 +500,26 @@ def update_group_paths(
 
     if not current_path:
         if no_path_policy == "wait":
-            mark_group_waiting_due_to_congestion(group, frame=frame)
+            mark_group_waiting_due_to_congestion(
+                group,
+                frame=frame,
+            )
 
         return group
 
     valid_agent_ids = [
         aid
         for aid in agent_ids
-        if aid in current_nodes and safe_path_index(current_path, current_nodes[aid]) >= 0
+        if aid in current_nodes
+        and safe_path_index(current_path, current_nodes[aid]) >= 0
     ]
 
     if not valid_agent_ids:
         if no_path_policy == "wait":
-            mark_group_waiting_due_to_congestion(group, frame=frame)
+            mark_group_waiting_due_to_congestion(
+                group,
+                frame=frame,
+            )
 
         return group
 
@@ -336,6 +561,7 @@ def update_group_paths(
             heuristic=heuristic,
             beta=beta,
             horizon_k=horizon_k,
+            group_id=group_id,
         )
 
         selected_alt_path = None
@@ -357,6 +583,7 @@ def update_group_paths(
                 heuristic=heuristic,
                 beta=beta,
                 horizon_k=horizon_k,
+                group_id=group_id,
             )
 
             if best_path and not is_sublist(best_path, current_path):
@@ -372,6 +599,7 @@ def update_group_paths(
                     beta=beta,
                     group_size=group_size,
                     horizon_k=horizon_k,
+                    group_id=group_id,
                 )
 
                 best_cost = compute_path_effective_cost(
@@ -381,21 +609,22 @@ def update_group_paths(
                     beta=beta,
                     group_size=group_size,
                     horizon_k=horizon_k,
+                    group_id=group_id,
                 )
 
                 if (
-                        best_cost <= (1.0 - congestion_reroute_epsilon) * current_cost
-                        and _should_accept_h2_congestion_reroute(
-                    G=env_info.graph,
-                    group=group,
-                    current_path=current_path,
-                    current_remaining=current_remaining,
-                    candidate_path=best_path,
-                    curr_node=curr_node,
-                    frame=frame,
-                    current_cost=current_cost,
-                    candidate_cost=best_cost,
-                )
+                    best_cost <= (1.0 - congestion_reroute_epsilon) * current_cost
+                    and _should_accept_h2_congestion_reroute(
+                        G=env_info.graph,
+                        group=group,
+                        current_path=current_path,
+                        current_remaining=current_remaining,
+                        candidate_path=best_path,
+                        curr_node=curr_node,
+                        frame=frame,
+                        current_cost=current_cost,
+                        candidate_cost=best_cost,
+                    )
                 ):
                     selected_alt_path = best_path
                     reroute_reason = "congestion"
@@ -407,24 +636,32 @@ def update_group_paths(
             except ValueError:
                 full_path = selected_alt_path
 
-            apply_group_path(
+            can_depart_now = _apply_path_with_capacity_check(
                 sim_cfg=sim_cfg,
+                env_info=env_info,
                 group=group,
+                group_id=group_id,
                 current_node=curr_node,
                 full_path=full_path,
+                heuristic=heuristic,
+                horizon_k=horizon_k,
+                frame=frame,
             )
 
-            if reroute_reason == "congestion" and len(selected_alt_path) >= 2:
+            if (
+                    can_depart_now
+                    and reroute_reason == "congestion"
+                    and len(selected_alt_path) >= 2
+            ):
                 group.last_congestion_reroute_frame = frame
                 group.last_congestion_reroute_edge = (
                     curr_node,
                     selected_alt_path[1],
                 )
 
-            clear_group_waiting_due_to_congestion(group)
-
             logger.debug(
-                "Reroute applied | %s | reason=%s | curr=%s next=%s | old_len=%d new_len=%d",
+                "Reroute %s | %s | reason=%s | curr=%s next=%s | old_len=%d new_len=%d",
+                "applied" if can_depart_now else "reserved_or_waiting",
                 ctx(frame=frame, group_id=group_id, agents=len(agent_ids)),
                 reroute_reason,
                 curr_node,
@@ -437,7 +674,7 @@ def update_group_paths(
 
     if (
             no_path_policy == "wait"
-            and heuristic in {"h2", "h3"}
+            and heuristic in {"h1", "h2", "h3"}
             and group.awareness_level == 1
     ):
         curr_node = representative_current_node(group)
@@ -454,10 +691,14 @@ def update_group_paths(
                 heuristic=heuristic,
                 beta=beta,
                 horizon_k=horizon_k,
+                group_id=group_id,
             )
 
             if best_path is None:
-                mark_group_waiting_due_to_congestion(group, frame=frame)
+                mark_group_waiting_due_to_congestion(
+                    group,
+                    frame=frame,
+                )
 
                 logger.debug(
                     "Group waits due to no congestion-feasible path | %s | current_node=%s",

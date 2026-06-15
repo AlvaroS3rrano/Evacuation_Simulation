@@ -36,15 +36,18 @@ def reservation_horizon_for_heuristic(
     if heuristic == "h2":
         return horizon_k if horizon_k is not None else 3
 
+    if heuristic == "h3":
+        return None
+
     return None
 
 
 def uses_static_reservations(heuristic: str) -> bool:
-    return heuristic in {"h1", "h2"}
+    return False
 
 
 def uses_temporal_reservations(heuristic: str) -> bool:
-    return heuristic == "h3"
+    return heuristic in {"h1", "h2", "h3"}
 
 
 def safe_path_index(path: list | None, node: Any) -> int:
@@ -66,6 +69,7 @@ def remaining_path_from_node(path: list | None, current_node: Any) -> list:
         return path[idx:]
     except ValueError:
         return list(path)
+
 
 def truncate_path_at_first_exit(
     path: list,

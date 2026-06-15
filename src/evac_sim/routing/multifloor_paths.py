@@ -109,6 +109,7 @@ def _expand_frontier_once(
     heuristic="none",
     beta=1.0,
     group_size=0,
+    group_id=None,
     horizon_k=None,
 ):
     """
@@ -149,6 +150,7 @@ def _expand_frontier_once(
             heuristic=heuristic,
             beta=beta,
             group_size=group_size,
+            group_id=group_id,
             horizon_k=remaining_horizon_k,
         )
 
@@ -228,6 +230,7 @@ def get_possible_paths(
     heuristic="none",
     beta=1.0,
     group_size=0,
+    group_id=None,
     horizon_k=None,
 ):
     """
@@ -255,6 +258,7 @@ def get_possible_paths(
         heuristic=heuristic,
         beta=beta,
         group_size=group_size,
+        group_id=group_id,
         horizon_k=horizon_k,
     )
 
@@ -277,6 +281,7 @@ def get_possible_paths(
             heuristic=heuristic,
             beta=beta,
             group_size=group_size,
+            group_id=group_id,
             horizon_k=horizon_k,
         )
         complete.extend(newly_complete)

@@ -58,6 +58,10 @@ class AgentGroup:
     waiting_since_frame: int | None = None
     no_path_count: int = 0
 
+    waiting_resource: Any = None
+    reserved_schedule: Any = None
+    last_capacity_check_frame: int | None = None
+
     last_congestion_reroute_frame: int | None = None
     last_congestion_reroute_edge: tuple[Any, Any] | None = None
 

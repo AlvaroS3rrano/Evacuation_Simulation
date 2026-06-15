@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import math
+
 from evac_sim.db.repositories.path_cache import get_paths, upsert_path
 
 from .path_algorithms import (
@@ -23,9 +25,9 @@ STATIC_CANDIDATE_K_DYNAMIC = 50
 SCORED_CANDIDATE_LIMIT_NONE = 15
 
 SCORED_CANDIDATE_LIMIT_BY_HEURISTIC = {
-    "h1": 5,
-    "h2": 10,
-    "h3": 15,
+    "h1": 15,
+    "h2": 20,
+    "h3": 30,
 }
 
 DYNAMIC_HEURISTICS = {"h1", "h2", "h3"}
@@ -172,6 +174,12 @@ def _prepare_candidates_for_scoring(
 
     return candidates
 
+def _filter_finite_cost_paths(paths):
+    return [
+        path_tuple
+        for path_tuple in paths
+        if len(path_tuple) > 1 and math.isfinite(float(path_tuple[1]))
+    ]
 
 def process_candidate_paths(paths, *, blocked_nodes=None, gamma=None, G=None):
     if blocked_nodes:
@@ -198,6 +206,7 @@ def get_alternative_paths_for_node(
     heuristic="none",
     beta=1.0,
     group_size=0,
+    group_id=None,
     horizon_k=None,
 ):
     if blocked_nodes is None:
@@ -246,8 +255,11 @@ def get_alternative_paths_for_node(
             beta=beta,
             group_size=group_size,
             horizon_k=horizon_k,
-            max_candidates=_scored_candidate_limit(heuristic)
+            max_candidates=_scored_candidate_limit(heuristic),
+            group_id=group_id,
         )
+
+        scored_candidates = _filter_finite_cost_paths(scored_candidates)
 
         all_paths.extend(scored_candidates)
 
@@ -281,6 +293,7 @@ def _get_cached_segments_from_connector(
     heuristic="none",
     beta=1.0,
     group_size=0,
+    group_id=None,
     horizon_k=None,
 ):
     """
@@ -310,6 +323,7 @@ def _get_cached_segments_from_connector(
             heuristic=heuristic,
             beta=beta,
             group_size=group_size,
+            group_id=group_id,
             horizon_k=horizon_k,
         )
 
@@ -334,6 +348,7 @@ def _get_cached_segments_from_connector(
             heuristic=heuristic,
             beta=beta,
             group_size=group_size,
+            group_id=group_id,
             horizon_k=horizon_k,
         )
 
@@ -351,6 +366,7 @@ def updateFloorPaths(
     heuristic="none",
     beta=1.0,
     group_size=0,
+    group_id=None,
     horizon_k=None,
 ) -> None:
     """
@@ -373,6 +389,7 @@ def updateFloorPaths(
             heuristic=heuristic,
             beta=beta,
             group_size=group_size,
+            group_id=group_id,
             horizon_k=horizon_k,
         )
         all_floor_paths[source] = alternative_paths

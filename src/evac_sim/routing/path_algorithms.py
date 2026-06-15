@@ -1,39 +1,14 @@
 import itertools
 import logging
 import math
+from typing import Any
 
 import networkx as nx
 from networkx.algorithms.simple_paths import shortest_simple_paths
 
-from evac_sim.routing.heuristics import compute_effective_step_cost
-from evac_sim.simulation.temporal_capacity import compute_temporal_path_effective_cost
-
+from evac_sim.simulation.capacity_reservations import get_capacity_reservation_manager
 
 logger = logging.getLogger(__name__)
-
-
-def _get_projected_group_size_for_step(
-    *,
-    edge_index: int,
-    heuristic: str,
-    group_size: int,
-    horizon_k: int | None,
-) -> int:
-    """
-    Return the group size projected onto one static path step.
-
-    h1 projects the group over the whole remaining path.
-    h2 projects the group only over the first horizon_k steps.
-    h3 is evaluated separately by temporal path scoring.
-    """
-    if heuristic == "h2":
-        if horizon_k is None:
-            raise ValueError("horizon_k must be provided when heuristic='h2'")
-
-        if edge_index >= horizon_k:
-            return 0
-
-    return group_size
 
 
 def compute_path_base_cost(G, path) -> float:
@@ -57,84 +32,62 @@ def compute_path_effective_cost(
     beta: float = 1.0,
     group_size: int = 0,
     horizon_k: int | None = None,
+    group_id: Any | None = None,
 ) -> float:
     """
     Compute the effective cost of a complete path.
 
-    This function is the single source of truth for path cost computation.
-
-    For h1:
-        The current group is projected over every edge in the path.
-
-    For h2:
-        The current group is projected only over the first horizon_k edges.
-        Steps beyond the horizon still include existing flow/node occupancy, but the
-        current group is not projected onto them.
-
-    For h3:
-        The path is evaluated with temporal node/edge capacity by estimated
-        arrival bucket.
-
     For none:
         The base edge cost is used.
+
+    For h1:
+        The path is evaluated using full-path temporal capacity reservations.
+
+    For h2:
+        The path is evaluated using temporal capacity reservations only over the
+        next horizon_k edges.
+
+    For h3:
+        The path is evaluated as an earliest-feasible-arrival schedule using
+        temporal reservations.
+
+    Important:
+        This function only scores the path. It does not reserve it. The actual
+        reservation must be done by CapacityReservationManager before the group
+        is allowed to move.
     """
     if not path or len(path) < 2:
         return float("inf")
 
-    if heuristic == "h3":
-        return compute_temporal_path_effective_cost(
-            G,
-            path,
-            group_size=group_size,
-            beta=beta,
-        )
-
     if heuristic == "none":
-        return sum(
-            float(G[u][v]["cost"])
-            for u, v in zip(path, path[1:])
+        return compute_path_base_cost(G, path)
+
+    if heuristic in {"h1", "h2", "h3"}:
+        current_frame = int(G.graph.get("current_frame", 0))
+        manager = get_capacity_reservation_manager(G)
+
+        horizon_edges = None
+
+        if heuristic == "h2":
+            if horizon_k is None:
+                raise ValueError("horizon_k must be provided when heuristic='h2'")
+            horizon_edges = horizon_k
+
+        return manager.earliest_arrival_cost(
+            list(path),
+            group_size=group_size,
+            start_frame=current_frame,
+            horizon_edges=horizon_edges,
+            ignore_group_id=group_id,
         )
-
-    total = 0.0
-
-    if heuristic == "h1":
-        for u, v in zip(path, path[1:]):
-            total += compute_effective_step_cost(
-                edge_data=G[u][v],
-                target_node_data=G.nodes[v],
-                heuristic=heuristic,
-                beta=beta,
-                group_size=group_size,
-            )
-
-        return total
-
-    if heuristic == "h2":
-        if horizon_k is None:
-            raise ValueError("horizon_k must be provided when heuristic='h2'")
-
-        for edge_index, (u, v) in enumerate(zip(path, path[1:])):
-            if edge_index >= horizon_k:
-                total += float(G[u][v]["cost"])
-                continue
-
-            total += compute_effective_step_cost(
-                edge_data=G[u][v],
-                target_node_data=G.nodes[v],
-                heuristic=heuristic,
-                beta=beta,
-                group_size=group_size,
-            )
-
-        return total
 
     raise ValueError(f"Unknown heuristic: {heuristic}")
 
 
 def centrality_measures(G, all_paths):
     """
-    Compute node centrality over a candidate path set and assign each path
-    a geometric-mean score based on its interior nodes.
+    Compute node centrality over a candidate path set and assign each path a
+    geometric-mean score based on its interior nodes.
     """
     node_centrality = {node: 0.0 for node in G.nodes()}
     total_paths = len(all_paths)
@@ -145,6 +98,7 @@ def centrality_measures(G, all_paths):
                 node_centrality[node] += 1.0 / total_paths
 
     scored_paths = []
+
     for path, cost in all_paths:
         interior_nodes = path[1:-1]
 
@@ -152,9 +106,10 @@ def centrality_measures(G, all_paths):
             score = 0.0
         else:
             log_sum = 0.0
+
             for node in interior_nodes:
-                c = max(node_centrality.get(node, 0.0), 1e-12)
-                log_sum += math.log(c)
+                centrality = max(node_centrality.get(node, 0.0), 1e-12)
+                log_sum += math.log(centrality)
 
             score = math.exp(log_sum / len(interior_nodes))
 
@@ -191,6 +146,7 @@ def collect_k_shortest_base_paths(
 
             for path in itertools.islice(paths_gen, k):
                 base_cost = compute_path_base_cost(G, path)
+
                 if math.isfinite(base_cost):
                     all_paths.append((path, base_cost))
 
@@ -228,6 +184,7 @@ def rescore_candidate_paths(
     group_size: int = 0,
     horizon_k: int | None = None,
     max_candidates: int | None = None,
+    group_id: Any | None = None,
 ):
     """
     Recompute cached candidate path costs using the active heuristic.
@@ -237,7 +194,7 @@ def rescore_candidate_paths(
       - (path, base_cost)
       - (path, base_cost, centrality)
 
-    h1/h2/h3 costs depend on current congestion state and must be recomputed at
+    h1/h2/h3 costs depend on current reservation state and must be recomputed at
     each routing decision.
     """
     if max_candidates is not None and max_candidates > 0:
@@ -255,6 +212,7 @@ def rescore_candidate_paths(
             beta=beta,
             group_size=group_size,
             horizon_k=horizon_k,
+            group_id=group_id,
         )
 
         scored_paths.append((path, cost))
@@ -273,12 +231,13 @@ def collect_k_shortest_paths(
     beta=1.0,
     group_size=0,
     horizon_k=None,
+    group_id: Any | None = None,
 ):
     """
     Backwards-compatible wrapper.
 
-    Candidate generation is now static and cache-friendly. Dynamic heuristics
-    rescore the candidate pool using the current graph state.
+    Candidate generation is static and cache-friendly. Dynamic heuristics rescore
+    the candidate pool using the current graph reservation state.
     """
     candidate_paths = collect_k_shortest_base_paths(
         G,
@@ -294,6 +253,7 @@ def collect_k_shortest_paths(
         beta=beta,
         group_size=group_size,
         horizon_k=horizon_k,
+        group_id=group_id,
     )
 
 

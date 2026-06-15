@@ -21,9 +21,9 @@ from evac_sim.io.run_paths import RunPaths
 from evac_sim.risk.risk_simulation import simulate_risk
 from evac_sim.risk.risk_validation import validate_risk_inputs
 from evac_sim.routing.decision_policies import compute_initial_path
-from evac_sim.simulation.simulation_logic import update_group_static_reservations
 from evac_sim.simulation.simulation_manager import set_agents_in_simulation
-from evac_sim.simulation.temporal_capacity import reserve_temporal_path
+from evac_sim.simulation.capacity_reservations import get_capacity_reservation_manager
+from evac_sim.simulation.group_state import reservation_horizon_for_heuristic
 from evac_sim.orchestration.experiment_models import (
     AgentPositioningConfig,
     ExperimentResources,
@@ -39,18 +39,6 @@ from evac_sim.orchestration.grouping_config import (
 )
 from evac_sim.orchestration.congestion_config import build_congestion_config
 from evac_sim.orchestration.edge_capacity import apply_congestion_settings_to_graph
-
-def _uses_reservations(heuristic: str) -> bool:
-    return heuristic in {"h1", "h2"}
-
-
-def _initial_reservation_horizon(
-    heuristic: str,
-    horizon_k: int | None,
-) -> int | None:
-    if heuristic == "h2":
-        return horizon_k
-    return None
 
 
 def _build_random_seeds(cfg: dict[str, Any]) -> tuple[int, int]:
@@ -554,24 +542,59 @@ def _create_initial_group(
         beta=beta,
         group_size=group_size,
         horizon_k=horizon_k,
+        group_id=group_id,
     )
 
     waiting_due_to_congestion = False
+    reserved_schedule = None
 
-    if path is None and no_path_policy == "wait" and heuristic != "none":
-        path = compute_initial_path(
-            targets,
-            group,
-            env_info,
-            source,
-            risk_per_node=risk_first_frame,
-            gamma=gamma,
-            heuristic="none",
-            beta=1.0,
-            group_size=group_size,
-            horizon_k=None,
+    if heuristic != "none":
+        manager = get_capacity_reservation_manager(env_info.graph)
+        horizon_edges = reservation_horizon_for_heuristic(
+            heuristic,
+            horizon_k,
         )
-        waiting_due_to_congestion = True
+
+        schedule = None
+
+        if path is not None:
+            schedule = manager.find_earliest_feasible_schedule(
+                list(path),
+                group_size=group_size,
+                start_frame=0,
+                horizon_edges=horizon_edges,
+                ignore_group_id=group_id,
+            )
+
+        if schedule is None:
+            path = compute_initial_path(
+                targets,
+                group,
+                env_info,
+                source,
+                risk_per_node=risk_first_frame,
+                gamma=gamma,
+                heuristic="none",
+                beta=1.0,
+                group_size=group_size,
+                horizon_k=None,
+                group_id=group_id,
+            )
+            waiting_due_to_congestion = True
+        else:
+            reservation_confirmed = manager.reserve_path(
+                group_id,
+                list(path),
+                group_size,
+                schedule,
+            )
+
+            if reservation_confirmed:
+                reserved_schedule = schedule
+                waiting_due_to_congestion = schedule.first_departure_frame > 0
+            else:
+                reserved_schedule = None
+                waiting_due_to_congestion = True
 
     if path is None:
         raise ValueError(
@@ -593,6 +616,10 @@ def _create_initial_group(
 
     if source not in journeys_ids or not journeys_ids[source]:
         if no_path_policy == "wait" and heuristic != "none":
+            if reserved_schedule is not None:
+                get_capacity_reservation_manager(env_info.graph).release_group(group_id)
+                reserved_schedule = None
+
             path = compute_initial_path(
                 targets,
                 group,
@@ -604,6 +631,7 @@ def _create_initial_group(
                 beta=1.0,
                 group_size=group_size,
                 horizon_k=None,
+                group_id=group_id,
             )
 
             waiting_due_to_congestion = True
@@ -618,6 +646,9 @@ def _create_initial_group(
                 )
 
     if source not in journeys_ids or not journeys_ids[source]:
+        if reserved_schedule is not None:
+            get_capacity_reservation_manager(env_info.graph).release_group(group_id)
+
         raise ValueError(
             f"Could not create initial journey for group_id={group_id}, "
             f"source={source}, path={path}"
@@ -627,43 +658,37 @@ def _create_initial_group(
     next_node = best_path_source[1]
     first_waypoint_id = waypoints_ids[next_node]
 
+    initial_speed = 0.0 if waiting_due_to_congestion else normal_max_speed
+
     agents = set_agents_in_simulation(
         simulation,
         group_positions,
         journey_id,
         first_waypoint_id,
-        normal_max_speed,
+        initial_speed,
     )
 
-    agent_ids = [a.id if hasattr(a, "id") else int(a) for a in agents]
+    agent_ids = [
+        a.id if hasattr(a, "id") else int(a)
+        for a in agents
+    ]
 
-    group.path = path
-    group.current_nodes = {agent_id: path[0] for agent_id in agent_ids}
+    group.path = list(path)
+    group.current_nodes = {
+        agent_id: path[0]
+        for agent_id in agent_ids
+    }
     group.agents = agent_ids
     group.initial_agents_ids = list(agent_ids)
+
     group.reserved_edges = set()
     group.reserved_group_size = 0
+
     group.waiting_due_to_congestion = waiting_due_to_congestion
     group.waiting_since_frame = 0 if waiting_due_to_congestion else None
     group.no_path_count = 1 if waiting_due_to_congestion else 0
 
-    if _uses_reservations(heuristic) and not group.waiting_due_to_congestion:
-        update_group_static_reservations(
-            env_info,
-            group,
-            frame=0,
-            group_id=group_id,
-            horizon_k=_initial_reservation_horizon(heuristic, horizon_k),
-        )
-
-    if heuristic == "h3" and not group.waiting_due_to_congestion:
-        reserve_temporal_path(
-            env_info.graph,
-            group.path,
-            group_id=group_id,
-            group_size=len(group.agents),
-            current_frame=0,
-        )
+    group.reserved_schedule = reserved_schedule
 
     return group
 

@@ -5,6 +5,7 @@ import logging
 import jupedsim as jps
 
 from evac_sim.db.repositories.risk import get_risk_levels_by_frame
+from evac_sim.simulation.capacity_reservations import get_capacity_reservation_manager
 from evac_sim.simulation.group_processing import process_single_group
 from evac_sim.simulation.group_splitting import (
     next_split_group_id,
@@ -21,7 +22,6 @@ from evac_sim.simulation.simulation_logic import (
     compute_current_nodes,
     release_group_static_reservations,
 )
-from evac_sim.simulation.temporal_capacity import release_temporal_path_reservation
 
 logger = logging.getLogger(__name__)
 
@@ -38,6 +38,35 @@ def _set_current_frame_on_graph(env_info, frame: int) -> None:
         return
 
     graph_metadata["current_frame"] = frame
+
+
+def _release_capacity_reservation_if_needed(
+    *,
+    env_info,
+    heuristic: str,
+    group_id,
+    group=None,
+) -> None:
+    if uses_static_reservations(heuristic) and group is not None:
+        release_group_static_reservations(
+            env_info,
+            group,
+        )
+        clear_group_static_reservation_state(group)
+        return
+
+    if uses_temporal_reservations(heuristic):
+        manager = get_capacity_reservation_manager(env_info.graph)
+        manager.release_group(group_id)
+
+        if group is not None and hasattr(group, "reserved_schedule"):
+            group.reserved_schedule = None
+
+        return
+
+    if group is not None:
+        clear_group_static_reservation_state(group)
+
 
 def process_frame(
     sim_cfg,
@@ -56,17 +85,29 @@ def process_frame(
     group_split_threshold: int | None = None,
     no_path_policy: str = "raise",
 ) -> None:
-    risks = get_risk_levels_by_frame(conn, case_name, frame)
+    risks = get_risk_levels_by_frame(
+        conn,
+        case_name,
+        frame,
+    )
 
-    _set_current_frame_on_graph(env_info, frame)
+    _set_current_frame_on_graph(
+        env_info,
+        frame,
+    )
 
     for original_group_id, original_group in list(groups.items()):
         try:
             group = groups.get(original_group_id)
+
             if group is None:
                 continue
 
-            compute_current_nodes(sim_cfg, group, frame)
+            compute_current_nodes(
+                sim_cfg,
+                group,
+                frame,
+            )
 
             active_ids = {agent.id for agent in sim_cfg.simulation.agents()}
 
@@ -83,9 +124,20 @@ def process_frame(
             }
 
             if not group.agents:
+                _release_capacity_reservation_if_needed(
+                    env_info=env_info,
+                    heuristic=heuristic,
+                    group_id=original_group_id,
+                    group=group,
+                )
                 continue
 
-            groups_to_process = [(original_group_id, group)]
+            groups_to_process = [
+                (
+                    original_group_id,
+                    group,
+                )
+            ]
 
             split_result = split_group_by_progress_threshold(
                 group,
@@ -94,6 +146,7 @@ def process_frame(
 
             if split_result is not None:
                 lead_group, lag_group = split_result
+
                 lag_group_id = next_split_group_id(
                     groups,
                     original_group_id,
@@ -114,26 +167,44 @@ def process_frame(
                     lag_group_id,
                 )
 
-                if uses_static_reservations(heuristic):
-                    release_group_static_reservations(env_info, group)
-                elif uses_temporal_reservations(heuristic):
-                    release_temporal_path_reservation(
-                        env_info.graph,
-                        group_id=original_group_id,
-                    )
-                else:
-                    clear_group_static_reservation_state(group)
+                _release_capacity_reservation_if_needed(
+                    env_info=env_info,
+                    heuristic=heuristic,
+                    group_id=original_group_id,
+                    group=group,
+                )
+
+                if hasattr(lead_group, "reserved_schedule"):
+                    lead_group.reserved_schedule = None
+
+                if hasattr(lag_group, "reserved_schedule"):
+                    lag_group.reserved_schedule = None
+
+                clear_group_static_reservation_state(lead_group)
+                clear_group_static_reservation_state(lag_group)
 
                 groups[original_group_id] = lead_group
                 groups[lag_group_id] = lag_group
 
                 groups_to_process = [
-                    (original_group_id, lead_group),
-                    (lag_group_id, lag_group),
+                    (
+                        original_group_id,
+                        lead_group,
+                    ),
+                    (
+                        lag_group_id,
+                        lag_group,
+                    ),
                 ]
 
             for group_id, aligned_group in groups_to_process:
                 if not aligned_group.agents:
+                    _release_capacity_reservation_if_needed(
+                        env_info=env_info,
+                        heuristic=heuristic,
+                        group_id=group_id,
+                        group=aligned_group,
+                    )
                     continue
 
                 process_single_group(
@@ -188,9 +259,12 @@ def run_agent_simulation(
     Advance the simulation and periodically process agent movements and path updates.
     """
     sim = sim_cfg.simulation
-    max_frames = 20000
+    max_frames = 7000
 
-    logger.info("Simulation start | agents=%d", sim.agent_count())
+    logger.info(
+        "Simulation start | agents=%d",
+        sim.agent_count(),
+    )
 
     if sim.agent_count() > 0:
         process_frame(
@@ -292,7 +366,16 @@ def run_agent_simulation(
                 no_path_policy=no_path_policy,
             )
 
-    logger.info("Simulation end | last_frame=%d", frame)
+    if uses_temporal_reservations(heuristic):
+        manager = get_capacity_reservation_manager(env_info.graph)
+
+        for group_id in list(agent_groups.keys()):
+            manager.release_group(group_id)
+
+    logger.info(
+        "Simulation end | last_frame=%d",
+        frame,
+    )
 
 
 def set_agents_in_simulation(
@@ -316,6 +399,8 @@ def set_agents_in_simulation(
             stage_id=waypoint_id,
             desired_speed=speed,
         )
-        new_agents.append(simulation.add_agent(params))
+        new_agents.append(
+            simulation.add_agent(params)
+        )
 
     return new_agents

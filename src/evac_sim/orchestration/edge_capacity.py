@@ -4,7 +4,7 @@ import math
 from typing import Any
 
 from evac_sim.orchestration.congestion_config import CongestionConfig
-from evac_sim.simulation.temporal_capacity import reset_temporal_capacity_state
+from evac_sim.simulation.capacity_reservations import reset_capacity_reservation_manager
 
 
 def apply_edge_flow_capacity_multiplier(
@@ -77,10 +77,10 @@ def apply_temporal_capacity_settings_to_graph(
     congestion_config: CongestionConfig,
 ) -> None:
     """
-    Attach temporal h3 capacity configuration and reset temporal reservations.
+    Attach temporal capacity configuration and reset capacity reservations.
     """
     graph.graph["temporal_capacity_config"] = congestion_config.temporal_capacity
-    reset_temporal_capacity_state(graph)
+    reset_capacity_reservation_manager(graph)
 
 
 def apply_congestion_settings_to_graph(

@@ -1,8 +1,14 @@
+from __future__ import annotations
+
+from typing import Any
+
 from .graph_risk import update_all_graph_risks
 from .multifloor_paths import get_possible_paths
 
+
 def _get_group_size(agent_group) -> int:
     return len(agent_group.agents)
+
 
 def handle_blocked_node_in_path(best_path, agent_group) -> None:
     """
@@ -17,6 +23,7 @@ def handle_blocked_node_in_path(best_path, agent_group) -> None:
         idx = best_path.index(blocked_node)
         if idx > 0:
             prev_node = best_path[idx - 1]
+
             if prev_node not in blocked_nodes:
                 blocked_nodes.append(prev_node)
 
@@ -33,10 +40,16 @@ def _get_possible_paths_with_fallback(
     heuristic="none",
     beta=1.0,
     group_size=0,
+    group_id: Any | None = None,
     horizon_k=None,
 ):
     """
-    Get feasible paths, retrying without blocked nodes if needed.
+    Get feasible paths.
+
+    Important:
+        For h1/h2/h3, we do not relax blocked_nodes as a fallback. A
+        capacity-aware heuristic must not degrade into a less restrictive routing
+        mode. If no feasible capacity-aware path exists, the group should wait.
     """
     paths = get_possible_paths(
         env_info,
@@ -48,24 +61,29 @@ def _get_possible_paths_with_fallback(
         heuristic=heuristic,
         beta=beta,
         group_size=group_size,
+        group_id=group_id,
         horizon_k=horizon_k,
     )
 
-    if not paths:
-        paths = get_possible_paths(
-            env_info,
-            current_node,
-            exits,
-            gamma,
-            algo,
-            blocked_nodes=[],
-            heuristic=heuristic,
-            beta=beta,
-            group_size=group_size,
-            horizon_k=horizon_k,
-        )
+    if paths:
+        return paths
 
-    return paths
+    if heuristic != "none":
+        return []
+
+    return get_possible_paths(
+        env_info,
+        current_node,
+        exits,
+        gamma,
+        algo,
+        blocked_nodes=[],
+        heuristic=heuristic,
+        beta=beta,
+        group_size=group_size,
+        group_id=group_id,
+        horizon_k=horizon_k,
+    )
 
 
 def _select_path_by_active_strategy(alternative_paths, agent_group):
@@ -79,6 +97,7 @@ def _select_path_by_active_strategy(alternative_paths, agent_group):
     handle_blocked_node_in_path(best_path, agent_group)
     return best_path
 
+
 def compute_initial_path(
     exits,
     agent_group,
@@ -90,6 +109,7 @@ def compute_initial_path(
     beta=1.0,
     group_size=None,
     horizon_k=None,
+    group_id: Any | None = None,
 ):
     """
     Compute the initial evacuation path for a group before the simulation starts.
@@ -116,10 +136,15 @@ def compute_initial_path(
         heuristic=heuristic,
         beta=beta,
         group_size=group_size,
+        group_id=group_id,
         horizon_k=horizon_k,
     )
 
-    return _select_path_by_active_strategy(alternative_paths, agent_group)
+    return _select_path_by_active_strategy(
+        alternative_paths,
+        agent_group,
+    )
+
 
 def compute_low_awareness_alternative_path(
     exits,
@@ -133,6 +158,7 @@ def compute_low_awareness_alternative_path(
     heuristic="none",
     beta=1.0,
     horizon_k=None,
+    group_id: Any | None = None,
 ):
     """
     Recompute the path if the next node is unsafe.
@@ -153,7 +179,10 @@ def compute_low_awareness_alternative_path(
         blocked_nodes.append(next_node)
         agent_group.blocked_nodes = blocked_nodes
 
-    update_all_graph_risks(env_info, risk_per_node)
+    update_all_graph_risks(
+        env_info,
+        risk_per_node,
+    )
 
     group_size = _get_group_size(agent_group)
 
@@ -167,10 +196,15 @@ def compute_low_awareness_alternative_path(
         heuristic=heuristic,
         beta=beta,
         group_size=group_size,
+        group_id=group_id,
         horizon_k=horizon_k,
     )
 
-    return _select_path_by_active_strategy(alternative_paths, agent_group)
+    return _select_path_by_active_strategy(
+        alternative_paths,
+        agent_group,
+    )
+
 
 def compute_high_awareness_alternative_path(
     exits,
@@ -183,6 +217,7 @@ def compute_high_awareness_alternative_path(
     heuristic="none",
     beta=1.0,
     horizon_k=None,
+    group_id: Any | None = None,
 ):
     """
     Recompute the path if any remaining node is unsafe.
@@ -202,9 +237,12 @@ def compute_high_awareness_alternative_path(
                 if risk_per_node.get(node, 0.0) >= risk_threshold:
                     if node not in blocked_nodes:
                         blocked_nodes.append(node)
+
                     dangerous_path = True
+
         except ValueError:
             dangerous_path = True
+
     else:
         dangerous_path = True
 
@@ -212,7 +250,11 @@ def compute_high_awareness_alternative_path(
         return None
 
     agent_group.blocked_nodes = blocked_nodes
-    update_all_graph_risks(env_info, risk_per_node)
+
+    update_all_graph_risks(
+        env_info,
+        risk_per_node,
+    )
 
     group_size = _get_group_size(agent_group)
 
@@ -226,10 +268,14 @@ def compute_high_awareness_alternative_path(
         heuristic=heuristic,
         beta=beta,
         group_size=group_size,
+        group_id=group_id,
         horizon_k=horizon_k,
     )
 
-    return _select_path_by_active_strategy(alternative_paths, agent_group)
+    return _select_path_by_active_strategy(
+        alternative_paths,
+        agent_group,
+    )
 
 
 def compute_alternative_path(
@@ -244,12 +290,21 @@ def compute_alternative_path(
     heuristic="none",
     beta=1.0,
     horizon_k=None,
+    group_id: Any | None = None,
 ):
     """
     Dispatch rerouting based on the group's awareness level.
     """
-    wait_node = getattr(agent_group, "wait_until_node", None)
-    current_nodes = getattr(agent_group, "current_nodes", None)
+    wait_node = getattr(
+        agent_group,
+        "wait_until_node",
+        None,
+    )
+    current_nodes = getattr(
+        agent_group,
+        "current_nodes",
+        None,
+    )
 
     if wait_node is None or (current_nodes and wait_node in current_nodes.values()):
         agent_group.wait_until_node = None
@@ -267,6 +322,7 @@ def compute_alternative_path(
             heuristic=heuristic,
             beta=beta,
             horizon_k=horizon_k,
+            group_id=group_id,
         )
 
     if agent_group.awareness_level == 1:
@@ -281,9 +337,11 @@ def compute_alternative_path(
             heuristic=heuristic,
             beta=beta,
             horizon_k=horizon_k,
+            group_id=group_id,
         )
 
     return None
+
 
 def compute_best_available_path(
     exits,
@@ -296,7 +354,14 @@ def compute_best_available_path(
     heuristic="none",
     beta=1.0,
     horizon_k=None,
+    group_id: Any | None = None,
 ):
+    """
+    Compute the best currently available path.
+
+    For h1/h2/h3, availability is capacity-aware because get_possible_paths()
+    must pass group_id down to rescore_candidate_paths().
+    """
     blocked_nodes = agent_group.blocked_nodes
     group_size = _get_group_size(agent_group)
 
@@ -313,15 +378,17 @@ def compute_best_available_path(
         heuristic=heuristic,
         beta=beta,
         group_size=group_size,
+        group_id=group_id,
         horizon_k=horizon_k,
     )
 
     safe_paths = [
-        p for p in alternative_paths
-        if all(risk_map.get(node, 0.0) <= risk_threshold for node in p)
+        path
+        for path in alternative_paths
+        if all(risk_map.get(node, 0.0) <= risk_threshold for node in path)
     ]
 
     if safe_paths:
         return safe_paths[0]
-    else:
-        return None
+
+    return None
