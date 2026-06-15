@@ -25,6 +25,7 @@ from evac_sim.simulation.simulation_logic import (
 
 logger = logging.getLogger(__name__)
 
+MAX_FRAMES = 7000
 
 def _set_current_frame_on_graph(env_info, frame: int) -> None:
     graph = getattr(env_info, "graph", None)
@@ -259,7 +260,6 @@ def run_agent_simulation(
     Advance the simulation and periodically process agent movements and path updates.
     """
     sim = sim_cfg.simulation
-    max_frames = 7000
 
     logger.info(
         "Simulation start | agents=%d",
@@ -296,7 +296,7 @@ def run_agent_simulation(
 
         frame = iteration // sim_cfg.every_nth_frame_simulation
 
-        if frame > max_frames:
+        if frame > MAX_FRAMES:
             logger.error(
                 "Simulation stopped by max_frames | iteration=%d | remaining_agents=%d",
                 iteration,
@@ -341,7 +341,7 @@ def run_agent_simulation(
                     "agents_data": agents_data,
                 }
 
-            logger.info(
+            logger.debug(
                 "Progress | frame=%d | agents=%d | groups=%s",
                 frame,
                 sim.agent_count(),

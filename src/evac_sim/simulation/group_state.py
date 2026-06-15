@@ -115,8 +115,10 @@ def mark_group_waiting_due_to_congestion(
     group: AgentGroup,
     *,
     frame: int,
+    resource: Any | None = None,
 ) -> None:
     group.waiting_due_to_congestion = True
+    group.waiting_resource = resource
 
     if group.waiting_since_frame is None:
         group.waiting_since_frame = frame
@@ -127,6 +129,7 @@ def mark_group_waiting_due_to_congestion(
 def clear_group_waiting_due_to_congestion(group: AgentGroup) -> None:
     group.waiting_due_to_congestion = False
     group.waiting_since_frame = None
+    group.waiting_resource = None
 
 
 def representative_current_node(group: AgentGroup) -> Any | None:

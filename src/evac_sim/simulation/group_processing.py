@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 from evac_sim.core.agent_group import AgentGroup
@@ -12,6 +13,7 @@ from evac_sim.simulation.group_path_updates import update_group_paths
 from evac_sim.simulation.group_recording import record_group_path_data
 from evac_sim.simulation.group_state import (
     clear_group_waiting_due_to_congestion,
+    ctx,
     mark_group_waiting_due_to_congestion,
     representative_current_node,
     reservation_horizon_for_heuristic,
@@ -22,6 +24,20 @@ from evac_sim.simulation.simulation_logic import (
     update_agent_speed_on_stairs,
 )
 
+logger = logging.getLogger(__name__)
+
+def _schedule_debug_summary(schedule) -> dict:
+    if schedule is None:
+        return {}
+
+    return {
+        "start_frame": schedule.start_frame,
+        "first_departure_frame": schedule.first_departure_frame,
+        "arrival_frame": schedule.arrival_frame,
+        "wait_frames": schedule.wait_frames,
+        "intervals": len(schedule.intervals),
+        "path_head": schedule.path[:6],
+    }
 
 def _get_existing_next_edge_schedule(
     *,
@@ -119,6 +135,14 @@ def ensure_group_has_capacity_to_move(
 
     if existing_schedule is not None:
         group.reserved_schedule = existing_schedule
+
+        logger.info(
+            "Capacity pending | %s | current_node=%s schedule=%s",
+            ctx(frame=frame, group_id=group_id, agents=len(group.agents)),
+            current_node,
+            _schedule_debug_summary(existing_schedule),
+        )
+
         return False
 
     horizon_edges = reservation_horizon_for_heuristic(
@@ -145,6 +169,16 @@ def ensure_group_has_capacity_to_move(
 
     if schedule is None:
         group.reserved_schedule = None
+
+        logger.info(
+            "Capacity blocked | %s | current_node=%s blocked_resource=%s "
+            "remaining_path=%s reason=no_feasible_schedule",
+            ctx(frame=frame, group_id=group_id, agents=len(group.agents)),
+            current_node,
+            getattr(group, "waiting_resource", None),
+            remaining_path[:8],
+        )
+
         return False
 
     reserved = manager.reserve_path(
@@ -156,11 +190,29 @@ def ensure_group_has_capacity_to_move(
 
     if not reserved:
         group.reserved_schedule = None
+
+        logger.warning(
+            "Capacity reservation race/failure | %s | current_node=%s "
+            "remaining_path=%s schedule=%s",
+            ctx(frame=frame, group_id=group_id, agents=len(group.agents)),
+            current_node,
+            remaining_path[:8],
+            _schedule_debug_summary(schedule),
+        )
+
         return False
 
     group.reserved_schedule = schedule
 
     if schedule.first_departure_frame > frame:
+        logger.info(
+            "Capacity pending | %s | current_node=%s wait_frames=%s schedule=%s",
+            ctx(frame=frame, group_id=group_id, agents=len(group.agents)),
+            current_node,
+            schedule.first_departure_frame - frame,
+            _schedule_debug_summary(schedule),
+        )
+
         return False
 
     return True
@@ -235,19 +287,48 @@ def process_single_group(
         mark_group_waiting_due_to_congestion(
             group,
             frame=frame,
+            resource=getattr(group, "waiting_resource", None),
         )
+
+        logger.info(
+            "Group stopped | %s | current_node=%s path_head=%s "
+            "waiting_resource=%s waiting_since=%s reason=no_capacity",
+            ctx(frame=frame, group_id=group_id, agents=len(group.agents)),
+            representative_current_node(group),
+            group.path[:8] if group.path else None,
+            getattr(group, "waiting_resource", None),
+            getattr(group, "waiting_since_frame", None),
+        )
+
         set_group_speed(
             sim_cfg.simulation,
             group,
             0.0,
         )
     else:
+        was_waiting = getattr(group, "waiting_due_to_congestion", False)
+
         clear_group_waiting_due_to_congestion(group)
+
+        set_group_speed(
+            sim_cfg.simulation,
+            group,
+            getattr(sim_cfg, "normal_max_speed", 1.2),
+        )
+
         update_agent_speed_on_stairs(
             env_info.graph,
             sim_cfg,
             group,
         )
+
+        if was_waiting:
+            logger.info(
+                "Group resumed | %s | current_node=%s path_head=%s",
+                ctx(frame=frame, group_id=group_id, agents=len(group.agents)),
+                representative_current_node(group),
+                group.path[:8] if group.path else None,
+            )
 
     clear_group_static_reservation_state(group)
 

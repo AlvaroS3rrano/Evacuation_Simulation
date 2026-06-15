@@ -287,6 +287,16 @@ def _reserve_capacity_for_path(
 
     if schedule is None:
         group.reserved_schedule = None
+
+        logger.info(
+            "Path capacity blocked | %s | current_node=%s blocked_resource=%s "
+            "path=%s reason=no_feasible_schedule",
+            ctx(frame=frame, group_id=group_id, agents=len(group.agents)),
+            current_node,
+            getattr(group, "waiting_resource", None),
+            reservation_path[:8],
+        )
+
         return False, False
 
     reserved = manager.reserve_path(
@@ -298,9 +308,24 @@ def _reserve_capacity_for_path(
 
     if not reserved:
         group.reserved_schedule = None
+
+        logger.warning(
+            "Path capacity reservation race/failure | %s | current_node=%s path=%s",
+            ctx(frame=frame, group_id=group_id, agents=len(group.agents)),
+            current_node,
+            reservation_path[:8],
+        )
+
         return False, False
 
-    group.reserved_schedule = schedule
+    if schedule.first_departure_frame > frame:
+        logger.info(
+            "Capacity pending | %s | current_node=%s wait_frames=%s path=%s",
+            ctx(frame=frame, group_id=group_id, agents=len(group.agents)),
+            current_node,
+            schedule.first_departure_frame - frame,
+            reservation_path[:8],
+        )
 
     return True, schedule.first_departure_frame <= frame
 
@@ -635,6 +660,23 @@ def update_group_paths(
                 full_path = current_path[: current_idx + 1] + selected_alt_path[1:]
             except ValueError:
                 full_path = selected_alt_path
+
+            if _is_immediate_backtrack(
+                    current_path=current_path,
+                    curr_node=curr_node,
+                    candidate_path=selected_alt_path,
+            ):
+                logger.warning(
+                    "Reroute backtrack detected | %s | reason=%s curr=%s "
+                    "old_next=%s new_next=%s old_path=%s selected_alt=%s",
+                    ctx(frame=frame, group_id=group_id, agents=len(agent_ids)),
+                    reroute_reason,
+                    curr_node,
+                    next_node,
+                    selected_alt_path[1] if len(selected_alt_path) > 1 else None,
+                    current_path[:10],
+                    selected_alt_path[:10],
+                )
 
             can_depart_now = _apply_path_with_capacity_check(
                 sim_cfg=sim_cfg,

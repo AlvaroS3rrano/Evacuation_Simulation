@@ -345,21 +345,22 @@ def write_markdown_report(*, report_path: Path, diagnostics: list[HeuristicDiagn
     lines.append("## Summary")
     lines.append("")
     lines.append(
-        "| Heuristic | Status | Duration (s) | Stopped | Resumed | Blocked | Future skipped | Backtracks | Stuck groups | Main reason |"
+        "| Heuristic | Status | Duration (s) | Stopped | Resumed | Blocked | Pending | Future skipped | Backtracks | Stuck groups | Main reason |"
     )
-    lines.append("|---|---:|---:|---:|---:|---:|---:|---:|---:|---|")
+    lines.append("|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|")
 
     for diag in diagnostics:
         counts = diag.counts
         reason = diag.reasons[0] if diag.reasons else ""
         lines.append(
-            "| {heuristic} | {status} | {duration:.2f} | {stopped} | {resumed} | {blocked} | {future} | {backtracks} | {stuck} | {reason} |".format(
+            "| {heuristic} | {status} | {duration:.2f} | {stopped} | {resumed} | {blocked} | {pending} | {future} | {backtracks} | {stuck} | {reason} |".format(
                 heuristic=diag.heuristic,
                 status=diag.status,
                 duration=diag.duration_seconds,
                 stopped=counts.get("group_stopped", 0),
                 resumed=counts.get("group_resumed", 0),
                 blocked=counts.get("capacity_blocked", 0) + counts.get("path_capacity_blocked", 0),
+                pending=counts.get("capacity_pending", 0),
                 future=counts.get("capacity_future_reservation_skipped", 0)
                 + counts.get("path_capacity_future_reservation_skipped", 0),
                 backtracks=counts.get("reroute_backtrack", 0),
@@ -537,6 +538,7 @@ def main() -> None:
         json.dumps(serialisable, indent=2, ensure_ascii=False),
         encoding="utf-8",
     )
+    write_markdown_report(report_path=md_report, diagnostics=diagnostics)
     write_markdown_report(report_path=md_report, diagnostics=diagnostics)
 
     print("\nReports generated:")
