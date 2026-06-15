@@ -477,7 +477,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--config", default="congestion_heuristics.yaml")
     parser.add_argument("--case", default="congestion_two_exits")
-    parser.add_argument("--heuristics", nargs="+", default=["h1", "h3"]) # ["none", "h1", "h2", "h3"]
+    parser.add_argument("--heuristics", nargs="+", default=["h1"]) # ["none", "h1", "h2", "h3"]
     parser.add_argument("--beta", default="1.0")
     parser.add_argument("--out-root", default="./runs/diagnostics_congestion")
     parser.add_argument("-v", "--verbose", action="store_true", help="Pass -v to evac_sim.cli.")

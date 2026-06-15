@@ -167,15 +167,24 @@ def ensure_group_has_capacity_to_move(
         group.reserved_schedule = None
         group.waiting_resource = attempt.blocked_resource
 
+        usage = None
+
+        if attempt.blocked_resource is not None and frame % 250 == 0:
+            usage = manager.debug_resource_usage(
+                attempt.blocked_resource,
+                frame,
+            )
+
         logger.info(
             "Capacity blocked | %s | current_node=%s blocked_resource=%s "
-            "retry_frame=%s reason=%s remaining_path=%s",
+            "retry_frame=%s reason=%s remaining_path=%s usage=%s",
             ctx(frame=frame, group_id=group_id, agents=len(group.agents)),
             current_node,
             attempt.blocked_resource,
             attempt.earliest_retry_frame,
             attempt.reason,
             remaining_path[:8],
+            usage,
         )
 
         if attempt.blocked_resource is not None:

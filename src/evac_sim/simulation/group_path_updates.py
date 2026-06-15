@@ -289,15 +289,24 @@ def _reserve_capacity_for_path(
         group.reserved_schedule = None
         group.waiting_resource = attempt.blocked_resource
 
+        usage = None
+
+        if attempt.blocked_resource is not None and frame % 250 == 0:
+            usage = manager.debug_resource_usage(
+                attempt.blocked_resource,
+                frame,
+            )
+
         logger.info(
             "Path capacity blocked | %s | current_node=%s blocked_resource=%s "
-            "retry_frame=%s reason=%s path=%s",
+            "retry_frame=%s reason=%s path=%s usage=%s",
             ctx(frame=frame, group_id=group_id, agents=len(group.agents)),
             current_node,
             attempt.blocked_resource,
             attempt.earliest_retry_frame,
             attempt.reason,
             reservation_path[:8],
+            usage,
         )
 
         return False, False

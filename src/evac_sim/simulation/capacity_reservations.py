@@ -520,6 +520,42 @@ class CapacityReservationManager:
 
         return False
 
+    def debug_resource_usage(
+            self,
+            resource: Resource,
+            frame: int,
+            *,
+            window_buckets: int = 5,
+            max_owners: int = 10,
+    ) -> dict[str, Any]:
+        current_bucket = self.bucket_for_frame(frame)
+        capacity = self._resource_capacity(resource)
+
+        buckets: dict[int, dict[str, Any]] = {}
+
+        for bucket in range(current_bucket, current_bucket + window_buckets):
+            group_map = self.reservations.get(resource, {}).get(bucket, {})
+
+            owners = {
+                str(group_id): amount
+                for group_id, amount in list(group_map.items())[:max_owners]
+            }
+
+            buckets[bucket] = {
+                "used": sum(group_map.values()),
+                "capacity": capacity,
+                "owners": owners,
+                "owners_count": len(group_map),
+            }
+
+        return {
+            "resource": resource,
+            "frame": frame,
+            "current_bucket": current_bucket,
+            "capacity": capacity,
+            "buckets": buckets,
+        }
+
     def estimate_wait_time(
         self,
         resource: Resource,
