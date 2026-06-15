@@ -43,7 +43,7 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument(
         "--horizon-k",
         type=int,
-        default=3,
+        default=6,
         help="Number of future edges reserved by heuristic h2 (default: 3)",
     )
     run.add_argument(
