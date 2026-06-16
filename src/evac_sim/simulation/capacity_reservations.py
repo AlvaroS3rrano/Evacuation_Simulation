@@ -59,6 +59,7 @@ class QueueEntry:
     priority: float
     enqueued_frame: int
     group_id: Any = field(compare=False)
+    group_size: int = field(compare=False, default=1)
 
 
 class CapacityReservationManager:
@@ -630,6 +631,7 @@ class CapacityReservationManager:
             priority: float,
             *,
             frame: int = 0,
+            group_size: int = 1,
     ) -> None:
         self.remove_group_from_waiting_queues(group_id)
 
@@ -639,8 +641,32 @@ class CapacityReservationManager:
                 priority=float(priority),
                 enqueued_frame=int(frame),
                 group_id=group_id,
+                group_size=max(1, int(group_size)),
             ),
         )
+
+    def first_waiting_group(
+            self,
+            resource: Resource,
+    ) -> Any | None:
+        queue = self.waiting_queues.get(resource)
+
+        if not queue:
+            return None
+
+        return queue[0].group_id
+
+    def should_group_wait_for_queue(
+            self,
+            resource: Resource,
+            group_id: Any,
+    ) -> bool:
+        first_group_id = self.first_waiting_group(resource)
+
+        if first_group_id is None:
+            return False
+
+        return first_group_id != group_id
 
     def dequeue_available_groups(
         self,
@@ -657,7 +683,11 @@ class CapacityReservationManager:
 
         while queue:
             entry = heapq.heappop(queue)
-            wait_time = self.estimate_wait_time(resource, 1, frame)
+            wait_time = self.estimate_wait_time(
+                resource,
+                entry.group_size,
+                frame,
+            )
 
             if wait_time == 0:
                 available.append(entry.group_id)

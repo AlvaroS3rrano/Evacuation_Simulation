@@ -76,6 +76,117 @@ def _get_existing_next_edge_schedule(
     return None
 
 
+def _movement_resources(
+    movement_path: list,
+) -> list[tuple]:
+    if not movement_path or len(movement_path) < 2:
+        return []
+
+    u, v = movement_path[0], movement_path[1]
+
+    return [
+        ("edge", u, v),
+        ("node", v),
+    ]
+
+
+def _distance_to_resource_from_path(
+    *,
+    path: list | None,
+    current_node: Any,
+    resource: tuple,
+) -> int:
+    if not path or current_node not in path:
+        return 9999
+
+    current_idx = path.index(current_node)
+
+    if resource[0] == "node":
+        target_node = resource[1]
+
+        try:
+            target_idx = path.index(
+                target_node,
+                current_idx,
+            )
+            return max(0, target_idx - current_idx)
+        except ValueError:
+            return 9999
+
+    if resource[0] == "edge":
+        _, u, v = resource
+
+        for edge_idx in range(current_idx, len(path) - 1):
+            if path[edge_idx] == u and path[edge_idx + 1] == v:
+                return max(0, edge_idx - current_idx)
+
+        return 9999
+
+    return 9999
+
+
+def _waiting_priority_for_resource(
+    *,
+    group: AgentGroup,
+    resource: tuple,
+    current_node: Any,
+    frame: int,
+) -> float:
+    distance = _distance_to_resource_from_path(
+        path=group.path,
+        current_node=current_node,
+        resource=resource,
+    )
+
+    waiting_since = getattr(
+        group,
+        "waiting_since_frame",
+        None,
+    )
+
+    waiting_age = 0
+
+    if waiting_since is not None:
+        waiting_age = max(
+            0,
+            int(frame) - int(waiting_since),
+        )
+
+    waiting_bonus = min(
+        waiting_age / 300.0,
+        5.0,
+    )
+
+    return float(distance) - waiting_bonus
+
+
+def _enqueue_with_spatial_priority(
+    *,
+    manager,
+    group: AgentGroup,
+    group_id: Any,
+    resource: tuple,
+    current_node: Any,
+    frame: int,
+) -> float:
+    priority = _waiting_priority_for_resource(
+        group=group,
+        resource=resource,
+        current_node=current_node,
+        frame=frame,
+    )
+
+    manager.enqueue_waiting_group(
+        resource,
+        group_id,
+        priority,
+        frame=frame,
+        group_size=len(group.agents),
+    )
+
+    return priority
+
+
 def ensure_group_has_capacity_to_move(
     *,
     env_info,
@@ -121,6 +232,36 @@ def ensure_group_has_capacity_to_move(
         return True
 
     movement_path = remaining_path[:2]
+
+    for resource in _movement_resources(movement_path):
+        if manager.should_group_wait_for_queue(
+                resource,
+                group_id,
+        ):
+            group.reserved_schedule = None
+            group.waiting_resource = resource
+
+            priority = _enqueue_with_spatial_priority(
+                manager=manager,
+                group=group,
+                group_id=group_id,
+                resource=resource,
+                current_node=current_node,
+                frame=frame,
+            )
+
+            logger.info(
+                "Capacity queue wait | %s | current_node=%s resource=%s "
+                "priority=%s queue_head=%s movement_path=%s",
+                ctx(frame=frame, group_id=group_id, agents=len(group.agents)),
+                current_node,
+                resource,
+                priority,
+                manager.first_waiting_group(resource),
+                movement_path,
+            )
+
+            return False
 
     if manager.has_valid_next_reservation(
         group_id,
@@ -193,11 +334,24 @@ def ensure_group_has_capacity_to_move(
         )
 
         if attempt.blocked_resource is not None:
-            manager.enqueue_waiting_group(
-                attempt.blocked_resource,
-                group_id,
-                float(frame),
+            priority = _enqueue_with_spatial_priority(
+                manager=manager,
+                group=group,
+                group_id=group_id,
+                resource=attempt.blocked_resource,
+                current_node=current_node,
                 frame=frame,
+            )
+
+            logger.info(
+                "Capacity queue enqueue | %s | current_node=%s resource=%s "
+                "priority=%s queue_head=%s movement_path=%s",
+                ctx(frame=frame, group_id=group_id, agents=len(group.agents)),
+                current_node,
+                attempt.blocked_resource,
+                priority,
+                manager.first_waiting_group(attempt.blocked_resource),
+                movement_path,
             )
 
         return False
