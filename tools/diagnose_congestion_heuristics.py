@@ -81,6 +81,7 @@ class HeuristicDiagnostics:
     top_blocked_resources: dict[str, int] = field(default_factory=dict)
     top_queue_resources: dict[str, int] = field(default_factory=dict)
     queue_checks: dict[str, Any] = field(default_factory=dict)
+    evacuation_summary: dict[str, Any] = field(default_factory=dict)
     possible_stuck_groups: list[str] = field(default_factory=list)
     groups: dict[str, GroupDiagnostics] = field(default_factory=dict)
     db_summary: dict[str, Any] = field(default_factory=dict)
@@ -332,6 +333,193 @@ def _summarise_dbs(out_dir: Path) -> dict[str, Any]:
     return {str(db_path): _summarise_sqlite_db(db_path) for db_path in sorted(out_dir.rglob("*.db"))}
 
 
+def _weighted_average(
+    rows: list[tuple[float | None, int | None]],
+) -> float | None:
+    total_weight = 0
+    weighted_sum = 0.0
+
+    for value, weight in rows:
+        if value is None:
+            continue
+
+        safe_weight = int(weight or 1)
+        if safe_weight <= 0:
+            safe_weight = 1
+
+        total_weight += safe_weight
+        weighted_sum += float(value) * safe_weight
+
+    if total_weight == 0:
+        return None
+
+    return weighted_sum / total_weight
+
+
+def _summarise_evacuation_metrics(out_dir: Path) -> dict[str, Any]:
+    """
+    Read compact evacuation-time metrics from the run SQLite database.
+
+    The terminal output uses this summary so the user can quickly see whether a
+    run is progressing in a reasonable direction without opening the full report.
+    """
+    summaries: list[dict[str, Any]] = []
+
+    for db_path in sorted(out_dir.rglob("*.db")):
+        try:
+            conn = sqlite3.connect(db_path)
+        except sqlite3.Error as exc:
+            summaries.append(
+                {
+                    "db_path": str(db_path),
+                    "error": str(exc),
+                }
+            )
+            continue
+
+        try:
+            tables = {
+                row[0]
+                for row in conn.execute(
+                    "SELECT name FROM sqlite_master WHERE type='table'"
+                )
+            }
+
+            if "experiment_metrics" not in tables:
+                summaries.append(
+                    {
+                        "db_path": str(db_path),
+                        "error": "experiment_metrics table not found",
+                    }
+                )
+                continue
+
+            rows = conn.execute(
+                """
+                SELECT
+                    COALESCE(n_records, 1),
+                    avg_time,
+                    median_time,
+                    p90_time,
+                    max_time,
+                    min_time
+                FROM experiment_metrics
+                """
+            ).fetchall()
+
+            if not rows:
+                summaries.append(
+                    {
+                        "db_path": str(db_path),
+                        "error": "experiment_metrics table is empty",
+                    }
+                )
+                continue
+
+            n_records = [int(row[0] or 1) for row in rows]
+            avg_rows = [(row[1], row[0]) for row in rows]
+            median_rows = [(row[2], row[0]) for row in rows]
+            p90_rows = [(row[3], row[0]) for row in rows]
+            max_values = [row[4] for row in rows if row[4] is not None]
+            min_values = [row[5] for row in rows if row[5] is not None]
+
+            summaries.append(
+                {
+                    "db_path": str(db_path),
+                    "groups": len(rows),
+                    "total_records": sum(n_records),
+                    "avg_time_weighted": _weighted_average(avg_rows),
+                    "median_time_weighted": _weighted_average(median_rows),
+                    "p90_time_weighted": _weighted_average(p90_rows),
+                    "max_time": max(max_values) if max_values else None,
+                    "min_time": min(min_values) if min_values else None,
+                }
+            )
+
+        except sqlite3.Error as exc:
+            summaries.append(
+                {
+                    "db_path": str(db_path),
+                    "error": str(exc),
+                }
+            )
+        finally:
+            conn.close()
+
+    if not summaries:
+        return {}
+
+    valid_summaries = [
+        summary
+        for summary in summaries
+        if "error" not in summary
+    ]
+
+    if not valid_summaries:
+        return {
+            "databases": summaries,
+        }
+
+    total_records = sum(int(summary.get("total_records", 0)) for summary in valid_summaries)
+    avg_time_weighted = _weighted_average(
+        [
+            (summary.get("avg_time_weighted"), summary.get("total_records", 1))
+            for summary in valid_summaries
+        ]
+    )
+    median_time_weighted = _weighted_average(
+        [
+            (summary.get("median_time_weighted"), summary.get("total_records", 1))
+            for summary in valid_summaries
+        ]
+    )
+    p90_time_weighted = _weighted_average(
+        [
+            (summary.get("p90_time_weighted"), summary.get("total_records", 1))
+            for summary in valid_summaries
+        ]
+    )
+
+    return {
+        "groups": sum(int(summary.get("groups", 0)) for summary in valid_summaries),
+        "total_records": total_records,
+        "avg_time_weighted": avg_time_weighted,
+        "median_time_weighted": median_time_weighted,
+        "p90_time_weighted": p90_time_weighted,
+        "max_time": max(
+            summary["max_time"]
+            for summary in valid_summaries
+            if summary.get("max_time") is not None
+        ),
+        "min_time": min(
+            summary["min_time"]
+            for summary in valid_summaries
+            if summary.get("min_time") is not None
+        ),
+        "databases": summaries,
+    }
+
+
+def _format_seconds(value: float | int | None) -> str:
+    if value is None:
+        return "-"
+
+    return f"{float(value):.2f}s"
+
+
+def _format_evacuation_summary(summary: dict[str, Any]) -> str:
+    if not summary:
+        return "evac_avg=- evac_p90=- evac_max=-"
+
+    return (
+        "evac_avg={avg} evac_p90={p90} evac_max={max_time}".format(
+            avg=_format_seconds(summary.get("avg_time_weighted")),
+            p90=_format_seconds(summary.get("p90_time_weighted")),
+            max_time=_format_seconds(summary.get("max_time")),
+        )
+    )
+
+
 def _queue_checks_for_log(*, counts: Counter[str], lines: list[str]) -> dict[str, Any]:
     queue_event_lines = [
         line for line in lines if "Capacity queue enqueue" in line or "Capacity queue wait" in line
@@ -449,6 +637,7 @@ def analyse_log(
         top_blocked_resources=dict(blocked_resources.most_common(10)),
         top_queue_resources=dict(queue_resources.most_common(10)),
         queue_checks=queue_checks,
+        evacuation_summary=_summarise_evacuation_metrics(out_dir),
         possible_stuck_groups=possible_stuck_groups,
         groups=groups,
         db_summary=_summarise_dbs(out_dir),
@@ -605,18 +794,21 @@ def write_markdown_report(
     lines.append("## Summary")
     lines.append("")
     lines.append(
-        "| Heuristic | Status | Duration (s) | Stopped | Resumed | Ready | Blocked | Pending | Queue enqueue | Queue wait | Backtracks | Stuck groups | Main reason |"
+        "| Heuristic | Status | Runtime (s) | Evac avg | Evac p90 | Evac max | Stopped | Resumed | Ready | Blocked | Pending | Queue enqueue | Queue wait | Backtracks | Stuck groups | Main reason |"
     )
-    lines.append("|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|")
+    lines.append("|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|")
 
     for diag in diagnostics:
         counts = diag.counts
         reason = diag.reasons[0] if diag.reasons else ""
         lines.append(
-            "| {heuristic} | {status} | {duration:.2f} | {stopped} | {resumed} | {ready} | {blocked} | {pending} | {queue_enqueue} | {queue_wait} | {backtracks} | {stuck} | {reason} |".format(
+            "| {heuristic} | {status} | {duration:.2f} | {evac_avg} | {evac_p90} | {evac_max} | {stopped} | {resumed} | {ready} | {blocked} | {pending} | {queue_enqueue} | {queue_wait} | {backtracks} | {stuck} | {reason} |".format(
                 heuristic=diag.heuristic,
                 status=diag.status,
                 duration=diag.duration_seconds,
+                evac_avg=_format_seconds(diag.evacuation_summary.get("avg_time_weighted")),
+                evac_p90=_format_seconds(diag.evacuation_summary.get("p90_time_weighted")),
+                evac_max=_format_seconds(diag.evacuation_summary.get("max_time")),
                 stopped=counts.get("group_stopped", 0),
                 resumed=counts.get("group_resumed", 0),
                 ready=counts.get("capacity_ready", 0),
@@ -661,7 +853,8 @@ def write_markdown_report(
         lines.append(f"- **Log:** `{diag.log_file}`")
         lines.append(f"- **Output dir:** `{diag.out_dir}`")
         lines.append(f"- **Return code:** {diag.return_code}")
-        lines.append(f"- **Duration:** {diag.duration_seconds:.2f} s")
+        lines.append(f"- **Runtime:** {diag.duration_seconds:.2f} s")
+        lines.append(f"- **Evacuation summary:** `{json.dumps(diag.evacuation_summary, ensure_ascii=False)}`")
         lines.append(f"- **Reasons:** {'; '.join(diag.reasons)}")
         lines.append(f"- **Counts:** `{json.dumps(diag.counts, ensure_ascii=False)}`")
         lines.append(f"- **Queue checks:** `{json.dumps(diag.queue_checks, ensure_ascii=False)}`")
@@ -792,9 +985,65 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--show-progress",
         action="store_true",
-        help="Print one progress line before each heuristic. By default, terminal output is shown only after all runs finish.",
+        help="Kept for backwards compatibility. Progress is now always shown as compact RUN/OK/FAIL lines.",
     )
     return parser.parse_args()
+
+
+def _status_symbol(status: str) -> str:
+    if status == "PASS":
+        return "OK"
+    if status == "WARN":
+        return "WARN"
+    return "FAIL"
+
+
+def _run_started_line(
+    *,
+    run_number: int,
+    total_runs: int,
+    case: str,
+    heuristic: str,
+    out_root: Path,
+) -> str:
+    return (
+        "[{current}/{total}] RUN  case={case} heuristic={heuristic} "
+        "out={out}".format(
+            current=run_number,
+            total=total_runs,
+            case=case,
+            heuristic=heuristic,
+            out=out_root / f"{case}_{heuristic}",
+        )
+    )
+
+
+def _run_finished_line(
+    *,
+    run_number: int,
+    total_runs: int,
+    case: str,
+    diag: HeuristicDiagnostics,
+) -> str:
+    counts = diag.counts
+    return (
+        "[{current}/{total}] {status:<4} case={case} heuristic={heuristic} "
+        "runtime={runtime:.2f}s {evac} stopped={stopped} resumed={resumed} "
+        "blocked={blocked} pending={pending} stuck={stuck}".format(
+            current=run_number,
+            total=total_runs,
+            status=_status_symbol(diag.status),
+            case=case,
+            heuristic=diag.heuristic,
+            runtime=diag.duration_seconds,
+            evac=_format_evacuation_summary(diag.evacuation_summary),
+            stopped=counts.get("group_stopped", 0),
+            resumed=counts.get("group_resumed", 0),
+            blocked=counts.get("capacity_blocked", 0) + counts.get("path_capacity_blocked", 0),
+            pending=counts.get("capacity_pending", 0),
+            stuck=len(diag.possible_stuck_groups),
+        )
+    )
 
 
 def _terminal_summary(
@@ -808,31 +1057,6 @@ def _terminal_summary(
     lines: list[str] = []
     lines.append("")
     lines.append("Diagnostics finished.")
-    lines.append("")
-    lines.append("Summary:")
-    for diag in diagnostics:
-        counts = diag.counts
-        lines.append(
-            "- {heuristic}: {status} | duration={duration:.2f}s | stopped={stopped} | "
-            "resumed={resumed} | ready={ready} | blocked={blocked} | pending={pending} | "
-            "queue_enqueue={queue_enqueue} | queue_wait={queue_wait} | stuck_groups={stuck}".format(
-                heuristic=diag.heuristic,
-                status=diag.status,
-                duration=diag.duration_seconds,
-                stopped=counts.get("group_stopped", 0),
-                resumed=counts.get("group_resumed", 0),
-                ready=counts.get("capacity_ready", 0),
-                blocked=counts.get("capacity_blocked", 0) + counts.get("path_capacity_blocked", 0),
-                pending=counts.get("capacity_pending", 0),
-                queue_enqueue=counts.get("capacity_queue_enqueue", 0),
-                queue_wait=counts.get("capacity_queue_wait", 0),
-                stuck=len(diag.possible_stuck_groups),
-            )
-        )
-        for reason in diag.reasons[:3]:
-            lines.append(f"  - {reason}")
-
-    lines.append("")
     lines.append(f"Source checks: {_format_source_check_status(source_checks)}")
     lines.append("")
     lines.append("Reports generated:")
@@ -855,9 +1079,19 @@ def main() -> None:
 
     diagnostics: list[HeuristicDiagnostics] = []
 
-    for heuristic in args.heuristics:
-        if args.show_progress:
-            print(f"Running heuristic: {heuristic}", flush=True)
+    total_runs = len(args.heuristics)
+
+    for run_number, heuristic in enumerate(args.heuristics, start=1):
+        print(
+            _run_started_line(
+                run_number=run_number,
+                total_runs=total_runs,
+                case=args.case,
+                heuristic=heuristic,
+                out_root=out_root,
+            ),
+            flush=True,
+        )
 
         diag = run_heuristic(
             heuristic=heuristic,
@@ -869,6 +1103,20 @@ def main() -> None:
             extra_args=args.extra_arg,
         )
         diagnostics.append(diag)
+
+        print(
+            _run_finished_line(
+                run_number=run_number,
+                total_runs=total_runs,
+                case=args.case,
+                diag=diag,
+            ),
+            flush=True,
+        )
+
+        if diag.status == "FAIL":
+            for reason in diag.reasons[:3]:
+                print(f"      reason: {reason}", flush=True)
 
     json_report = out_root / "diagnostics_report.json"
     md_report = out_root / "diagnostics_report.md"
