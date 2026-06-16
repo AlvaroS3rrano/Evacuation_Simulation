@@ -588,16 +588,13 @@ def _reserve_capacity_for_path(
 
     manager = get_capacity_reservation_manager(env_info.graph)
 
-    horizon_edges = reservation_horizon_for_heuristic(
-        heuristic,
-        horizon_k,
-    )
+    movement_path = reservation_path[:2]
 
     attempt = manager.attempt_earliest_feasible_schedule(
-        reservation_path,
+        movement_path,
         group_size=len(group.agents),
         start_frame=frame,
-        horizon_edges=horizon_edges,
+        horizon_edges=1,
         ignore_group_id=group_id,
     )
 
@@ -621,7 +618,7 @@ def _reserve_capacity_for_path(
             attempt.blocked_resource,
             attempt.earliest_retry_frame,
             attempt.reason,
-            reservation_path[:8],
+            movement_path,
             usage,
         )
 
@@ -629,7 +626,7 @@ def _reserve_capacity_for_path(
 
     reserved = manager.reserve_path(
         group_id,
-        reservation_path,
+        movement_path,
         len(group.agents),
         attempt.schedule,
     )
@@ -644,7 +641,7 @@ def _reserve_capacity_for_path(
             ctx(frame=frame, group_id=group_id, agents=len(group.agents)),
             current_node,
             attempt.blocked_resource,
-            reservation_path[:8],
+            movement_path,
         )
 
         return False, False
@@ -660,7 +657,7 @@ def _reserve_capacity_for_path(
             current_node,
             attempt.blocked_resource,
             attempt.schedule.first_departure_frame - frame,
-            reservation_path[:8],
+            movement_path,
         )
 
         return True, False
@@ -684,11 +681,11 @@ def _apply_path_with_capacity_check(
     frame: int,
 ) -> bool:
     """
-    Apply a new group path only after capacity has been reserved.
+    Apply a new group path after checking local movement capacity.
 
-    If a feasible reservation exists but starts in a future frame, the path is
-    still applied, but the group remains waiting with speed 0 until the time
-    window becomes available.
+    Longer temporal reservations may be used for scoring and route selection,
+    but physical movement should only be blocked by the next immediate edge/node.
+    This prevents full-route schedules from producing stop-and-go movement.
     """
     reserved, can_depart_now = _reserve_capacity_for_path(
         env_info=env_info,

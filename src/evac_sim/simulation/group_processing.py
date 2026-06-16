@@ -91,11 +91,10 @@ def ensure_group_has_capacity_to_move(
 
     For heuristic='none', movement is always allowed because this is the baseline.
 
-    For h1/h2/h3:
-      - the group may move only if the next edge is currently reserved;
-      - if the reservation exists but starts in the future, the group waits;
-      - if there is no reservation, the manager tries to reserve the remaining path;
-      - if no feasible reservation exists, the group waits.
+    For h1/h2/h3, movement is controlled locally:
+      - route scoring may still use longer temporal reservations;
+      - physical movement only requires capacity on the next immediate edge/node;
+      - this avoids stop-and-go behaviour caused by full-route future schedules.
     """
     if heuristic == "none":
         return True
@@ -111,6 +110,17 @@ def ensure_group_has_capacity_to_move(
         current_node,
         frame,
     )
+
+    if current_node in group.path:
+        current_index = group.path.index(current_node)
+        remaining_path = list(group.path[current_index:])
+    else:
+        remaining_path = list(group.path)
+
+    if len(remaining_path) < 2:
+        return True
+
+    movement_path = remaining_path[:2]
 
     if manager.has_valid_next_reservation(
         group_id,
@@ -141,36 +151,20 @@ def ensure_group_has_capacity_to_move(
     )
 
     if existing_schedule is not None:
-        group.reserved_schedule = existing_schedule
-
-        logger.info(
-            "Capacity pending | %s | current_node=%s schedule=%s",
+        logger.debug(
+            "Ignoring future full-route reservation for local movement | %s | "
+            "current_node=%s schedule=%s movement_path=%s",
             ctx(frame=frame, group_id=group_id, agents=len(group.agents)),
             current_node,
             _schedule_debug_summary(existing_schedule),
+            movement_path,
         )
 
-        return False
-
-    horizon_edges = reservation_horizon_for_heuristic(
-        heuristic,
-        horizon_k,
-    )
-
-    if current_node in group.path:
-        current_index = group.path.index(current_node)
-        remaining_path = list(group.path[current_index:])
-    else:
-        remaining_path = list(group.path)
-
-    if len(remaining_path) < 2:
-        return True
-
     attempt = manager.attempt_earliest_feasible_schedule(
-        remaining_path,
+        movement_path,
         group_size=len(group.agents),
         start_frame=frame,
-        horizon_edges=horizon_edges,
+        horizon_edges=1,
         ignore_group_id=group_id,
     )
 
@@ -188,13 +182,13 @@ def ensure_group_has_capacity_to_move(
 
         logger.info(
             "Capacity blocked | %s | current_node=%s blocked_resource=%s "
-            "retry_frame=%s reason=%s remaining_path=%s usage=%s",
+            "retry_frame=%s reason=%s movement_path=%s usage=%s",
             ctx(frame=frame, group_id=group_id, agents=len(group.agents)),
             current_node,
             attempt.blocked_resource,
             attempt.earliest_retry_frame,
             attempt.reason,
-            remaining_path[:8],
+            movement_path,
             usage,
         )
 
@@ -210,7 +204,7 @@ def ensure_group_has_capacity_to_move(
 
     reserved = manager.reserve_path(
         group_id,
-        remaining_path,
+        movement_path,
         len(group.agents),
         attempt.schedule,
     )
@@ -221,11 +215,11 @@ def ensure_group_has_capacity_to_move(
 
         logger.warning(
             "Capacity reservation race/failure | %s | current_node=%s "
-            "blocked_resource=%s remaining_path=%s schedule=%s",
+            "blocked_resource=%s movement_path=%s schedule=%s",
             ctx(frame=frame, group_id=group_id, agents=len(group.agents)),
             current_node,
             attempt.blocked_resource,
-            remaining_path[:8],
+            movement_path,
             _schedule_debug_summary(attempt.schedule),
         )
 
@@ -237,11 +231,12 @@ def ensure_group_has_capacity_to_move(
     if attempt.schedule.first_departure_frame > frame:
         logger.info(
             "Capacity pending | %s | current_node=%s blocked_resource=%s "
-            "wait_frames=%s schedule=%s",
+            "wait_frames=%s movement_path=%s schedule=%s",
             ctx(frame=frame, group_id=group_id, agents=len(group.agents)),
             current_node,
             attempt.blocked_resource,
             attempt.schedule.first_departure_frame - frame,
+            movement_path,
             _schedule_debug_summary(attempt.schedule),
         )
 
