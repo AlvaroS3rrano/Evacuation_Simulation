@@ -29,7 +29,6 @@ def compute_path_effective_cost(
     path,
     *,
     heuristic: str = "none",
-    beta: float = 1.0,
     group_size: int = 0,
     horizon_k: int | None = None,
     group_id: Any | None = None,
@@ -180,7 +179,6 @@ def rescore_candidate_paths(
     paths,
     *,
     heuristic: str = "none",
-    beta: float = 1.0,
     group_size: int = 0,
     horizon_k: int | None = None,
     max_candidates: int | None = None,
@@ -209,7 +207,6 @@ def rescore_candidate_paths(
             G,
             path,
             heuristic=heuristic,
-            beta=beta,
             group_size=group_size,
             horizon_k=horizon_k,
             group_id=group_id,
@@ -220,41 +217,6 @@ def rescore_candidate_paths(
     scored_paths.sort(key=lambda item: item[1])
 
     return scored_paths
-
-
-def collect_k_shortest_paths(
-    G,
-    source,
-    targets,
-    k=15,
-    heuristic="none",
-    beta=1.0,
-    group_size=0,
-    horizon_k=None,
-    group_id: Any | None = None,
-):
-    """
-    Backwards-compatible wrapper.
-
-    Candidate generation is static and cache-friendly. Dynamic heuristics rescore
-    the candidate pool using the current graph reservation state.
-    """
-    candidate_paths = collect_k_shortest_base_paths(
-        G,
-        source,
-        targets,
-        k=k,
-    )
-
-    return rescore_candidate_paths(
-        G,
-        candidate_paths,
-        heuristic=heuristic,
-        beta=beta,
-        group_size=group_size,
-        horizon_k=horizon_k,
-        group_id=group_id,
-    )
 
 
 def compute_efficient_paths(paths, gamma):

@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any
 
 # Command example:
-# python tools\diagnose_h2_k_sweep.py --k-values 3 6 8 10 12 15 --config congestion_heuristics.yaml --case congestion_two_exits --beta 1.0 --out-root .\runs\diagnostics_h2_k_sweep -v
+# python tools\diagnose_h2_k_sweep.py --k-values 3 6 8 10 12 15 --config congestion_heuristics.yaml --case congestion_two_exits --out-root .\runs\diagnostics_h2_k_sweep -v
 #
 
 def run_h2_for_k(
@@ -17,7 +17,6 @@ def run_h2_for_k(
     k: int,
     config: str,
     case: str,
-    beta: str,
     out_root: Path,
     verbose: bool,
 ) -> dict[str, Any]:
@@ -32,8 +31,6 @@ def run_h2_for_k(
         case,
         "--heuristics",
         "h2",
-        "--beta",
-        beta,
         "--out-root",
         str(k_out_root),
         "--extra-arg=--horizon-k",
@@ -218,10 +215,6 @@ def parse_args() -> argparse.Namespace:
         default="congestion_two_exits",
     )
     parser.add_argument(
-        "--beta",
-        default="1.0",
-    )
-    parser.add_argument(
         "--k-values",
         nargs="+",
         type=int,
@@ -250,7 +243,6 @@ def main() -> None:
             k=k,
             config=args.config,
             case=args.case,
-            beta=args.beta,
             out_root=out_root,
             verbose=args.verbose,
         )

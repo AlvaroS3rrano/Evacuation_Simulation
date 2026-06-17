@@ -35,12 +35,6 @@ def build_parser() -> argparse.ArgumentParser:
                      help="Routing heuristic to use (default: none)"
     )
     run.add_argument(
-        "--beta",
-        type=float,
-        default=1.0,
-        help="Beta parameter for routing heuristics (default: 1.0)",
-    )
-    run.add_argument(
         "--horizon-k",
         type=int,
         default=6,
@@ -78,7 +72,6 @@ def main(argv: list[str] | None = None) -> int:
             out_dir=out_dir,
             verbose=getattr(args, "verbose", False),
             heuristic=args.heuristic,
-            beta=args.beta,
             horizon_k=args.horizon_k,
             congestion_reroute_epsilon=args.congestion_reroute_epsilon,
         )

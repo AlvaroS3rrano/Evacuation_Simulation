@@ -71,13 +71,6 @@ def parse_args() -> argparse.Namespace:
     )
 
     parser.add_argument(
-        "--beta",
-        type=float,
-        default=1.0,
-        help="Beta parameter for congestion heuristics.",
-    )
-
-    parser.add_argument(
         "--horizon-k",
         type=int,
         default=6,
@@ -203,6 +196,18 @@ def build_run_dir(
 ) -> Path:
     safe_case_id = case_id.replace("/", "_").replace("\\", "_")
     return runs_dir / heuristic / safe_case_id
+
+
+def build_log_file(
+    *,
+    runs_dir: Path,
+    heuristic: str,
+    case_id: str,
+) -> Path:
+    safe_case_id = case_id.replace("/", "_").replace("\\", "_")
+    logs_dir = runs_dir / "_logs" / heuristic
+    logs_dir.mkdir(parents=True, exist_ok=True)
+    return logs_dir / f"{safe_case_id}.log"
 
 
 def _weighted_average(
@@ -434,15 +439,12 @@ def run_case(
     temp_config_name: str,
     case_id: str,
     heuristic: str,
-    beta: float,
     horizon_k: int,
     congestion_reroute_epsilon: float,
     out_dir: Path,
+    log_file: Path,
     verbose: bool,
 ) -> Path:
-    out_dir.mkdir(parents=True, exist_ok=True)
-    log_file = out_dir / "run.log"
-
     argv = [
         "run",
         "--config",
@@ -451,8 +453,6 @@ def run_case(
         case_id,
         "--heuristic",
         heuristic,
-        "--beta",
-        str(beta),
         "--horizon-k",
         str(horizon_k),
         "--congestion-reroute-epsilon",
@@ -509,7 +509,6 @@ def main_script() -> int:
         "config": args.config,
         "temp_config": str(temp_config_path),
         "forced_mode_type": args.mode_type,
-        "beta": args.beta,
         "horizon_k": args.horizon_k,
         "congestion_reroute_epsilon": args.congestion_reroute_epsilon,
         "heuristics": args.heuristics,
@@ -533,6 +532,12 @@ def main_script() -> int:
                     case_id=case_id,
                 )
 
+                log_file = build_log_file(
+                    runs_dir=runs_dir,
+                    heuristic=heuristic,
+                    case_id=case_id,
+                )
+
                 print(
                     run_started_line(
                         run_number=run_number,
@@ -549,7 +554,7 @@ def main_script() -> int:
                     "case_id": case_id,
                     "heuristic": heuristic,
                     "out_dir": str(out_dir),
-                    "log_file": str(out_dir / "run.log"),
+                    "log_file": str(log_file),
                     "status": "pending",
                     "started_at": datetime.now().isoformat(timespec="seconds"),
                 }
@@ -579,10 +584,10 @@ def main_script() -> int:
                         temp_config_name=DEFAULT_TEMP_CONFIG,
                         case_id=case_id,
                         heuristic=heuristic,
-                        beta=args.beta,
                         horizon_k=args.horizon_k,
                         congestion_reroute_epsilon=args.congestion_reroute_epsilon,
                         out_dir=out_dir,
+                        log_file=log_file,
                         verbose=args.verbose,
                     )
 

@@ -913,7 +913,6 @@ def run_heuristic(
     heuristic: str,
     config: str,
     case: str,
-    beta: str,
     out_root: Path,
     verbose: bool,
     extra_args: list[str],
@@ -927,7 +926,6 @@ def run_heuristic(
         "--config", config,
         "--case", case,
         "--heuristic", heuristic,
-        "--beta", beta,
         "--out-dir", str(run_dir),
     ]
     if verbose:
@@ -967,7 +965,6 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--config", default="congestion_heuristics.yaml")
     parser.add_argument("--case", default="congestion_two_exits")
     parser.add_argument("--heuristics", nargs="+", default=["none", "h1", "h2", "h3"])
-    parser.add_argument("--beta", default="1.0")
     parser.add_argument("--out-root", default="./runs/diagnostics_congestion")
     parser.add_argument("--project-root", default=".")
     parser.add_argument("-v", "--verbose", action="store_true", help="Pass -v to evac_sim.cli.")
@@ -1097,7 +1094,6 @@ def main() -> None:
             heuristic=heuristic,
             config=args.config,
             case=args.case,
-            beta=args.beta,
             out_root=out_root,
             verbose=args.verbose,
             extra_args=args.extra_arg,

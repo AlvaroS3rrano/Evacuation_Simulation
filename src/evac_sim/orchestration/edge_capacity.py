@@ -50,7 +50,7 @@ def apply_node_capacity_multiplier(
     if multiplier <= 0:
         raise ValueError("Node capacity multiplier must be > 0")
 
-    temporal_cfg = congestion_config.temporal_capacity
+    reservation_cfg = congestion_config.capacity_reservations
 
     for _, node_data in graph.nodes(data=True):
         base_node_capacity = int(
@@ -58,7 +58,7 @@ def apply_node_capacity_multiplier(
                 "base_node_capacity",
                 node_data.get(
                     "node_capacity",
-                    temporal_cfg.node_capacity_default,
+                    reservation_cfg.node_capacity_default,
                 ),
             )
         )
@@ -72,14 +72,20 @@ def apply_node_capacity_multiplier(
         node_data.setdefault("node_occupancy", 0)
 
 
-def apply_temporal_capacity_settings_to_graph(
+def apply_capacity_reservation_settings_to_graph(
     graph: Any,
     congestion_config: CongestionConfig,
 ) -> None:
     """
-    Attach temporal capacity configuration and reset capacity reservations.
+    Attach the current capacity reservation configuration to the graph and
+    reset any reservation manager cached from a previous run.
     """
-    graph.graph["temporal_capacity_config"] = congestion_config.temporal_capacity
+    graph.graph["capacity_reservation_config"] = (
+        congestion_config.capacity_reservations
+    )
+
+    graph.graph.pop("temporal_capacity_config", None)
+
     reset_capacity_reservation_manager(graph)
 
 
@@ -108,7 +114,7 @@ def apply_congestion_settings_to_graph(
             congestion_config.block_edges_at_capacity
         )
 
-    apply_temporal_capacity_settings_to_graph(
+    apply_capacity_reservation_settings_to_graph(
         graph,
         congestion_config,
     )

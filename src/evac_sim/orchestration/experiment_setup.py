@@ -204,6 +204,12 @@ def prepare_shared_resources(
         congestion_config,
     )
 
+    graph.graph["capacity_reservation_config"] = (
+        congestion_config.capacity_reservations
+    )
+
+    graph.graph.pop("temporal_capacity_config", None)
+
     risk_graph = graph.copy()
 
     targets = cfg["targets"]
@@ -364,7 +370,6 @@ def compute_initial_priority_path(
         risk_per_node=None,
         gamma=gamma,
         heuristic="none",
-        beta=1.0,
         group_size=1,
     )
 
@@ -519,7 +524,6 @@ def _create_initial_group(
     gamma: float,
     normal_max_speed: float,
     heuristic: str,
-    beta: float,
     horizon_k: int | None,
     no_path_policy: str = "raise",
 ) -> AgentGroup:
@@ -539,7 +543,6 @@ def _create_initial_group(
         risk_per_node=risk_first_frame,
         gamma=gamma,
         heuristic=heuristic,
-        beta=beta,
         group_size=group_size,
         horizon_k=horizon_k,
         group_id=group_id,
@@ -575,7 +578,6 @@ def _create_initial_group(
                 risk_per_node=risk_first_frame,
                 gamma=gamma,
                 heuristic="none",
-                beta=1.0,
                 group_size=group_size,
                 horizon_k=None,
                 group_id=group_id,
@@ -628,7 +630,6 @@ def _create_initial_group(
                 risk_per_node=risk_first_frame,
                 gamma=gamma,
                 heuristic="none",
-                beta=1.0,
                 group_size=group_size,
                 horizon_k=None,
                 group_id=group_id,
@@ -709,7 +710,6 @@ def build_agent_groups(
     gamma: float,
     normal_max_speed: float,
     heuristic: str = "none",
-    beta: float = 1.0,
     horizon_k: int | None = None,
     grouping_config: GroupDistributionConfig | None = None,
     no_path_policy: str = "raise",
@@ -784,7 +784,6 @@ def build_agent_groups(
             gamma=gamma,
             normal_max_speed=normal_max_speed,
             heuristic=heuristic,
-            beta=beta,
             horizon_k=horizon_k,
             no_path_policy=no_path_policy,
         )

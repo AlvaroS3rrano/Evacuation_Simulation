@@ -421,7 +421,6 @@ def process_single_group(
     frame: int,
     threshold: float,
     heuristic: str,
-    beta: float,
     horizon_k: int | None,
     congestion_reroute_epsilon: float,
     no_path_policy: str,
@@ -432,8 +431,7 @@ def process_single_group(
     Process a single group during one simulation frame.
 
     Capacity-aware heuristics h1/h2/h3 are controlled exclusively through
-    CapacityReservationManager. The old temporal_capacity.py reservation system
-    must not be used here.
+    CapacityReservationManager.
     """
     env_info.graph.graph["current_frame"] = frame
 
@@ -465,7 +463,6 @@ def process_single_group(
         frame=frame,
         group_id=group_id,
         heuristic=heuristic,
-        beta=beta,
         congestion_reroute_epsilon=congestion_reroute_epsilon,
         horizon_k=horizon_k,
         no_path_policy=no_path_policy,

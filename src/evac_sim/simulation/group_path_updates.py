@@ -245,7 +245,6 @@ def _select_h3_temporal_capacity_path(
     risk_map: dict,
     threshold: float,
     frame: int,
-    beta: float,
     require_improvement: bool,
 ) -> list | None:
     """
@@ -285,7 +284,6 @@ def _select_h3_temporal_capacity_path(
         group.algorithm,
         blocked_nodes=group.blocked_nodes,
         heuristic="h3",
-        beta=beta,
         group_size=len(group.agents),
         group_id=group_id,
         horizon_k=None,
@@ -735,7 +733,6 @@ def _try_resume_waiting_group(
     frame: int,
     group_id: Any,
     heuristic: str,
-    beta: float,
     horizon_k: int | None,
 ) -> AgentGroup:
     agent_ids = group.agents
@@ -776,7 +773,6 @@ def _try_resume_waiting_group(
             risk_map=risk_map,
             threshold=threshold,
             frame=frame,
-            beta=beta,
             require_improvement=False,
         )
     else:
@@ -789,7 +785,6 @@ def _try_resume_waiting_group(
             risk_threshold=threshold,
             gamma=sim_cfg.gamma,
             heuristic=heuristic,
-            beta=beta,
             horizon_k=horizon_k,
             group_id=group_id,
         )
@@ -850,7 +845,6 @@ def update_group_paths(
     frame: int,
     group_id: Any,
     heuristic: str = "none",
-    beta: float = 1.0,
     congestion_reroute_epsilon: float = 0.10,
     horizon_k: int | None = None,
     no_path_policy: str = "raise",
@@ -872,7 +866,6 @@ def update_group_paths(
             frame=frame,
             group_id=group_id,
             heuristic=heuristic,
-            beta=beta,
             horizon_k=horizon_k,
         )
 
@@ -943,7 +936,6 @@ def update_group_paths(
             threshold,
             sim_cfg.gamma,
             heuristic=heuristic,
-            beta=beta,
             horizon_k=horizon_k,
             group_id=group_id,
         )
@@ -966,7 +958,6 @@ def update_group_paths(
                 risk_map=risk_map,
                 threshold=threshold,
                 frame=frame,
-                beta=beta,
                 require_improvement=True,
             )
 
@@ -984,7 +975,6 @@ def update_group_paths(
                 risk_threshold=threshold,
                 gamma=sim_cfg.gamma,
                 heuristic=heuristic,
-                beta=beta,
                 horizon_k=horizon_k,
                 group_id=group_id,
             )
@@ -999,7 +989,6 @@ def update_group_paths(
                     env_info.graph,
                     current_remaining,
                     heuristic=heuristic,
-                    beta=beta,
                     group_size=group_size,
                     horizon_k=horizon_k,
                     group_id=group_id,
@@ -1009,7 +998,6 @@ def update_group_paths(
                     env_info.graph,
                     best_path,
                     heuristic=heuristic,
-                    beta=beta,
                     group_size=group_size,
                     horizon_k=horizon_k,
                     group_id=group_id,
@@ -1124,7 +1112,6 @@ def update_group_paths(
                 risk_threshold=threshold,
                 gamma=sim_cfg.gamma,
                 heuristic=heuristic,
-                beta=beta,
                 horizon_k=horizon_k,
                 group_id=group_id,
             )

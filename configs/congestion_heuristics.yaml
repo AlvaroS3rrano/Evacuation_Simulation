@@ -1,8 +1,8 @@
 # Congestion heuristic scenarios
 # Run with:
 #   evac-sim run --config congestion_heuristics.yaml --heuristic none
-#   evac-sim run --config congestion_heuristics.yaml --heuristic h1 --beta 1.0
-#   evac-sim run --config congestion_heuristics.yaml --heuristic h2 --beta 1.0 --horizon-k 3
+#   evac-sim run --config congestion_heuristics.yaml --heuristic h1
+#   evac-sim run --config congestion_heuristics.yaml --heuristic h2  --horizon-k 3
 
 congestion_parallel_corridors:
   environment: "parallel_corridors"
@@ -28,7 +28,8 @@ congestion_parallel_corridors:
     use_linear_congestion_cost: true
     block_edges_at_capacity: true
     no_path_policy: "wait"
-    temporal_capacity:
+
+    capacity_reservations:
       enabled: true
       node_capacity_enabled: true
       edge_flow_enabled: true
@@ -38,11 +39,6 @@ congestion_parallel_corridors:
       traversal_time_scale: 1.0
       node_capacity_default: 20
       edge_flow_capacity_default: 10
-      beta_edge: 1.0
-      beta_node: 1.0
-      edge_capacity_exponent: 1.0
-      node_capacity_exponent: 1.0
-      wait_penalty: 0.0
       allow_waiting: true
       block_at_capacity: true
 
@@ -88,7 +84,8 @@ congestion_short_vs_wide:
     use_linear_congestion_cost: true
     block_edges_at_capacity: true
     no_path_policy: "wait"
-    temporal_capacity:
+
+    capacity_reservations:
       enabled: true
       node_capacity_enabled: true
       edge_flow_enabled: true
@@ -98,11 +95,6 @@ congestion_short_vs_wide:
       traversal_time_scale: 1.0
       node_capacity_default: 20
       edge_flow_capacity_default: 10
-      beta_edge: 1.0
-      beta_node: 1.0
-      edge_capacity_exponent: 1.0
-      node_capacity_exponent: 1.0
-      wait_penalty: 0.0
       allow_waiting: true
       block_at_capacity: true
 
@@ -148,7 +140,8 @@ congestion_two_exits:
     use_linear_congestion_cost: true
     block_edges_at_capacity: true
     no_path_policy: "wait"
-    temporal_capacity:
+
+    capacity_reservations:
       enabled: true
       node_capacity_enabled: true
       edge_flow_enabled: true
@@ -158,11 +151,6 @@ congestion_two_exits:
       traversal_time_scale: 1.0
       node_capacity_default: 20
       edge_flow_capacity_default: 10
-      beta_edge: 1.0
-      beta_node: 1.0
-      edge_capacity_exponent: 1.0
-      node_capacity_exponent: 1.0
-      wait_penalty: 0.0
       allow_waiting: true
       block_at_capacity: true
 

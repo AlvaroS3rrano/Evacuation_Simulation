@@ -728,19 +728,42 @@ def get_capacity_reservation_manager(G: Any) -> CapacityReservationManager:
     if isinstance(manager, CapacityReservationManager):
         return manager
 
-    temporal_cfg = G.graph.get("temporal_capacity_config")
+    reservation_cfg = G.graph.get("capacity_reservation_config")
 
-    bucket_size = max(1, int(getattr(temporal_cfg, "time_bucket_frames", 30)))
-    horizon_frames = getattr(temporal_cfg, "temporal_horizon_frames", 900)
-    traversal_time_scale = getattr(temporal_cfg, "traversal_time_scale", 1.0)
-    node_capacity_default = getattr(temporal_cfg, "node_capacity_default", 20)
-    edge_flow_capacity_default = getattr(temporal_cfg, "edge_flow_capacity_default", 10)
+    bucket_size = max(
+        1,
+        int(getattr(reservation_cfg, "bucket_size_frames", 30)),
+    )
+
+    horizon_frames = max(
+        0,
+        int(getattr(reservation_cfg, "search_horizon_frames", 300)),
+    )
+
+    traversal_time_scale = float(
+        getattr(reservation_cfg, "traversal_time_scale", 1.0)
+    )
+
+    node_hold_frames = getattr(
+        reservation_cfg,
+        "node_hold_frames",
+        None,
+    )
+
+    node_capacity_default = int(
+        getattr(reservation_cfg, "node_capacity_default", 20)
+    )
+
+    edge_flow_capacity_default = int(
+        getattr(reservation_cfg, "edge_flow_capacity_default", 10)
+    )
 
     manager = CapacityReservationManager(
         G,
         bucket_size_frames=bucket_size,
         max_search_buckets=max(1, int(math.ceil(horizon_frames / bucket_size))),
         traversal_time_scale=traversal_time_scale,
+        node_hold_frames=node_hold_frames,
         node_capacity_default=node_capacity_default,
         edge_flow_capacity_default=edge_flow_capacity_default,
     )
