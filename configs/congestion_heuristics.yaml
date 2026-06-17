@@ -46,6 +46,11 @@ congestion_parallel_corridors:
       allow_waiting: true
       block_at_capacity: true
 
+  metrics:
+    density:
+      sample_every_frames: 10
+      high_density_threshold: 12
+
   risk_iterations: 1500
   risk_increase_chance: 0.0
   starting_risks: []
@@ -101,6 +106,11 @@ congestion_short_vs_wide:
       allow_waiting: true
       block_at_capacity: true
 
+  metrics:
+    density:
+      sample_every_frames: 10
+      high_density_threshold: 12
+
   risk_iterations: 1500
   risk_increase_chance: 0.0
   starting_risks: []
@@ -155,6 +165,11 @@ congestion_two_exits:
       wait_penalty: 0.0
       allow_waiting: true
       block_at_capacity: true
+
+  metrics:
+    density:
+      sample_every_frames: 10
+      high_density_threshold: 12
 
   risk_iterations: 1500
   risk_increase_chance: 0.0
