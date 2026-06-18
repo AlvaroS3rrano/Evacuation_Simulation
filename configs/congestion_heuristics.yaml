@@ -47,12 +47,6 @@ congestion_parallel_corridors:
       sample_every_frames: 10
       high_density_threshold: 12
 
-  risk_iterations: 1500
-  risk_increase_chance: 0.0
-  starting_risks: []
-  risk_overrides: []
-  risk_threshold: 0.5
-  propagation_threshold: 0.5
   gamma: 0.3
   stairs_max_speed: 0.6
   normal_max_speed: 1.2
@@ -103,12 +97,6 @@ congestion_short_vs_wide:
       sample_every_frames: 10
       high_density_threshold: 12
 
-  risk_iterations: 1500
-  risk_increase_chance: 0.0
-  starting_risks: []
-  risk_overrides: []
-  risk_threshold: 0.5
-  propagation_threshold: 0.5
   gamma: 0.3
   stairs_max_speed: 0.6
   normal_max_speed: 1.2
@@ -159,12 +147,6 @@ congestion_two_exits:
       sample_every_frames: 10
       high_density_threshold: 12
 
-  risk_iterations: 1500
-  risk_increase_chance: 0.0
-  starting_risks: []
-  risk_overrides: []
-  risk_threshold: 0.5
-  propagation_threshold: 0.5
   gamma: 0.3
   stairs_max_speed: 0.6
   normal_max_speed: 1.2
