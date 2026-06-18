@@ -39,6 +39,7 @@ from evac_sim.orchestration.grouping_config import (
 )
 from evac_sim.orchestration.congestion_config import build_congestion_config
 from evac_sim.orchestration.edge_capacity import apply_congestion_settings_to_graph
+from evac_sim.orchestration.risk_config import RiskConfig, build_risk_config
 
 
 def _build_random_seeds(cfg: dict[str, Any]) -> tuple[int, int]:
@@ -131,7 +132,7 @@ def build_modes(mode_type: int) -> list[int]:
 
 def _prepare_risk_state(
     *,
-    cfg: dict[str, Any],
+    risk_config: RiskConfig,
     risk_graph,
     targets: list[Any],
     simulation_conn: sqlite3.Connection,
@@ -139,20 +140,19 @@ def _prepare_risk_state(
     risk_seed: int,
     every_nth_frame_animation: int,
 ) -> dict[Any, float]:
-    risk_iterations = int(cfg["risk_iterations"])
-    risk_increase_chance = float(cfg["risk_increase_chance"])
-    propagation_threshold = float(cfg["propagation_threshold"])
-    risk_threshold = float(cfg["risk_threshold"])
+    if not risk_config.enabled or risk_config.risk_iterations == 0:
+        return {
+            node_id: 0.0
+            for node_id in risk_graph.nodes
+        }
 
-    starting_risks = [
-        (str(node_id), float(risk))
-        for node_id, risk in (cfg.get("starting_risks", []) or [])
-    ]
+    risk_iterations = risk_config.risk_iterations
+    risk_increase_chance = risk_config.risk_increase_chance
+    propagation_threshold = risk_config.propagation_threshold
+    risk_threshold = risk_config.risk_threshold
 
-    risk_overrides = [
-        (int(frame), str(node_id), float(risk))
-        for frame, node_id, risk in (cfg.get("risk_overrides", []) or [])
-    ]
+    starting_risks = risk_config.starting_risks
+    risk_overrides = risk_config.risk_overrides
 
     risk_values = RiskSimulationValues(
         risk_iterations,
@@ -204,6 +204,14 @@ def prepare_shared_resources(
         congestion_config,
     )
 
+    risk_config = build_risk_config(cfg)
+
+    graph.graph["capacity_reservation_config"] = (
+        congestion_config.capacity_reservations
+    )
+
+    graph.graph.pop("temporal_capacity_config", None)
+
     risk_graph = graph.copy()
 
     targets = cfg["targets"]
@@ -243,7 +251,7 @@ def prepare_shared_resources(
     every_nth_frame_animation = int(cfg["every_nth_frame_animation"])
 
     risk_first_frame = _prepare_risk_state(
-        cfg=cfg,
+        risk_config=risk_config,
         risk_graph=risk_graph,
         targets=targets,
         simulation_conn=simulation_conn,
@@ -281,7 +289,7 @@ def prepare_shared_resources(
         simulation_conn=simulation_conn,
         danger_visualization_frame=danger_visualization_frame,
         risk_seed=risk_seed,
-        risk_threshold=float(cfg["risk_threshold"]),
+        risk_threshold=risk_config.risk_threshold,
         gamma=float(cfg["gamma"]),
         stairs_max_speed=float(cfg["stairs_max_speed"]),
         normal_max_speed=float(cfg["normal_max_speed"]),
@@ -364,7 +372,6 @@ def compute_initial_priority_path(
         risk_per_node=None,
         gamma=gamma,
         heuristic="none",
-        beta=1.0,
         group_size=1,
     )
 
@@ -519,7 +526,6 @@ def _create_initial_group(
     gamma: float,
     normal_max_speed: float,
     heuristic: str,
-    beta: float,
     horizon_k: int | None,
     no_path_policy: str = "raise",
 ) -> AgentGroup:
@@ -539,7 +545,6 @@ def _create_initial_group(
         risk_per_node=risk_first_frame,
         gamma=gamma,
         heuristic=heuristic,
-        beta=beta,
         group_size=group_size,
         horizon_k=horizon_k,
         group_id=group_id,
@@ -575,7 +580,6 @@ def _create_initial_group(
                 risk_per_node=risk_first_frame,
                 gamma=gamma,
                 heuristic="none",
-                beta=1.0,
                 group_size=group_size,
                 horizon_k=None,
                 group_id=group_id,
@@ -628,7 +632,6 @@ def _create_initial_group(
                 risk_per_node=risk_first_frame,
                 gamma=gamma,
                 heuristic="none",
-                beta=1.0,
                 group_size=group_size,
                 horizon_k=None,
                 group_id=group_id,
@@ -709,7 +712,6 @@ def build_agent_groups(
     gamma: float,
     normal_max_speed: float,
     heuristic: str = "none",
-    beta: float = 1.0,
     horizon_k: int | None = None,
     grouping_config: GroupDistributionConfig | None = None,
     no_path_policy: str = "raise",
@@ -784,7 +786,6 @@ def build_agent_groups(
             gamma=gamma,
             normal_max_speed=normal_max_speed,
             heuristic=heuristic,
-            beta=beta,
             horizon_k=horizon_k,
             no_path_policy=no_path_policy,
         )

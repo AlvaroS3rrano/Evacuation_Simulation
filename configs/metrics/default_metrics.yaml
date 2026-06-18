@@ -1,0 +1,88 @@
+# Default metric configuration.
+#
+# Base data should normally remain enabled during the simulation so derived
+# metrics can be recalculated later without re-running the scenario.
+# Case-specific overrides can be added in the simulation config under:
+#
+# metrics:
+#   density:
+#     high_density_threshold: 12
+#   comparison:
+#     main_metrics:
+#       - avg_evac_time
+#       - p90_evac_time
+#       - p90_density_exposure
+#
+raw_data:
+  agent_area_data: true
+  group_path_data: true
+  paths: true
+  risk_data: true
+
+outputs:
+  write_density_metrics: true
+  write_evacuations_metrics: true
+  write_comparison_metrics: true
+  write_legacy_experiment_metrics: true
+
+density:
+  enabled: true
+  source_table: agent_area_data
+  sample_every_frames: 25
+  high_density_threshold: 10
+  use_capacity_ratio: false
+  area_capacity_table: null
+  area_capacity_default: null
+  congestion_score_metric: p90_density_exposure
+
+evacuation:
+  enabled: true
+  source_table: experiment_metrics
+  time_columns:
+    min: min_time
+    avg: avg_time
+    median: median_time
+    p90: p90_time
+    max: max_time
+  weight_column: n_records
+
+route:
+  enabled: true
+  source_table: experiment_metrics
+  avg_path_cost_column: avg_path_cost
+  shortest_path_cost_column: null
+
+risk:
+  enabled: false
+  columns:
+    - mean_remaining_path_risk
+    - remaining_path_risk_var
+    - cumulative_risk_exposure
+
+comparison:
+  main_metrics:
+    - avg_evac_time
+    - median_evac_time
+    - p90_evac_time
+    - max_evac_time
+    - avg_density_exposure
+    - p90_density_exposure
+    - peak_area_density
+    - high_density_agent_ratio
+    - congestion_density_score
+    - avg_path_cost
+  aggregations:
+    - mean
+    - median
+    - weighted
+  lower_is_better:
+    avg_evac_time: true
+    median_evac_time: true
+    p90_evac_time: true
+    max_evac_time: true
+    avg_density_exposure: true
+    p90_density_exposure: true
+    peak_area_density: true
+    high_density_agent_ratio: true
+    congestion_density_score: true
+    avg_path_cost: true

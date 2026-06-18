@@ -34,7 +34,6 @@ def run_from_yaml(
     out_dir: Optional[Path] = None,
     verbose: bool = False,
     heuristic: str = "none",
-    beta: float = 1.0,
     horizon_k: int | None = None,
     congestion_reroute_epsilon: float = 0.1,
 ) -> None:
@@ -94,7 +93,6 @@ def run_from_yaml(
             "python": sys.version.split()[0],
             "platform": platform.platform(),
             "heuristic": heuristic,
-            "beta": beta,
             "horizon_k": horizon_k,
         }
 
@@ -109,7 +107,6 @@ def run_from_yaml(
                 paths,
                 selected_case_id,
                 heuristic=heuristic,
-                beta=beta,
                 horizon_k=horizon_k,
                 congestion_reroute_epsilon=congestion_reroute_epsilon,
             )
@@ -155,7 +152,6 @@ def run_from_yaml(
         "python": sys.version.split()[0],
         "platform": platform.platform(),
         "heuristic": heuristic,
-        "beta": beta,
         "horizon_k": horizon_k,
     }
 
@@ -196,7 +192,6 @@ def run_from_yaml(
                 "python": sys.version.split()[0],
                 "platform": platform.platform(),
                 "heuristic": heuristic,
-                "beta": beta,
                 "horizon_k": horizon_k,
             }
 
@@ -210,7 +205,6 @@ def run_from_yaml(
                 case_paths,
                 selected_case_id,
                 heuristic=heuristic,
-                beta=beta,
                 horizon_k=horizon_k,
                 congestion_reroute_epsilon=congestion_reroute_epsilon,
                 shared_simulation_conn=results_db_conn,

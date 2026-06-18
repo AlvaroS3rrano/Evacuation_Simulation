@@ -25,6 +25,7 @@ from evac_sim.simulation.simulation_logic import (
 
 logger = logging.getLogger(__name__)
 
+MAX_FRAMES = 7000
 
 def _set_current_frame_on_graph(env_info, frame: int) -> None:
     graph = getattr(env_info, "graph", None)
@@ -79,7 +80,6 @@ def process_frame(
     frame: int,
     threshold: float,
     heuristic: str = "none",
-    beta: float = 1.0,
     horizon_k: int | None = None,
     congestion_reroute_epsilon: float = 0.1,
     group_split_threshold: int | None = None,
@@ -218,7 +218,6 @@ def process_frame(
                     frame=frame,
                     threshold=threshold,
                     heuristic=heuristic,
-                    beta=beta,
                     horizon_k=horizon_k,
                     congestion_reroute_epsilon=congestion_reroute_epsilon,
                     no_path_policy=no_path_policy,
@@ -249,7 +248,6 @@ def run_agent_simulation(
     mode: int,
     threshold: float,
     heuristic: str = "none",
-    beta: float = 1.0,
     horizon_k: int | None = None,
     congestion_reroute_epsilon: float = 0.1,
     group_split_threshold: int | None = None,
@@ -259,7 +257,6 @@ def run_agent_simulation(
     Advance the simulation and periodically process agent movements and path updates.
     """
     sim = sim_cfg.simulation
-    max_frames = 7000
 
     logger.info(
         "Simulation start | agents=%d",
@@ -277,7 +274,6 @@ def run_agent_simulation(
             frame=0,
             threshold=threshold,
             heuristic=heuristic,
-            beta=beta,
             horizon_k=horizon_k,
             congestion_reroute_epsilon=congestion_reroute_epsilon,
             group_split_threshold=group_split_threshold,
@@ -296,7 +292,7 @@ def run_agent_simulation(
 
         frame = iteration // sim_cfg.every_nth_frame_simulation
 
-        if frame > max_frames:
+        if frame > MAX_FRAMES:
             logger.error(
                 "Simulation stopped by max_frames | iteration=%d | remaining_agents=%d",
                 iteration,
@@ -341,7 +337,7 @@ def run_agent_simulation(
                     "agents_data": agents_data,
                 }
 
-            logger.info(
+            logger.debug(
                 "Progress | frame=%d | agents=%d | groups=%s",
                 frame,
                 sim.agent_count(),
@@ -359,7 +355,6 @@ def run_agent_simulation(
                 frame=frame,
                 threshold=threshold,
                 heuristic=heuristic,
-                beta=beta,
                 horizon_k=horizon_k,
                 congestion_reroute_epsilon=congestion_reroute_epsilon,
                 group_split_threshold=group_split_threshold,

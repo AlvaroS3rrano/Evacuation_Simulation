@@ -25,8 +25,6 @@ def run() -> None:
         "congestion_two_exits",
         "--heuristic",
         HEURISTIC,
-        "--beta",
-        "1.0",
         "--out-dir",
         f"./runs/profile_{HEURISTIC}_short_vs_wide_cprofile",
         # "-v",

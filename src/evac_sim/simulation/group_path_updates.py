@@ -9,6 +9,7 @@ from evac_sim.routing.decision_policies import (
     compute_alternative_path,
     compute_best_available_path,
 )
+from evac_sim.routing.multifloor_paths import get_possible_paths
 from evac_sim.routing.path_algorithms import compute_path_effective_cost
 from evac_sim.routing.utils import is_sublist
 from evac_sim.simulation.capacity_reservations import get_capacity_reservation_manager
@@ -29,6 +30,13 @@ logger = logging.getLogger(__name__)
 H2_REROUTE_COOLDOWN_FRAMES = 120
 H2_MAX_DETOUR_FACTOR = 1.35
 H2_BACKTRACK_REQUIRED_COST_FACTOR = 0.60
+
+H3_REROUTE_COOLDOWN_FRAMES = 90
+H3_MAX_CANDIDATE_PATHS = 25
+H3_MAX_WAIT_FRAMES = 300
+H3_MAX_ARRIVAL_DELAY_FRAMES = 600
+H3_MAX_DETOUR_FACTOR = 1.50
+H3_MIN_ARRIVAL_IMPROVEMENT_FRAMES = 75
 
 
 def _path_base_cost(G, path: list | None) -> float:
@@ -176,10 +184,316 @@ def _should_accept_h2_congestion_reroute(
     )
 
     if is_backtrack or undoes_last_reroute:
-        return candidate_cost <= H2_BACKTRACK_REQUIRED_COST_FACTOR * current_cost
+        return False
 
     return True
 
+def _h3_reroute_state(env_info) -> dict:
+    return env_info.graph.graph.setdefault(
+        "h3_temporal_reroute_state",
+        {},
+    )
+
+
+def _is_h3_reroute_on_cooldown(
+    *,
+    env_info,
+    group_id: Any,
+    frame: int,
+) -> bool:
+    state = _h3_reroute_state(env_info).get(
+        group_id,
+        {},
+    )
+
+    last_frame = state.get("last_frame")
+
+    if last_frame is None:
+        return False
+
+    return frame - int(last_frame) < H3_REROUTE_COOLDOWN_FRAMES
+
+
+def _mark_h3_temporal_reroute(
+    *,
+    env_info,
+    group_id: Any,
+    frame: int,
+    edge: tuple[Any, Any] | None,
+) -> None:
+    _h3_reroute_state(env_info)[group_id] = {
+        "last_frame": frame,
+        "last_edge": edge,
+    }
+
+
+def _h3_attempt_arrival_frame(attempt) -> float:
+    if attempt.schedule is None:
+        return float("inf")
+
+    return float(attempt.schedule.arrival_frame)
+
+
+def _select_h3_temporal_capacity_path(
+    *,
+    sim_cfg,
+    env_info,
+    group: AgentGroup,
+    group_id: Any,
+    current_node: Any,
+    current_path: list | None,
+    risk_map: dict,
+    threshold: float,
+    frame: int,
+    require_improvement: bool,
+) -> list | None:
+    """
+    Select the best h3 path by real temporal feasibility.
+
+    h3 differs from h1/h2 because it evaluates multiple candidate routes and
+    chooses the one with the earliest feasible arrival frame according to the
+    current CapacityReservationManager state.
+
+    This function only scores candidate paths. It does not reserve them.
+    The reservation is still performed later by _apply_path_with_capacity_check().
+    """
+    if current_node is None:
+        return None
+
+    manager = get_capacity_reservation_manager(env_info.graph)
+
+    manager.release_passed_resources(
+        group_id,
+        current_node,
+        frame,
+    )
+
+    current_remaining = None
+
+    if current_path:
+        current_remaining = remaining_path_from_node(
+            current_path,
+            current_node,
+        )
+
+    candidate_paths = get_possible_paths(
+        env_info,
+        current_node,
+        sim_cfg.exit_names,
+        sim_cfg.gamma,
+        group.algorithm,
+        blocked_nodes=group.blocked_nodes,
+        heuristic="h3",
+        group_size=len(group.agents),
+        group_id=group_id,
+        horizon_k=None,
+    )
+
+    candidates: list[list] = []
+
+    if current_remaining and len(current_remaining) >= 2:
+        candidates.append(current_remaining)
+
+    for path in candidate_paths:
+        if not path or len(path) < 2:
+            continue
+
+        if path[0] != current_node:
+            continue
+
+        if any(risk_map.get(node, 0.0) > threshold for node in path):
+            continue
+
+        if tuple(path) not in {tuple(candidate) for candidate in candidates}:
+            candidates.append(path)
+
+    if not candidates:
+        logger.info(
+            "H3 no feasible candidate | %s | current_node=%s current_path_head=%s",
+            ctx(frame=frame, group_id=group_id, agents=len(group.agents)),
+            current_node,
+            current_remaining[:8] if current_remaining else None,
+        )
+        return None
+
+    candidates = sorted(
+        candidates,
+        key=lambda path: (
+            _path_base_cost(env_info.graph, path),
+            len(path),
+            tuple(path),
+        ),
+    )[:H3_MAX_CANDIDATE_PATHS]
+
+    current_base_cost = float("inf")
+
+    if current_remaining and len(current_remaining) >= 2:
+        current_base_cost = _path_base_cost(
+            env_info.graph,
+            current_remaining,
+        )
+
+    scored_candidates = []
+
+    for path in candidates:
+        if (
+                current_path
+                and require_improvement
+                and _is_immediate_backtrack(
+            current_path=current_path,
+            curr_node=current_node,
+            candidate_path=path,
+        )
+        ):
+            continue
+
+        attempt = manager.attempt_earliest_feasible_schedule(
+            path,
+            group_size=len(group.agents),
+            start_frame=frame,
+            horizon_edges=None,
+            ignore_group_id=group_id,
+        )
+
+        if attempt.schedule is None:
+            continue
+
+        arrival_frame = float(attempt.schedule.arrival_frame)
+        wait_frames = float(attempt.schedule.wait_frames)
+        base_cost = _path_base_cost(
+            env_info.graph,
+            path,
+        )
+
+        if arrival_frame - frame > H3_MAX_ARRIVAL_DELAY_FRAMES:
+            continue
+
+        if wait_frames > H3_MAX_WAIT_FRAMES:
+            continue
+
+        if (
+                math.isfinite(current_base_cost)
+                and current_base_cost > 0
+                and base_cost > current_base_cost * H3_MAX_DETOUR_FACTOR
+        ):
+            continue
+
+        scored_candidates.append(
+            (
+                arrival_frame,
+                wait_frames,
+                base_cost,
+                path,
+                attempt.schedule,
+            )
+        )
+
+    if not scored_candidates:
+        logger.info(
+            "H3 no temporally feasible candidate | %s | current_node=%s "
+            "candidates=%s current_path_head=%s",
+            ctx(frame=frame, group_id=group_id, agents=len(group.agents)),
+            current_node,
+            len(candidates),
+            current_remaining[:8] if current_remaining else None,
+        )
+        return None
+
+    scored_candidates.sort(
+        key=lambda item: (
+            item[0],
+            item[1],
+            item[2],
+            tuple(item[3]),
+        )
+    )
+
+    best_arrival, best_wait, best_base_cost, best_path, best_schedule = scored_candidates[0]
+
+    current_arrival = float("inf")
+
+    if current_remaining and len(current_remaining) >= 2:
+        current_attempt = manager.attempt_earliest_feasible_schedule(
+            current_remaining,
+            group_size=len(group.agents),
+            start_frame=frame,
+            horizon_edges=None,
+            ignore_group_id=group_id,
+        )
+        current_arrival = _h3_attempt_arrival_frame(current_attempt)
+
+    logger.info(
+        "H3 candidates evaluated | %s | current_node=%s candidates=%s "
+        "feasible=%s current_arrival=%s best_arrival=%s best_wait=%s "
+        "best_path_head=%s",
+        ctx(frame=frame, group_id=group_id, agents=len(group.agents)),
+        current_node,
+        len(candidates),
+        len(scored_candidates),
+        current_arrival if math.isfinite(current_arrival) else None,
+        best_arrival,
+        best_wait,
+        best_path[:8],
+    )
+
+    if not require_improvement:
+        return best_path
+
+    if current_remaining and tuple(best_path) == tuple(current_remaining):
+        logger.debug(
+            "H3 route unchanged | %s | current_node=%s arrival=%s path_head=%s",
+            ctx(frame=frame, group_id=group_id, agents=len(group.agents)),
+            current_node,
+            best_arrival,
+            best_path[:8],
+        )
+        return None
+
+    if _is_h3_reroute_on_cooldown(
+            env_info=env_info,
+            group_id=group_id,
+            frame=frame,
+    ) and math.isfinite(current_arrival):
+        logger.debug(
+            "H3 route unchanged on cooldown | %s | current_node=%s "
+            "current_arrival=%s best_arrival=%s path_head=%s",
+            ctx(frame=frame, group_id=group_id, agents=len(group.agents)),
+            current_node,
+            current_arrival,
+            best_arrival,
+            best_path[:8],
+        )
+        return None
+
+    improvement_frames = current_arrival - best_arrival
+
+    if math.isfinite(current_arrival) and improvement_frames < H3_MIN_ARRIVAL_IMPROVEMENT_FRAMES:
+        logger.debug(
+            "H3 route unchanged due to small improvement | %s | current_node=%s "
+            "improvement=%s current_arrival=%s best_arrival=%s path_head=%s",
+            ctx(frame=frame, group_id=group_id, agents=len(group.agents)),
+            current_node,
+            improvement_frames,
+            current_arrival,
+            best_arrival,
+            best_path[:8],
+        )
+        return None
+
+    logger.info(
+        "H3 route selected | %s | current_node=%s improvement=%s "
+        "current_arrival=%s selected_arrival=%s selected_wait=%s "
+        "selected_path_head=%s",
+        ctx(frame=frame, group_id=group_id, agents=len(group.agents)),
+        current_node,
+        improvement_frames if math.isfinite(current_arrival) else None,
+        current_arrival if math.isfinite(current_arrival) else None,
+        best_arrival,
+        best_wait,
+        best_path[:8],
+    )
+
+    return best_path
 
 def _existing_capacity_schedule_status(
     *,
@@ -189,14 +503,6 @@ def _existing_capacity_schedule_status(
     current_node: Any,
     frame: int,
 ) -> str:
-    """
-    Return the status of the current capacity reservation for the next edge.
-
-    Possible values:
-      - "ready": the next edge is reserved and can be used now.
-      - "pending": the next edge is reserved, but the time window starts later.
-      - "none": there is no useful reservation for the next edge.
-    """
     manager = get_capacity_reservation_manager(env_info.graph)
 
     manager.release_passed_resources(
@@ -231,9 +537,17 @@ def _existing_capacity_schedule_status(
         return "ready"
 
     next_edge = ("edge", group.path[current_index], group.path[current_index + 1])
+    current_bucket = manager.bucket_for_frame(frame)
 
     for interval in schedule.intervals:
-        if interval.resource == next_edge and frame <= interval.end_frame:
+        if interval.resource != next_edge:
+            continue
+
+        if interval.start_bucket <= current_bucket <= interval.end_bucket:
+            group.reserved_schedule = schedule
+            return "ready"
+
+        if current_bucket < interval.start_bucket:
             group.reserved_schedule = schedule
             return "pending"
 
@@ -272,37 +586,84 @@ def _reserve_capacity_for_path(
 
     manager = get_capacity_reservation_manager(env_info.graph)
 
-    horizon_edges = reservation_horizon_for_heuristic(
-        heuristic,
-        horizon_k,
-    )
+    movement_path = reservation_path[:2]
 
-    schedule = manager.find_earliest_feasible_schedule(
-        reservation_path,
+    attempt = manager.attempt_earliest_feasible_schedule(
+        movement_path,
         group_size=len(group.agents),
         start_frame=frame,
-        horizon_edges=horizon_edges,
+        horizon_edges=1,
         ignore_group_id=group_id,
     )
 
-    if schedule is None:
+    if attempt.schedule is None:
         group.reserved_schedule = None
+        group.waiting_resource = attempt.blocked_resource
+
+        usage = None
+
+        if attempt.blocked_resource is not None and frame % 250 == 0:
+            usage = manager.debug_resource_usage(
+                attempt.blocked_resource,
+                frame,
+            )
+
+        logger.info(
+            "Path capacity blocked | %s | current_node=%s blocked_resource=%s "
+            "retry_frame=%s reason=%s path=%s usage=%s",
+            ctx(frame=frame, group_id=group_id, agents=len(group.agents)),
+            current_node,
+            attempt.blocked_resource,
+            attempt.earliest_retry_frame,
+            attempt.reason,
+            movement_path,
+            usage,
+        )
+
         return False, False
 
     reserved = manager.reserve_path(
         group_id,
-        reservation_path,
+        movement_path,
         len(group.agents),
-        schedule,
+        attempt.schedule,
     )
 
     if not reserved:
         group.reserved_schedule = None
+        group.waiting_resource = attempt.blocked_resource
+
+        logger.warning(
+            "Path capacity reservation race/failure | %s | current_node=%s "
+            "blocked_resource=%s path=%s",
+            ctx(frame=frame, group_id=group_id, agents=len(group.agents)),
+            current_node,
+            attempt.blocked_resource,
+            movement_path,
+        )
+
         return False, False
 
-    group.reserved_schedule = schedule
+    group.reserved_schedule = attempt.schedule
+    group.waiting_resource = attempt.blocked_resource
 
-    return True, schedule.first_departure_frame <= frame
+    if attempt.schedule.first_departure_frame > frame:
+        logger.info(
+            "Capacity pending | %s | current_node=%s blocked_resource=%s "
+            "wait_frames=%s path=%s",
+            ctx(frame=frame, group_id=group_id, agents=len(group.agents)),
+            current_node,
+            attempt.blocked_resource,
+            attempt.schedule.first_departure_frame - frame,
+            movement_path,
+        )
+
+        return True, False
+
+    manager.remove_group_from_waiting_queues(group_id)
+    group.waiting_resource = None
+
+    return True, True
 
 
 def _apply_path_with_capacity_check(
@@ -318,11 +679,11 @@ def _apply_path_with_capacity_check(
     frame: int,
 ) -> bool:
     """
-    Apply a new group path only after capacity has been reserved.
+    Apply a new group path after checking local movement capacity.
 
-    If a feasible reservation exists but starts in a future frame, the path is
-    still applied, but the group remains waiting with speed 0 until the time
-    window becomes available.
+    Longer temporal reservations may be used for scoring and route selection,
+    but physical movement should only be blocked by the next immediate edge/node.
+    This prevents full-route schedules from producing stop-and-go movement.
     """
     reserved, can_depart_now = _reserve_capacity_for_path(
         env_info=env_info,
@@ -339,6 +700,7 @@ def _apply_path_with_capacity_check(
         mark_group_waiting_due_to_congestion(
             group,
             frame=frame,
+            resource=getattr(group, "waiting_resource", None),
         )
         return False
 
@@ -356,6 +718,7 @@ def _apply_path_with_capacity_check(
     mark_group_waiting_due_to_congestion(
         group,
         frame=frame,
+        resource=getattr(group, "waiting_resource", None),
     )
     return False
 
@@ -370,7 +733,6 @@ def _try_resume_waiting_group(
     frame: int,
     group_id: Any,
     heuristic: str,
-    beta: float,
     horizon_k: int | None,
 ) -> AgentGroup:
     agent_ids = group.agents
@@ -380,6 +742,7 @@ def _try_resume_waiting_group(
         mark_group_waiting_due_to_congestion(
             group,
             frame=frame,
+            resource=getattr(group, "waiting_resource", None),
         )
         return group
 
@@ -399,24 +762,38 @@ def _try_resume_waiting_group(
         if schedule_status == "pending":
             return group
 
-    best_path = compute_best_available_path(
-        exits=sim_cfg.exit_names,
-        agent_group=group,
-        env_info=env_info,
-        current_node=curr_node,
-        risk_map=risk_map,
-        risk_threshold=threshold,
-        gamma=sim_cfg.gamma,
-        heuristic=heuristic,
-        beta=beta,
-        horizon_k=horizon_k,
-        group_id=group_id,
-    )
+    if heuristic == "h3" and group.awareness_level == 1:
+        best_path = _select_h3_temporal_capacity_path(
+            sim_cfg=sim_cfg,
+            env_info=env_info,
+            group=group,
+            group_id=group_id,
+            current_node=curr_node,
+            current_path=group.path,
+            risk_map=risk_map,
+            threshold=threshold,
+            frame=frame,
+            require_improvement=False,
+        )
+    else:
+        best_path = compute_best_available_path(
+            exits=sim_cfg.exit_names,
+            agent_group=group,
+            env_info=env_info,
+            current_node=curr_node,
+            risk_map=risk_map,
+            risk_threshold=threshold,
+            gamma=sim_cfg.gamma,
+            heuristic=heuristic,
+            horizon_k=horizon_k,
+            group_id=group_id,
+        )
 
     if best_path is None:
         mark_group_waiting_due_to_congestion(
             group,
             frame=frame,
+            resource=getattr(group, "waiting_resource", None),
         )
 
         logger.debug(
@@ -468,7 +845,6 @@ def update_group_paths(
     frame: int,
     group_id: Any,
     heuristic: str = "none",
-    beta: float = 1.0,
     congestion_reroute_epsilon: float = 0.10,
     horizon_k: int | None = None,
     no_path_policy: str = "raise",
@@ -490,7 +866,6 @@ def update_group_paths(
             frame=frame,
             group_id=group_id,
             heuristic=heuristic,
-            beta=beta,
             horizon_k=horizon_k,
         )
 
@@ -503,6 +878,7 @@ def update_group_paths(
             mark_group_waiting_due_to_congestion(
                 group,
                 frame=frame,
+                resource=getattr(group, "waiting_resource", None),
             )
 
         return group
@@ -519,6 +895,7 @@ def update_group_paths(
             mark_group_waiting_due_to_congestion(
                 group,
                 frame=frame,
+                resource=getattr(group, "waiting_resource", None),
             )
 
         return group
@@ -559,7 +936,6 @@ def update_group_paths(
             threshold,
             sim_cfg.gamma,
             heuristic=heuristic,
-            beta=beta,
             horizon_k=horizon_k,
             group_id=group_id,
         )
@@ -571,6 +947,24 @@ def update_group_paths(
             selected_alt_path = risk_alt_path
             reroute_reason = "risk"
 
+        elif group.awareness_level == 1 and heuristic == "h3":
+            best_path = _select_h3_temporal_capacity_path(
+                sim_cfg=sim_cfg,
+                env_info=env_info,
+                group=group,
+                group_id=group_id,
+                current_node=curr_node,
+                current_path=current_path,
+                risk_map=risk_map,
+                threshold=threshold,
+                frame=frame,
+                require_improvement=True,
+            )
+
+            if best_path and not is_sublist(best_path, current_path):
+                selected_alt_path = best_path
+                reroute_reason = "h3_temporal"
+
         elif group.awareness_level == 1 and heuristic == "h2":
             best_path = compute_best_available_path(
                 exits=sim_cfg.exit_names,
@@ -581,7 +975,6 @@ def update_group_paths(
                 risk_threshold=threshold,
                 gamma=sim_cfg.gamma,
                 heuristic=heuristic,
-                beta=beta,
                 horizon_k=horizon_k,
                 group_id=group_id,
             )
@@ -596,7 +989,6 @@ def update_group_paths(
                     env_info.graph,
                     current_remaining,
                     heuristic=heuristic,
-                    beta=beta,
                     group_size=group_size,
                     horizon_k=horizon_k,
                     group_id=group_id,
@@ -606,7 +998,6 @@ def update_group_paths(
                     env_info.graph,
                     best_path,
                     heuristic=heuristic,
-                    beta=beta,
                     group_size=group_size,
                     horizon_k=horizon_k,
                     group_id=group_id,
@@ -636,6 +1027,23 @@ def update_group_paths(
             except ValueError:
                 full_path = selected_alt_path
 
+            if _is_immediate_backtrack(
+                    current_path=current_path,
+                    curr_node=curr_node,
+                    candidate_path=selected_alt_path,
+            ):
+                logger.warning(
+                    "Reroute backtrack detected | %s | reason=%s curr=%s "
+                    "old_next=%s new_next=%s old_path=%s selected_alt=%s",
+                    ctx(frame=frame, group_id=group_id, agents=len(agent_ids)),
+                    reroute_reason,
+                    curr_node,
+                    next_node,
+                    selected_alt_path[1] if len(selected_alt_path) > 1 else None,
+                    current_path[:10],
+                    selected_alt_path[:10],
+                )
+
             can_depart_now = _apply_path_with_capacity_check(
                 sim_cfg=sim_cfg,
                 env_info=env_info,
@@ -657,6 +1065,21 @@ def update_group_paths(
                 group.last_congestion_reroute_edge = (
                     curr_node,
                     selected_alt_path[1],
+                )
+
+            if (
+                    can_depart_now
+                    and reroute_reason == "h3_temporal"
+                    and len(selected_alt_path) >= 2
+            ):
+                _mark_h3_temporal_reroute(
+                    env_info=env_info,
+                    group_id=group_id,
+                    frame=frame,
+                    edge=(
+                        curr_node,
+                        selected_alt_path[1],
+                    ),
                 )
 
             logger.debug(
@@ -689,7 +1112,6 @@ def update_group_paths(
                 risk_threshold=threshold,
                 gamma=sim_cfg.gamma,
                 heuristic=heuristic,
-                beta=beta,
                 horizon_k=horizon_k,
                 group_id=group_id,
             )
@@ -698,6 +1120,7 @@ def update_group_paths(
                 mark_group_waiting_due_to_congestion(
                     group,
                     frame=frame,
+                    resource=getattr(group, "waiting_resource", None),
                 )
 
                 logger.debug(
