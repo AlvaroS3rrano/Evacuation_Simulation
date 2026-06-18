@@ -434,6 +434,19 @@ def add_static_risk_colorbar():
     return risk_trace
 
 
+def _has_risk_overlay(
+    *,
+    risk_per_frame: dict | None,
+    specific_areas: dict | None,
+) -> bool:
+    """
+    Return True only when the animation has enough information to render risk.
+
+    This prevents showing a Risk Level colorbar in no-risk scenarios.
+    """
+    return bool(risk_per_frame) and bool(specific_areas)
+
+
 def animate(
     data: pedpy.TrajectoryData,  # TrajectoryData with positions and frame info
     area: pedpy.WalkableArea,  # WalkableArea polygon
@@ -444,14 +457,13 @@ def animate(
     radius: float = 0.2,  # Visual radius for agents
     title_note: str = "",  # Optional title annotation
     waypoint_coords=None,  # Optional waypoint coordinates
-    risk_per_frame: dict = None,  # Risk levels per frame
-    specific_areas: dict = None,  # Polygons to highlight for risk
+    risk_per_frame: dict | None = None,  # Risk levels per frame
+    specific_areas: dict | None = None,  # Polygons to highlight for risk
+    risk_threshold: float = 0.5,  # Threshold used for the risk color gradient
 ):
     """
-    Create an animated Plotly Figure showing trajectories, walkable area, agent speeds, and risk zones.
-
-    Returns:
-        A Plotly go.Figure object configured with frames and animation controls.
+    Create an animated Plotly Figure showing trajectories, walkable area,
+    agent speeds, and, only when available, risk zones.
     """
     # Compute individual speeds for each agent
     data_df = pedpy.compute_individual_speed(
@@ -502,36 +514,64 @@ def animate(
 
     # Generate a colorbar trace for speeds
     color_map_trace = _get_colormap(initial_frame_data, max_speed)
-    # Generate a static risk colorbar
-    risk_trace = add_static_risk_colorbar()
 
-    # Combine traces for the initial layout
-    traces = color_map_trace + [risk_trace]
+    show_risk_overlay = _has_risk_overlay(
+        risk_per_frame=risk_per_frame,
+        specific_areas=specific_areas,
+    )
 
-    # Precompute risk color gradient
-    risk_colors = generate_risk_colors()
+    traces = list(color_map_trace)
+
+    if show_risk_overlay:
+        traces.append(add_static_risk_colorbar())
+
+    risk_colors = (
+        generate_risk_colors(risk_threshold=risk_threshold)
+        if show_risk_overlay
+        else []
+    )
 
     # Process each selected frame
     for frame_num in selected_frames:
         # Get processed data for this frame (ensuring max_agents rows)
-        frame_data, agent_count = _get_processed_frame_data(data_df, frame_num, max_agents)
+        frame_data, agent_count = _get_processed_frame_data(
+            data_df,
+            frame_num,
+            max_agents,
+        )
+
         # Recompute geometry traces each frame in case risk zones change
-        geometry_traces = _get_geometry_traces(area.polygon)
+        frame_geometry_traces = _get_geometry_traces(area.polygon)
+
+        if waypoint_coords:
+            frame_geometry_traces.extend(_get_waypoint_traces(waypoint_coords))
 
         # If specific risk areas and risk_per_frame are provided, color them
-        if specific_areas and risk_per_frame:
-            current_risks = risk_per_frame.get(frame_num, {})  # risk levels for this frame
+        if show_risk_overlay:
+            current_risks = risk_per_frame.get(frame_num, {})
             for area_name, risk_level in current_risks.items():
-                color = risk_colors[int(risk_level * 10)]  # map risk level to 0-10 index
-                specific_area = specific_areas[area_name]
-                geometry_traces = _change_geometry_traces(geometry_traces, specific_area, color)
+                risk_index = max(0, min(10, int(float(risk_level) * 10)))
+                color = risk_colors[risk_index]
+                specific_area = specific_areas.get(area_name)
+
+                if specific_area is not None:
+                    frame_geometry_traces = _change_geometry_traces(
+                        frame_geometry_traces,
+                        specific_area,
+                        color,
+                    )
 
         # Generate shapes, hover traces, and orientation arrows for this frame
-        shapes, hover_traces, arrows = _get_shapes_for_frame(frame_data, min_speed, max_speed)
+        shapes, hover_traces, arrows = _get_shapes_for_frame(
+            frame_data,
+            min_speed,
+            max_speed,
+        )
 
         # Construct dynamic title for this frame
         title = (
-            f"<b>{title_note + '  |  ' if title_note else ''}Number of Agents: {agent_count}</b>"
+            f"<b>{title_note + '  |  ' if title_note else ''}"
+            f"Number of Agents: {agent_count}</b>"
         )
 
         # Frame name as string
@@ -539,7 +579,7 @@ def animate(
 
         # Create a go.Frame object with data and layout for this frame
         frame = go.Frame(
-            data=geometry_traces + hover_traces,
+            data=frame_geometry_traces + hover_traces,
             name=frame_name,
             layout=go.Layout(
                 shapes=shapes + arrows,
