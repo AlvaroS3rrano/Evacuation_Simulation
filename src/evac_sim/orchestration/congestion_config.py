@@ -24,6 +24,15 @@ class CapacityReservationConfig:
     node_capacity_default: int = 20
     edge_flow_capacity_default: int = 10
 
+    # If enabled, groups larger than a resource capacity can reserve the
+    # resource progressively: the reservation uses at most the resource capacity
+    # per bucket and extends the traversal/hold time across multiple buckets.
+    allow_oversized_group_reservations: bool = True
+
+    # Optional guardrail for the previous behaviour. None means no explicit
+    # limit; values <= 0 are treated as None.
+    max_oversized_capacity_batches: int | None = None
+
 
 @dataclass(frozen=True)
 class CongestionConfig:
@@ -99,6 +108,22 @@ def _build_capacity_reservation_config(
             "congestion.capacity_reservations.edge_flow_capacity_default must be > 0"
         )
 
+    allow_oversized_group_reservations = bool(
+        reservation_cfg.get("allow_oversized_group_reservations", True)
+    )
+
+    max_oversized_capacity_batches_raw = reservation_cfg.get(
+        "max_oversized_capacity_batches",
+        None,
+    )
+
+    if max_oversized_capacity_batches_raw is None:
+        max_oversized_capacity_batches = None
+    else:
+        max_oversized_capacity_batches = int(max_oversized_capacity_batches_raw)
+        if max_oversized_capacity_batches <= 0:
+            max_oversized_capacity_batches = None
+
     return CapacityReservationConfig(
         bucket_size_frames=bucket_size_frames,
         search_horizon_frames=search_horizon_frames,
@@ -108,6 +133,8 @@ def _build_capacity_reservation_config(
         node_hold_frames=node_hold_frames,
         node_capacity_default=node_capacity_default,
         edge_flow_capacity_default=edge_flow_capacity_default,
+        allow_oversized_group_reservations=allow_oversized_group_reservations,
+        max_oversized_capacity_batches=max_oversized_capacity_batches,
     )
 
 

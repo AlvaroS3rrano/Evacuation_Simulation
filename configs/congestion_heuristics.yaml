@@ -41,6 +41,8 @@ congestion_parallel_corridors:
       edge_flow_capacity_default: 10
       allow_waiting: true
       block_at_capacity: true
+      allow_oversized_group_reservations: true
+      max_oversized_capacity_batches: 4
 
   metrics:
     density:
@@ -91,6 +93,8 @@ congestion_short_vs_wide:
       edge_flow_capacity_default: 10
       allow_waiting: true
       block_at_capacity: true
+      allow_oversized_group_reservations: true
+      max_oversized_capacity_batches: 4
 
   metrics:
     density:
@@ -141,6 +145,8 @@ congestion_two_exits:
       edge_flow_capacity_default: 10
       allow_waiting: true
       block_at_capacity: true
+      allow_oversized_group_reservations: true
+      max_oversized_capacity_batches: 4
 
   metrics:
     density:

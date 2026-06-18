@@ -64,15 +64,17 @@ class QueueEntry:
 
 class CapacityReservationManager:
     def __init__(
-        self,
-        G: Any,
-        *,
-        bucket_size_frames: int = 30,
-        max_search_buckets: int = 30,
-        traversal_time_scale: float = 1.0,
-        node_hold_frames: int | None = None,
-        node_capacity_default: int = 20,
-        edge_flow_capacity_default: int = 10,
+            self,
+            G: Any,
+            *,
+            bucket_size_frames: int = 30,
+            max_search_buckets: int = 30,
+            traversal_time_scale: float = 1.0,
+            node_hold_frames: int | None = None,
+            node_capacity_default: int = 20,
+            edge_flow_capacity_default: int = 10,
+            allow_oversized_group_reservations: bool = True,
+            max_oversized_capacity_batches: int | None = None,
     ) -> None:
         self.G = G
         self.bucket_size_frames = max(1, int(bucket_size_frames))
@@ -85,6 +87,16 @@ class CapacityReservationManager:
         )
         self.node_capacity_default = int(node_capacity_default)
         self.edge_flow_capacity_default = int(edge_flow_capacity_default)
+
+        self.allow_oversized_group_reservations = bool(
+            allow_oversized_group_reservations
+        )
+        self.max_oversized_capacity_batches = (
+            None
+            if max_oversized_capacity_batches is None
+               or int(max_oversized_capacity_batches) <= 0
+            else max(1, int(max_oversized_capacity_batches))
+        )
 
         self.reservations: dict[Resource, dict[int, dict[Any, int]]] = defaultdict(
             lambda: defaultdict(dict)
@@ -146,20 +158,56 @@ class CapacityReservationManager:
         )
 
     def _reservation_amount(
-        self,
-        resource: Resource,
-        group_size: int,
+            self,
+            resource: Resource,
+            group_size: int,
     ) -> int:
+        group_size = max(1, int(group_size))
         capacity = self._resource_capacity(resource)
-        return min(max(1, int(group_size)), capacity)
+
+        if group_size <= capacity:
+            return group_size
+
+        if self._capacity_batches(resource, group_size) is None:
+            # Impossible reservation: _has_capacity will fail because the amount
+            # is larger than the resource capacity.
+            return group_size
+
+        return capacity
 
     def _capacity_batches(
-        self,
-        resource: Resource,
-        group_size: int,
-    ) -> int:
+            self,
+            resource: Resource,
+            group_size: int,
+    ) -> int | None:
+        """
+        Return how many temporal batches are needed for this group/resource.
+
+        For oversized groups, this lets the group use the resource progressively:
+        a group of 25 agents crossing a capacity-10 node reserves 10 units per
+        bucket for 3 buckets, instead of being rejected forever.
+
+        None means the group is too large for this resource under the current
+        oversized-group policy.
+        """
+        group_size = max(1, int(group_size))
         capacity = self._resource_capacity(resource)
-        return max(1, int(math.ceil(max(1, int(group_size)) / capacity)))
+
+        if group_size <= capacity:
+            return 1
+
+        if not self.allow_oversized_group_reservations:
+            return None
+
+        batches = max(1, int(math.ceil(group_size / capacity)))
+
+        if (
+                self.max_oversized_capacity_batches is not None
+                and batches > self.max_oversized_capacity_batches
+        ):
+            return None
+
+        return batches
 
     def _has_capacity(
         self,
@@ -308,14 +356,32 @@ class CapacityReservationManager:
             node_resource = ("node", v)
 
             base_traversal_frames = self._edge_traversal_frames(u, v)
-            traversal_frames = base_traversal_frames * self._capacity_batches(
+            edge_capacity_batches = self._capacity_batches(
                 edge_resource,
                 group_size,
             )
-            node_hold_frames = self.node_hold_frames * self._capacity_batches(
+
+            if edge_capacity_batches is None:
+                return ScheduleAttempt(
+                    schedule=None,
+                    blocked_resource=edge_resource,
+                    reason="oversized_group",
+                )
+
+            node_capacity_batches = self._capacity_batches(
                 node_resource,
                 group_size,
             )
+
+            if node_capacity_batches is None:
+                return ScheduleAttempt(
+                    schedule=None,
+                    blocked_resource=node_resource,
+                    reason="oversized_group",
+                )
+
+            traversal_frames = base_traversal_frames * edge_capacity_batches
+            node_hold_frames = self.node_hold_frames * node_capacity_batches
 
             step_start, blocked_resource = self._first_feasible_start_for_step(
                 edge_resource=edge_resource,
@@ -758,6 +824,16 @@ def get_capacity_reservation_manager(G: Any) -> CapacityReservationManager:
         getattr(reservation_cfg, "edge_flow_capacity_default", 10)
     )
 
+    allow_oversized_group_reservations = bool(
+        getattr(reservation_cfg, "allow_oversized_group_reservations", True)
+    )
+
+    max_oversized_capacity_batches = getattr(
+        reservation_cfg,
+        "max_oversized_capacity_batches",
+        None,
+    )
+
     manager = CapacityReservationManager(
         G,
         bucket_size_frames=bucket_size,
@@ -766,6 +842,8 @@ def get_capacity_reservation_manager(G: Any) -> CapacityReservationManager:
         node_hold_frames=node_hold_frames,
         node_capacity_default=node_capacity_default,
         edge_flow_capacity_default=edge_flow_capacity_default,
+        allow_oversized_group_reservations=allow_oversized_group_reservations,
+        max_oversized_capacity_batches=max_oversized_capacity_batches,
     )
 
     G.graph["capacity_reservation_manager"] = manager
