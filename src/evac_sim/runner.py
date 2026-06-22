@@ -16,7 +16,7 @@ from evac_sim.io.config_loader import deep_merge, select_cases
 from evac_sim.io.logging_setup import setup_run_logging
 from evac_sim.orchestration.experiment_runner import run_experiment_from_case
 from evac_sim.db.sqlite_utils import init_db_connection
-from evac_sim.db.schema import create_experiments_tables
+from evac_sim.db.schema import create_simulation_tables
 from evac_sim.db.exporters.experiments_csv import (
     export_experiment_metrics_to_csv,
     export_experiments_to_csv,
@@ -33,6 +33,9 @@ def run_from_yaml(
     environment: str | None = None,
     out_dir: Optional[Path] = None,
     verbose: bool = False,
+    heuristic: str = "none",
+    horizon_k: int | None = None,
+    congestion_reroute_epsilon: float = 0.1,
 ) -> None:
     project_root = project_root.resolve()
 
@@ -89,6 +92,8 @@ def run_from_yaml(
             "git_commit": git_commit_hash(paths.project_root),
             "python": sys.version.split()[0],
             "platform": platform.platform(),
+            "heuristic": heuristic,
+            "horizon_k": horizon_k,
         }
 
         (paths.run_dir / "metadata.json").write_text(
@@ -97,7 +102,14 @@ def run_from_yaml(
         )
 
         try:
-            run_experiment_from_case(cfg, paths, selected_case_id)
+            run_experiment_from_case(
+                cfg,
+                paths,
+                selected_case_id,
+                heuristic=heuristic,
+                horizon_k=horizon_k,
+                congestion_reroute_epsilon=congestion_reroute_epsilon,
+            )
         except Exception:
             log.exception("Experiment crashed (case_id=%s)", selected_case_id)
             raise
@@ -139,10 +151,12 @@ def run_from_yaml(
         "git_commit": git_commit_hash(batch_paths.batch_dir),
         "python": sys.version.split()[0],
         "platform": platform.platform(),
+        "heuristic": heuristic,
+        "horizon_k": horizon_k,
     }
 
     combined_results_db = batch_paths.combined_dir / "results.db"
-    results_db_conn = init_db_connection(combined_results_db, create_experiments_tables)
+    results_db_conn = init_db_connection(combined_results_db, create_simulation_tables)
 
     (batch_paths.batch_dir / "batch_metadata.json").write_text(
         json.dumps(batch_metadata, indent=2),
@@ -177,6 +191,8 @@ def run_from_yaml(
                 "git_commit": git_commit_hash(case_paths.project_root),
                 "python": sys.version.split()[0],
                 "platform": platform.platform(),
+                "heuristic": heuristic,
+                "horizon_k": horizon_k,
             }
 
             (case_paths.run_dir / "metadata.json").write_text(
@@ -188,8 +204,11 @@ def run_from_yaml(
                 cfg,
                 case_paths,
                 selected_case_id,
-                shared_results_db_conn=results_db_conn,
-                shared_results_db_file=combined_results_db,
+                heuristic=heuristic,
+                horizon_k=horizon_k,
+                congestion_reroute_epsilon=congestion_reroute_epsilon,
+                shared_simulation_conn=results_db_conn,
+                shared_simulation_db_file=combined_results_db,
             )
 
         results_db_conn.commit()

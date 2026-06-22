@@ -3,389 +3,41 @@ from __future__ import annotations
 import gc
 import logging
 import sqlite3
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
-import random
 
 import jupedsim as jps
-import numpy as np
 
+from evac_sim.analysis.metrics import compute_group_metrics
 from evac_sim.core.agent_group import AgentGroup
-from evac_sim.core.environment_info import EnvironmentInfo
-from evac_sim.core.risk_simulation_values import RiskSimulationValues
 from evac_sim.core.simulation_config import SimulationConfig
-
-from evac_sim.db.schema import create_simulation_tables
-from evac_sim.db.repositories.risk import get_risk_levels_by_frame
-from evac_sim.db.repositories.group_decisions import get_group_decisions_dataframe
-from evac_sim.db.repositories.experiments import (
-    upsert_experiment,
-    upsert_experiment_metrics,
-    ExperimentMetrics,
-    ExperimentConfig,
-)
 from evac_sim.db.exporters.experiments_csv import (
     export_experiment_metrics_to_csv,
     export_experiments_to_csv,
 )
-
-import evac_sim.envs.environment as pol
-from evac_sim.envs.journey_configuration import set_journeys
-from evac_sim.risk.risk_simulation import simulate_risk
-from evac_sim.risk.risk_validation import validate_risk_inputs
-from evac_sim.routing.decision_policies import compute_initial_path
-from evac_sim.simulation.simulation_manager import (
-    run_agent_simulation,
-    set_agents_in_simulation,
+from evac_sim.db.repositories.experiments import (
+    ExperimentConfig,
+    ExperimentMetrics,
+    upsert_experiment,
+    upsert_experiment_metrics,
 )
-
-from evac_sim.analysis.metrics import compute_group_metrics
-from evac_sim.db.sqlite_utils import (
-    compute_times_from_trajectory_sqlite,
-    init_db_connection,
-)
-from evac_sim.envs.environment_factory import select_environment
+from evac_sim.db.repositories.group_decisions import get_group_decisions_dataframe
+from evac_sim.db.sqlite_utils import compute_times_from_trajectory_sqlite
 from evac_sim.io.run_paths import RunPaths
+from evac_sim.simulation.simulation_manager import run_agent_simulation
 from evac_sim.viz.plots import generate_mode_visual_artifacts
 
+from .experiment_models import (
+    AgentPositioningConfig,
+    ExperimentResources,
+    JuPedSimConfig,
+)
+from .experiment_setup import (
+    build_agent_groups,
+    prepare_shared_resources,
+)
+
 log = logging.getLogger(__name__)
-
-
-@dataclass(frozen=True)
-class AgentPositioningConfig:
-    distance_to_agents: float
-    distance_to_polygon: float
-    agent_position_seed: int
-
-
-@dataclass(frozen=True)
-class JuPedSimConfig:
-    strength_neighbor_repulsion: float
-    range_neighbor_repulsion: float
-    range_geometry_repulsion: float
-
-
-@dataclass(frozen=True)
-class ExperimentResources:
-    env_name: str
-    walkable_area: Any
-    obstacles: Any
-    targets: list[Any]
-    sources: list[Any]
-    total_agents: list[int]
-    waypoints: dict[Any, Any]
-    graph: Any
-    specific_areas: dict[Any, Any]
-    env_info: EnvironmentInfo
-    positions: dict[str, np.ndarray]
-    risk_first_frame: dict[Any, float]
-    simulation_db_file: Path
-    simulation_conn: sqlite3.Connection
-    danger_visualization_frame: int | None
-    risk_seed: int
-    risk_threshold: float
-    gamma: float
-    stairs_max_speed: float
-    normal_max_speed: float
-    every_nth_frame_simulation: int
-    every_nth_frame_animation: int
-    mode_type: int
-    modes: list[int]
-    agent_positioning: AgentPositioningConfig
-    jps_config: JuPedSimConfig
-    owns_simulation_conn: bool
-
-
-def build_modes(mode_type: int) -> list[int]:
-    mode_indices = {
-        0: [0, 1, 2, 3],
-        1: [0, 1],
-        2: [0, 1],
-        3: [2, 3],
-        4: [2],
-    }
-
-    if mode_type not in mode_indices:
-        raise ValueError(f"Unsupported mode_type: {mode_type}")
-    return mode_indices[mode_type]
-
-
-def allocate_positions(
-    *,
-    sources: list[Any],
-    total_agents: list[int],
-    specific_areas: dict[Any, Any],
-    distance_to_agents: float,
-    distance_to_polygon: float,
-    seed: int,
-) -> dict[str, np.ndarray]:
-    positions: dict[str, np.ndarray] = {}
-
-    for i, source in enumerate(sources):
-        positions[source] = jps.distribute_by_number(
-            polygon=specific_areas[source],
-            number_of_agents=total_agents[i],
-            distance_to_agents=distance_to_agents,
-            distance_to_polygon=distance_to_polygon,
-            seed=seed,
-        )
-
-    return positions
-
-
-def prepare_shared_resources(
-    cfg: dict[str, Any],
-    paths: RunPaths,
-    case_name: str,
-    shared_simulation_conn: sqlite3.Connection | None = None,
-    shared_simulation_db_file: Path | None = None,
-) -> ExperimentResources:
-    env = select_environment(cfg["environment"])
-
-    env_name = env.name
-    walkable_area = env.walkable_area
-    obstacles = env.obstacles
-    targets = cfg["targets"]
-    sources = cfg["sources"]
-    total_agents = cfg["agents"]
-    waypoints = env.waypoints
-    graph = env.graph.copy()
-    risk_graph = graph.copy()
-    specific_areas = env.specific_areas
-
-    mode_type = int(cfg.get("mode_type", 0))
-    modes = build_modes(mode_type)
-
-    master_seed = cfg.get("master_seed", 42)
-
-    master_rng = random.Random(master_seed)
-
-    risk_seed = master_rng.randint(0, 2 ** 32 - 1)
-    agent_seed = master_rng.randint(0, 2 ** 32 - 1)
-
-    risk_iterations = int(cfg["risk_iterations"])
-    risk_increase_chance = float(cfg["risk_increase_chance"])
-    propagation_threshold = float(cfg["propagation_threshold"])
-    risk_threshold = float(cfg["risk_threshold"])
-    gamma = float(cfg["gamma"])
-    stairs_max_speed = float(cfg["stairs_max_speed"])
-    normal_max_speed = float(cfg["normal_max_speed"])
-
-    every_nth_frame_simulation = int(cfg["every_nth_frame_simulation"])
-    every_nth_frame_animation = int(cfg["every_nth_frame_animation"])
-
-    danger_visualization_frame = cfg.get(
-        "danger_visualization_frame",
-        cfg.get("danger_frame", None),
-    )
-    if danger_visualization_frame is not None:
-        danger_visualization_frame = int(danger_visualization_frame)
-
-    starting_risks_raw = cfg.get("starting_risks", []) or []
-    risk_overrides_raw = cfg.get("risk_overrides", []) or []
-
-    starting_risks = [
-        (str(node_id), float(risk))
-        for node_id, risk in starting_risks_raw
-    ]
-
-    risk_overrides = [
-        (int(frame), str(node_id), float(risk))
-        for frame, node_id, risk in risk_overrides_raw
-    ]
-
-    if shared_simulation_conn is not None:
-        simulation_conn = shared_simulation_conn
-        if shared_simulation_db_file is None:
-            raise ValueError(
-                "shared_simulation_db_file must be provided with shared_simulation_conn"
-            )
-        simulation_db_file = shared_simulation_db_file
-    else:
-        simulation_db_file = paths.db_dir / "simulation.db"
-        simulation_conn = init_db_connection(
-            simulation_db_file,
-            create_simulation_tables,
-        )
-
-    owns_simulation_conn = shared_simulation_conn is None
-
-    pol.set_targets(targets, env)
-
-    distance_to_agents = cfg.get("distance_to_agents", None)
-    distance_to_polygon = cfg.get("distance_to_polygon", None)
-
-    agent_positioning = AgentPositioningConfig(
-        distance_to_agents=distance_to_agents,
-        distance_to_polygon=distance_to_polygon,
-        agent_position_seed=agent_seed,
-    )
-
-    positions = allocate_positions(
-        sources=sources,
-        total_agents=total_agents,
-        specific_areas=specific_areas,
-        distance_to_agents=agent_positioning.distance_to_agents,
-        distance_to_polygon=agent_positioning.distance_to_polygon,
-        seed=agent_positioning.agent_position_seed,
-    )
-
-    strength_neighbor_repulsion = cfg.get("strength_neighbor_repulsion", 0)
-    range_neighbor_repulsion = cfg.get("range_neighbor_repulsion", 0)
-    range_geometry_repulsion = cfg.get("range_geometry_repulsion", 0)
-
-    jps_config = JuPedSimConfig(
-        strength_neighbor_repulsion=strength_neighbor_repulsion,
-        range_neighbor_repulsion=range_neighbor_repulsion,
-        range_geometry_repulsion=range_geometry_repulsion,
-    )
-
-    risk_values = RiskSimulationValues(
-        risk_iterations,
-        risk_increase_chance,
-        propagation_threshold,
-        starting_risks,
-        risk_overrides,
-    )
-
-    validate_risk_inputs(
-        graph=risk_graph,
-        exits=targets,
-        risk_iterations=risk_iterations,
-        every_nth_frame=every_nth_frame_animation,
-        increase_chance=risk_increase_chance,
-        propagation_threshold=propagation_threshold,
-        risk_threshold=risk_threshold,
-        starting_risks=starting_risks,
-        risk_overrides=risk_overrides,
-    )
-
-    log.info("Simulating risks: iterations=%s seed=%s", risk_iterations, risk_seed)
-    simulate_risk(
-        risk_values,
-        every_nth_frame_animation,
-        risk_graph,
-        targets,
-        simulation_conn,
-        risk_seed,
-        case_name=case_name,
-    )
-    risk_first_frame = get_risk_levels_by_frame(simulation_conn, case_name, 0)
-
-    env_info = EnvironmentInfo(graph, simulation_conn, floor_number=env.floor_number)
-    if env.floor_number > 1:
-        env_info.floors = env.floors
-        env_info.floor_connecting_nodes = env.floor_connecting_nodes
-
-    return ExperimentResources(
-        env_name=env_name,
-        walkable_area=walkable_area,
-        obstacles=obstacles,
-        targets=targets,
-        sources=sources,
-        total_agents=total_agents,
-        waypoints=waypoints,
-        graph=graph,
-        specific_areas=specific_areas,
-        env_info=env_info,
-        positions=positions,
-        risk_first_frame=risk_first_frame,
-        simulation_db_file=simulation_db_file,
-        simulation_conn=simulation_conn,
-        danger_visualization_frame=danger_visualization_frame,
-        risk_seed=risk_seed,
-        risk_threshold=risk_threshold,
-        gamma=gamma,
-        stairs_max_speed=stairs_max_speed,
-        normal_max_speed=normal_max_speed,
-        every_nth_frame_simulation=every_nth_frame_simulation,
-        every_nth_frame_animation=every_nth_frame_animation,
-        mode_type=mode_type,
-        modes=modes,
-        agent_positioning=agent_positioning,
-        jps_config=jps_config,
-        owns_simulation_conn=owns_simulation_conn,
-    )
-
-
-def build_agent_groups(
-    *,
-    simulation: jps.Simulation,
-    mode: int,
-    mode_type: int,
-    sources: list[Any],
-    targets: list[Any],
-    positions: dict[str, np.ndarray],
-    waypoints: dict[Any, Any],
-    exit_ids: dict[Any, Any],
-    waypoints_ids: dict[Any, Any],
-    env_info: EnvironmentInfo,
-    risk_first_frame: dict[Any, float],
-    gamma: float,
-    normal_max_speed: float,
-) -> dict[str, AgentGroup]:
-    awareness_levels_per_group = [0, 1, 0, 1]
-    algorithm_per_group = [0, 0, 1, 1]
-
-    agent_groups: dict[str, AgentGroup] = {}
-
-    for i, source in enumerate(sources):
-        if mode_type == 1:
-            group = AgentGroup(None, None, None, i, mode)
-        else:
-            group = AgentGroup(
-                None,
-                None,
-                None,
-                algorithm_per_group[mode],
-                awareness_levels_per_group[mode],
-            )
-
-        path = compute_initial_path(
-            targets,
-            group,
-            env_info,
-            source,
-            risk_per_node=risk_first_frame,
-            gamma=gamma,
-        )
-        log.warning("Initial path for source=%s -> %s", source, path)
-
-        if path is None:
-            raise ValueError(
-                f"No initial path found for source={source} in mode={mode}"
-            )
-
-        if not isinstance(path, (list, tuple)) or len(path) < 2:
-            raise ValueError(
-                f"Invalid initial path for source={source}: {path}"
-            )
-
-        journeys_ids = set_journeys(simulation, source, [path], waypoints_ids, exit_ids)
-        journey_id, best_path_source = journeys_ids[source][0]
-        next_node = best_path_source[1]
-        first_waypoint_id = waypoints_ids[next_node]
-
-        agents = set_agents_in_simulation(
-            simulation,
-            positions[source],
-            journey_id,
-            first_waypoint_id,
-            normal_max_speed,
-        )
-
-        agent_ids = [a.id if hasattr(a, "id") else int(a) for a in agents]
-
-        group.path = path
-        group.current_nodes = {agent_id: path[0] for agent_id in agent_ids}
-        group.agents = agent_ids
-        group.initial_agents_ids = list(agent_ids)
-
-        agent_groups[source] = group
-
-    return agent_groups
-
 
 def create_simulation(
     *,
@@ -528,6 +180,9 @@ def run_single_mode(
     mode: int,
     paths: RunPaths,
     resources: ExperimentResources,
+    heuristic: str = "none",
+    horizon_k: int | None = None,
+    congestion_reroute_epsilon: float = 0.1,
 ) -> None:
     log.info(
         "Mode start | mode=%s env=%s case=%s",
@@ -561,13 +216,18 @@ def run_single_mode(
         sources=resources.sources,
         targets=resources.targets,
         positions=resources.positions,
-        waypoints=resources.waypoints,
         exit_ids=exit_ids,
         waypoints_ids=waypoints_ids,
+        waypoints=resources.waypoints,
         env_info=resources.env_info,
         risk_first_frame=resources.risk_first_frame,
         gamma=resources.gamma,
         normal_max_speed=resources.normal_max_speed,
+        heuristic=heuristic,
+        horizon_k=horizon_k,
+        grouping_config=resources.grouping_config,
+        no_path_policy=resources.congestion_config.no_path_policy,
+        logger=log,
     )
 
     sim_cfg = SimulationConfig(
@@ -591,6 +251,11 @@ def run_single_mode(
             case_name=case_id,
             mode=mode,
             threshold=resources.risk_threshold,
+            heuristic=heuristic,
+            horizon_k=horizon_k,
+            congestion_reroute_epsilon=congestion_reroute_epsilon,
+            group_split_threshold=cfg.get("group_split_threshold", None),
+            no_path_policy=resources.congestion_config.no_path_policy,
         )
     except Exception:
         log.exception("Simulation failed | mode=%s", mode)
@@ -622,6 +287,7 @@ def run_single_mode(
         target_nodes=resources.targets,
         specific_areas=resources.specific_areas,
         risk_db_file=resources.simulation_db_file,
+        risk_threshold=resources.risk_threshold,
         case_name=case_id,
         danger_frame=resources.danger_visualization_frame,
         images_dir=paths.images_dir,
@@ -651,6 +317,9 @@ def run_experiment_from_case(
     cfg: dict[str, Any],
     paths: RunPaths,
     case_id: str,
+    heuristic: str = "none",
+    horizon_k: int | None = None,
+    congestion_reroute_epsilon: float = 0.1,
     shared_simulation_conn: sqlite3.Connection | None = None,
     shared_simulation_db_file: Path | None = None,
 ) -> None:
@@ -670,6 +339,9 @@ def run_experiment_from_case(
                 mode=mode,
                 paths=paths,
                 resources=resources,
+                heuristic=heuristic,
+                horizon_k=horizon_k,
+                congestion_reroute_epsilon=congestion_reroute_epsilon,
             )
 
         resources.simulation_conn.commit()

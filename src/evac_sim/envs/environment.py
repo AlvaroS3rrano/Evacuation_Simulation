@@ -3,12 +3,12 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Mapping, Sequence
 
+import math
 import networkx as nx
 import pedpy
 import shapely
 from shapely.geometry import Polygon
 from shapely.geometry.base import BaseGeometry
-
 
 @dataclass(slots=True)
 class Environment:

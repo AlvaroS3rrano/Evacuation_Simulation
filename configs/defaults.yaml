@@ -8,3 +8,6 @@ distance_to_polygon: 0.5
 strength_neighbor_repulsion: 2.6
 range_neighbor_repulsion: 0.1
 range_geometry_repulsion: 0.05
+
+# others
+group_split_threshold: 2

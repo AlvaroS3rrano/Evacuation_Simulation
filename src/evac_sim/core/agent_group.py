@@ -50,6 +50,20 @@ class AgentGroup:
     wait_until_node: Any = None
     agents_in_stairs: list[Any] = field(default_factory=list)
     initial_agents_ids: list[Any] = field(default_factory=list)
+    reserved_edges: set[tuple[Any, Any]] = field(default_factory=set)
+    reserved_nodes: set[Any] = field(default_factory=set)
+    reserved_group_size: int = 0
+
+    waiting_due_to_congestion: bool = False
+    waiting_since_frame: int | None = None
+    no_path_count: int = 0
+
+    waiting_resource: Any = None
+    reserved_schedule: Any = None
+    last_capacity_check_frame: int | None = None
+
+    last_congestion_reroute_frame: int | None = None
+    last_congestion_reroute_edge: tuple[Any, Any] | None = None
 
     def __post_init__(self) -> None:
         if self.algorithm not in (0, 1):

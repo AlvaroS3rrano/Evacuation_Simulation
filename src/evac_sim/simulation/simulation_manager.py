@@ -1,201 +1,72 @@
 from __future__ import annotations
 
 import logging
-from statistics import mean, pvariance
 
 import jupedsim as jps
 
-from evac_sim.core.agent_group import AgentGroup
-from evac_sim.db.repositories.agent_area import insert_agent_areas
 from evac_sim.db.repositories.risk import get_risk_levels_by_frame
-from evac_sim.db.repositories.group_decisions import insert_group_decision
-from evac_sim.envs.journey_configuration import set_journeys
-from evac_sim.routing.decision_policies import compute_alternative_path
-from evac_sim.routing.utils import is_sublist
-from evac_sim.simulation.simulation_logic import compute_current_nodes, update_agent_speed_on_stairs
+from evac_sim.simulation.capacity_reservations import get_capacity_reservation_manager
+from evac_sim.simulation.group_processing import process_single_group
+from evac_sim.simulation.group_splitting import (
+    next_split_group_id,
+    split_group_by_progress_threshold,
+)
+from evac_sim.simulation.group_state import (
+    ctx,
+    remaining_path_from_node,
+    uses_static_reservations,
+    uses_temporal_reservations,
+)
+from evac_sim.simulation.simulation_logic import (
+    clear_group_static_reservation_state,
+    compute_current_nodes,
+    release_group_static_reservations,
+)
 
 logger = logging.getLogger(__name__)
 
+MAX_FRAMES = 7000
 
-def _ctx(
-    *, frame: int | None = None, group_id: int | None = None, agents: int | None = None
-) -> str:
-    """Build a consistent context string for logs."""
-    parts: list[str] = []
-    if frame is not None:
-        parts.append(f"frame={frame}")
-    if group_id is not None:
-        parts.append(f"group={group_id}")
-    if agents is not None:
-        parts.append(f"agents={agents}")
-    return " | ".join(parts)
+def _set_current_frame_on_graph(env_info, frame: int) -> None:
+    graph = getattr(env_info, "graph", None)
 
+    if graph is None:
+        return
 
-def validate_agent(agent_id: int, simulation, current_nodes: dict) -> bool:
-    """
-    Check if an agent exists in the simulation and has a recorded current node.
-    Returns True if valid, False otherwise.
-    """
-    exists = any(agent.id == agent_id for agent in simulation.agents())
-    has_node = agent_id in current_nodes
-    return exists and has_node
+    graph_metadata = getattr(graph, "graph", None)
+
+    if graph_metadata is None:
+        return
+
+    graph_metadata["current_frame"] = frame
 
 
-def try_get_node_index(node, path: list) -> int:
-    """
-    Attempt to find the index of a node in a path list.
-    Returns the index or -1 if not found.
-    """
-    try:
-        return path.index(node)
-    except ValueError:
-        return -1
-
-
-def update_group_paths(
-    sim_cfg,
-    risk_map: dict,
-    group: AgentGroup,
+def _release_capacity_reservation_if_needed(
+    *,
     env_info,
-    threshold: float = 0.5,
-    *,
-    frame: int,
-    group_id: int,
-) -> AgentGroup:
-    """
-    Evaluates whether the group's path should be rerouted.
-    If a better path is found, all agents follow the new path,
-    and each is switched to the appropriate stage based on their current position.
-    """
-    agent_ids = group.agents
-    if not agent_ids:
-        return group
-
-    current_path = group.path
-    current_nodes = group.current_nodes
-    simulation = sim_cfg.simulation
-    waypoints = sim_cfg.waypoints_ids
-
-    # Select the leading agent in the group (furthest along current_path)
-    to_check = [max(agent_ids, key=lambda aid: current_path.index(current_nodes[aid]))]
-
-    for aid in to_check:
-        if not validate_agent(aid, simulation, current_nodes):
-            return group
-
-        curr_node = current_nodes[aid]
-        idx = try_get_node_index(curr_node, current_path)
-        if idx < 0 or idx >= len(current_path) - 1:
-            continue
-
-        next_node = current_path[idx + 1]
-
-        # Compute an alternative path from the current node
-        alt_path = compute_alternative_path(
-            sim_cfg.exit_names,
-            group,
-            env_info,
-            curr_node,
-            next_node,
-            risk_map,
-            threshold,
-            sim_cfg.gamma,
-        )
-
-        if alt_path and not is_sublist(alt_path, current_path):
-            # Combine current_path up to curr_node with alt_path (avoid repeating curr_node)
-            try:
-                current_idx = current_path.index(curr_node)
-                full_path = current_path[: current_idx + 1] + alt_path[1:]
-            except ValueError:
-                full_path = alt_path  # fallback
-
-            # Create a new journey using the full_path
-            journeys = set_journeys(
-                simulation,
-                curr_node,
-                [full_path],
-                waypoints,
-                sim_cfg.exit_ids,
-            )
-            new_jid, _ = journeys[curr_node][0]
-
-            # Assign each agent to the correct stage along the new path
-            for agent_id in agent_ids:
-                node = current_nodes[agent_id]
-                try:
-                    node_idx = full_path.index(node)
-                    next_stage_node = full_path[min(node_idx + 1, len(full_path) - 1)]
-                except ValueError:
-                    next_stage_node = full_path[1] if len(full_path) > 1 else full_path[0]
-
-                stage_id = waypoints[next_stage_node]
-                simulation.switch_agent_journey(agent_id, new_jid, stage_id)
-
-            logger.info(
-                "Reroute applied | %s | curr=%s next=%s | old_len=%d new_len=%d",
-                _ctx(frame=frame, group_id=group_id, agents=len(agent_ids)),
-                curr_node,
-                next_node,
-                len(current_path),
-                len(full_path),
-            )
-
-            group.path = full_path
-            return group
-
-    return group
-
-
-def record_group_path_data(
-    connection,
-    *,
-    case_name: str,
-    mode: int,
-    frame: int,
-    group_id: str,
-    group: AgentGroup,
-    risks: dict,
+    heuristic: str,
+    group_id,
+    group=None,
 ) -> None:
-    algorithm = "Centrality" if group.algorithm == 1 else "Efficient"
-    awareness = "High" if group.awareness_level == 1 else "Low"
+    if uses_static_reservations(heuristic) and group is not None:
+        release_group_static_reservations(
+            env_info,
+            group,
+        )
+        clear_group_static_reservation_state(group)
+        return
 
-    max_idx = -1
-    current_area = None
-    for aid in group.agents:
-        area = group.current_nodes.get(aid)
-        if area is None:
-            continue
-        try:
-            idx = group.path.index(area)
-        except ValueError:
-            idx = -1
-        if idx > max_idx:
-            max_idx = idx
-            current_area = area
+    if uses_temporal_reservations(heuristic):
+        manager = get_capacity_reservation_manager(env_info.graph)
+        manager.release_group(group_id)
 
-    if current_area is None and group.agents:
-        current_area = group.current_nodes.get(group.agents[0])
+        if group is not None and hasattr(group, "reserved_schedule"):
+            group.reserved_schedule = None
 
-    next_path = group.path[max_idx:] if max_idx >= 0 else group.path
-    risk_values = [risks.get(area, 0.0) for area in next_path]
+        return
 
-    insert_group_decision(
-        connection,
-        case_name=case_name,
-        mode=mode,
-        frame=frame,
-        group_id=str(group_id),
-        algorithm=algorithm,
-        awareness=awareness,
-        current_area=current_area,
-        next_path=next_path,
-        est_risk_mean=mean(risk_values) if risk_values else 0.0,
-        est_risk_max=max(risk_values) if risk_values else 0.0,
-        est_risk_min=min(risk_values) if risk_values else 0.0,
-        est_risk_var=pvariance(risk_values) if len(risk_values) > 1 else 0.0,
-        risk_now=risks.get(current_area, 0.0) if current_area is not None else 0.0,
-    )
+    if group is not None:
+        clear_group_static_reservation_state(group)
 
 
 def process_frame(
@@ -208,68 +79,159 @@ def process_frame(
     mode: int,
     frame: int,
     threshold: float,
+    heuristic: str = "none",
+    horizon_k: int | None = None,
+    congestion_reroute_epsilon: float = 0.1,
+    group_split_threshold: int | None = None,
+    no_path_policy: str = "raise",
 ) -> None:
-    """
-    Compute current nodes, log agent areas, adjust speeds, update paths for each group,
-    and record path-choice data.
-    """
-    risks = get_risk_levels_by_frame(conn, case_name, frame)
+    risks = get_risk_levels_by_frame(
+        conn,
+        case_name,
+        frame,
+    )
 
-    for group_id, group in groups.items():
+    _set_current_frame_on_graph(
+        env_info,
+        frame,
+    )
+
+    for original_group_id, original_group in list(groups.items()):
         try:
-            compute_current_nodes(sim_cfg, group, frame)
+            group = groups.get(original_group_id)
 
-            active_ids = {a.id for a in sim_cfg.simulation.agents()}
-            group.agents = [aid for aid in group.agents if aid in active_ids]
+            if group is None:
+                continue
+
+            compute_current_nodes(
+                sim_cfg,
+                group,
+                frame,
+            )
+
+            active_ids = {agent.id for agent in sim_cfg.simulation.agents()}
+
+            group.agents = [
+                agent_id
+                for agent_id in group.agents
+                if agent_id in active_ids
+            ]
+
             group.current_nodes = {
-                aid: n for aid, n in group.current_nodes.items() if aid in active_ids
+                agent_id: node
+                for agent_id, node in group.current_nodes.items()
+                if agent_id in active_ids
             }
 
             if not group.agents:
+                _release_capacity_reservation_if_needed(
+                    env_info=env_info,
+                    heuristic=heuristic,
+                    group_id=original_group_id,
+                    group=group,
+                )
                 continue
 
-            agent_areas = {
-                agent_id: (current_area, risks.get(current_area, 0.0))
-                for agent_id, current_area in group.current_nodes.items()
-            }
+            groups_to_process = [
+                (
+                    original_group_id,
+                    group,
+                )
+            ]
 
-            insert_agent_areas(
-                conn,
-                case_name=case_name,
-                mode=mode,
-                frame=frame,
-                agent_areas=agent_areas,
-            )
-
-            update_agent_speed_on_stairs(env_info.graph, sim_cfg, group)
-
-            group = update_group_paths(
-                sim_cfg,
-                risks,
+            split_result = split_group_by_progress_threshold(
                 group,
-                env_info,
-                threshold,
-                frame=frame,
-                group_id=group_id,
+                threshold=group_split_threshold,
             )
 
-            record_group_path_data(
-                conn,
-                case_name=case_name,
-                mode=mode,
-                frame=frame,
-                group_id=str(group_id),
-                group=group,
-                risks=risks,
-            )
+            if split_result is not None:
+                lead_group, lag_group = split_result
 
-            groups[group_id] = group
+                lag_group_id = next_split_group_id(
+                    groups,
+                    original_group_id,
+                    suffix="lag",
+                )
+
+                logger.info(
+                    "Group split applied | %s | threshold=%s | lead_agents=%d "
+                    "lag_agents=%d new_group=%s",
+                    ctx(
+                        frame=frame,
+                        group_id=original_group_id,
+                        agents=len(group.agents),
+                    ),
+                    group_split_threshold,
+                    len(lead_group.agents),
+                    len(lag_group.agents),
+                    lag_group_id,
+                )
+
+                _release_capacity_reservation_if_needed(
+                    env_info=env_info,
+                    heuristic=heuristic,
+                    group_id=original_group_id,
+                    group=group,
+                )
+
+                if hasattr(lead_group, "reserved_schedule"):
+                    lead_group.reserved_schedule = None
+
+                if hasattr(lag_group, "reserved_schedule"):
+                    lag_group.reserved_schedule = None
+
+                clear_group_static_reservation_state(lead_group)
+                clear_group_static_reservation_state(lag_group)
+
+                groups[original_group_id] = lead_group
+                groups[lag_group_id] = lag_group
+
+                groups_to_process = [
+                    (
+                        original_group_id,
+                        lead_group,
+                    ),
+                    (
+                        lag_group_id,
+                        lag_group,
+                    ),
+                ]
+
+            for group_id, aligned_group in groups_to_process:
+                if not aligned_group.agents:
+                    _release_capacity_reservation_if_needed(
+                        env_info=env_info,
+                        heuristic=heuristic,
+                        group_id=group_id,
+                        group=aligned_group,
+                    )
+                    continue
+
+                process_single_group(
+                    sim_cfg,
+                    env_info,
+                    conn,
+                    risks,
+                    groups,
+                    case_name=case_name,
+                    mode=mode,
+                    frame=frame,
+                    threshold=threshold,
+                    heuristic=heuristic,
+                    horizon_k=horizon_k,
+                    congestion_reroute_epsilon=congestion_reroute_epsilon,
+                    no_path_policy=no_path_policy,
+                    group_id=group_id,
+                    group=aligned_group,
+                )
 
         except Exception:
             logger.exception(
                 "Group processing failed | %s",
-                _ctx(
-                    frame=frame, group_id=group_id, agents=len(getattr(group, "agents", []) or [])
+                ctx(
+                    frame=frame,
+                    group_id=original_group_id,
+                    agents=len(getattr(original_group, "agents", []) or []),
                 ),
             )
             raise
@@ -285,12 +247,21 @@ def run_agent_simulation(
     case_name: str,
     mode: int,
     threshold: float,
+    heuristic: str = "none",
+    horizon_k: int | None = None,
+    congestion_reroute_epsilon: float = 0.1,
+    group_split_threshold: int | None = None,
+    no_path_policy: str = "raise",
 ) -> None:
     """
     Advance the simulation and periodically process agent movements and path updates.
     """
     sim = sim_cfg.simulation
-    logger.info("Simulation start | agents=%d", sim.agent_count())
+
+    logger.info(
+        "Simulation start | agents=%d",
+        sim.agent_count(),
+    )
 
     if sim.agent_count() > 0:
         process_frame(
@@ -302,6 +273,11 @@ def run_agent_simulation(
             mode=mode,
             frame=0,
             threshold=threshold,
+            heuristic=heuristic,
+            horizon_k=horizon_k,
+            congestion_reroute_epsilon=congestion_reroute_epsilon,
+            group_split_threshold=group_split_threshold,
+            no_path_policy=no_path_policy,
         )
 
     last_log_frame = -1
@@ -316,9 +292,57 @@ def run_agent_simulation(
 
         frame = iteration // sim_cfg.every_nth_frame_simulation
 
+        if frame > MAX_FRAMES:
+            logger.error(
+                "Simulation stopped by max_frames | iteration=%d | remaining_agents=%d",
+                iteration,
+                sim.agent_count(),
+            )
+            break
+
         if frame % log_every_frames == 0 and frame != last_log_frame:
             last_log_frame = frame
-            logger.info("Progress | frame=%d | agents=%d", frame, sim.agent_count())
+
+            group_status = {}
+
+            for group_id, group in agent_groups.items():
+                if not group.agents:
+                    continue
+
+                agents_data = {}
+
+                for agent_id in group.agents:
+                    current_node = group.current_nodes.get(agent_id)
+
+                    agents_data[agent_id] = {
+                        "current_node": current_node,
+                        "remaining_path_head": remaining_path_from_node(
+                            group.path,
+                            current_node,
+                        )[:8],
+                        "waiting_due_to_congestion": getattr(
+                            group,
+                            "waiting_due_to_congestion",
+                            False,
+                        ),
+                    }
+
+                group_status[str(group_id)] = {
+                    "agents": len(group.agents),
+                    "waiting_due_to_congestion": getattr(
+                        group,
+                        "waiting_due_to_congestion",
+                        False,
+                    ),
+                    "agents_data": agents_data,
+                }
+
+            logger.debug(
+                "Progress | frame=%d | agents=%d | groups=%s",
+                frame,
+                sim.agent_count(),
+                group_status,
+            )
 
         if frame % sim_cfg.every_nth_frame_animation == 0:
             process_frame(
@@ -330,9 +354,23 @@ def run_agent_simulation(
                 mode=mode,
                 frame=frame,
                 threshold=threshold,
+                heuristic=heuristic,
+                horizon_k=horizon_k,
+                congestion_reroute_epsilon=congestion_reroute_epsilon,
+                group_split_threshold=group_split_threshold,
+                no_path_policy=no_path_policy,
             )
 
-    logger.info("Simulation end | last_frame=%d", frame)
+    if uses_temporal_reservations(heuristic):
+        manager = get_capacity_reservation_manager(env_info.graph)
+
+        for group_id in list(agent_groups.keys()):
+            manager.release_group(group_id)
+
+    logger.info(
+        "Simulation end | last_frame=%d",
+        frame,
+    )
 
 
 def set_agents_in_simulation(
@@ -348,13 +386,16 @@ def set_agents_in_simulation(
     Returns a list of new agent instances.
     """
     new_agents = []
-    for pos in positions:
+
+    for position in positions:
         params = jps.CollisionFreeSpeedModelAgentParameters(
-            position=pos,
+            position=position,
             journey_id=journey_id,
             stage_id=waypoint_id,
-            v0=speed,
+            desired_speed=speed,
         )
-        new_agents.append(simulation.add_agent(params))
+        new_agents.append(
+            simulation.add_agent(params)
+        )
 
     return new_agents

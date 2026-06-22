@@ -8,6 +8,9 @@ from evac_sim.envs.environment_data.simple_3x3 import get_simple_3x3
 from evac_sim.envs.environment_data.corridor import get_corridor_environment
 from evac_sim.envs.environment_data.comparing_algorithms import get_comparing_algorithms_pol
 from evac_sim.envs.environment_data.management_building import get_management_building_basement, get_management_building_floor_0, get_management_building_floor_1
+from evac_sim.envs.environment_data.congestion_parallel_corridors import get_parallel_corridors
+from evac_sim.envs.environment_data.congestion_two_exits import get_two_exits
+from evac_sim.envs.environment_data.congestion_short_vs_wide import get_short_vs_wide
 
 
 ENVIRONMENTS = {
@@ -21,6 +24,9 @@ ENVIRONMENTS = {
     "management_building_basement": get_management_building_basement,
     "management_building_floor_0": get_management_building_floor_0,
     "management_building_floor_1": get_management_building_floor_1,
+    "parallel_corridors": get_parallel_corridors,
+    "two_exits": get_two_exits,
+    "short_vs_wide": get_short_vs_wide,
 }
 
 

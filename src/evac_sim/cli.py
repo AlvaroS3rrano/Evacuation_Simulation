@@ -29,6 +29,23 @@ def build_parser() -> argparse.ArgumentParser:
         "--out-dir", default=None, help="Output directory (default: ./runs/<timestamp>_<case>)"
     )
     run.add_argument("-v", "--verbose", action="store_true", help="Verbose logs")
+    run.add_argument("--heuristic",
+                     choices=["none" ,"h1", "h2", "h3"],
+                     default="none",
+                     help="Routing heuristic to use (default: none)"
+    )
+    run.add_argument(
+        "--horizon-k",
+        type=int,
+        default=6,
+        help="Number of future edges reserved by heuristic h2 (default: 3)",
+    )
+    run.add_argument(
+        "--congestion-reroute-epsilon",
+        type=float,
+        default=0.1,
+        help="Route improvement percentage to reroute because of congestion (default: 0.1)",
+    )
 
     return p
 
@@ -54,6 +71,9 @@ def main(argv: list[str] | None = None) -> int:
             environment=args.environment,
             out_dir=out_dir,
             verbose=getattr(args, "verbose", False),
+            heuristic=args.heuristic,
+            horizon_k=args.horizon_k,
+            congestion_reroute_epsilon=args.congestion_reroute_epsilon,
         )
         return 0
 

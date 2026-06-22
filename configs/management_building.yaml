@@ -5,12 +5,14 @@ basement:
   targets: ["5", "174"]
   mode_type: 0
   master_seed: 233
-  risk_iterations: 7000
-  risk_increase_chance: 0.005 #0.05
-  starting_risks:
-  risk_overrides:
-  risk_threshold: 0.5
-  propagation_threshold: 0.5
+  risk:
+    enabled: true
+    risk_iterations: 7000
+    risk_increase_chance: 0.005
+    starting_risks:
+    risk_overrides:
+    risk_threshold: 0.5
+    propagation_threshold: 0.5
   gamma: 0.2
   stairs_max_speed: 0.6
   normal_max_speed: 1.2
@@ -22,15 +24,17 @@ floor_0:
   environment: "management_building_floor_0"
   sources: ["39", "129"]
   agents: [5, 5]
-  targets: ["107", "27", "108"]
+  targets: ["107", "27", "108", "204"]
   mode_type: 0
   master_seed: 233
-  risk_iterations: 7000
-  risk_increase_chance: 0.005 #0.05
-  starting_risks:
-  risk_overrides:
-  risk_threshold: 0.5
-  propagation_threshold: 0.5
+  risk:
+    enabled: true
+    risk_iterations: 7000
+    risk_increase_chance: 0.005 #0.05
+    starting_risks:
+    risk_overrides:
+    risk_threshold: 0.5
+    propagation_threshold: 0.5
   gamma: 0.2
   stairs_max_speed: 0.6
   normal_max_speed: 1.2
@@ -40,20 +44,25 @@ floor_0:
 
 floor_1:
   environment: "management_building_floor_1"
-  sources: [ "21", ] #  "21", "139", "122", "498", "432"
-  agents: [ 10,] # 25, 7, 10, 5, 20
+  sources: [ "21", "139", "122", "498", "432", ] #  21
+  agents: [ 25, 7, 10, 5, 20] # 10
   targets: [ "224"]
   mode_type: 0
   master_seed: 233
-  risk_iterations: 7000
-  risk_increase_chance: 0.005 #0.05
-  starting_risks:
-  risk_overrides:
-  risk_threshold: 0.5
-  propagation_threshold: 0.5
+  risk:
+    enabled: true
+    risk_iterations: 7000
+    risk_increase_chance: 0.005 #0.05
+    starting_risks:
+    risk_overrides:
+    risk_threshold: 0.5
+    propagation_threshold: 0.5
   gamma: 0.2
   stairs_max_speed: 0.6
   normal_max_speed: 1.2
   every_nth_frame_simulation: 3
   every_nth_frame_animation: 50
   danger_visualization_frame: 2500
+  group_split_threshold: 5
+  distance_to_agents: 0.4
+  distance_to_polygon: 0.1

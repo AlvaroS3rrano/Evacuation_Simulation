@@ -1,0 +1,805 @@
+from __future__ import annotations
+
+import random
+import sqlite3
+from pathlib import Path
+from typing import Any
+
+import jupedsim as jps
+import numpy as np
+
+import evac_sim.envs.environment as pol
+from evac_sim.core.agent_group import AgentGroup
+from evac_sim.core.environment_info import EnvironmentInfo
+from evac_sim.core.risk_simulation_values import RiskSimulationValues
+from evac_sim.db.repositories.risk import get_risk_levels_by_frame
+from evac_sim.db.schema import create_simulation_tables
+from evac_sim.db.sqlite_utils import init_db_connection
+from evac_sim.envs.environment_factory import select_environment
+from evac_sim.envs.journey_configuration import set_journeys
+from evac_sim.io.run_paths import RunPaths
+from evac_sim.risk.risk_simulation import simulate_risk
+from evac_sim.risk.risk_validation import validate_risk_inputs
+from evac_sim.routing.decision_policies import compute_initial_path
+from evac_sim.simulation.simulation_manager import set_agents_in_simulation
+from evac_sim.simulation.capacity_reservations import get_capacity_reservation_manager
+from evac_sim.simulation.group_state import reservation_horizon_for_heuristic
+from evac_sim.orchestration.experiment_models import (
+    AgentPositioningConfig,
+    ExperimentResources,
+    JuPedSimConfig,
+)
+from evac_sim.orchestration.group_distribution import (
+    GroupPositionBatch,
+    build_group_position_batches,
+)
+from evac_sim.orchestration.grouping_config import (
+    GroupDistributionConfig,
+    build_group_distribution_config,
+)
+from evac_sim.orchestration.congestion_config import build_congestion_config
+from evac_sim.orchestration.edge_capacity import apply_congestion_settings_to_graph
+from evac_sim.orchestration.risk_config import RiskConfig, build_risk_config
+
+
+def _build_random_seeds(cfg: dict[str, Any]) -> tuple[int, int]:
+    master_seed = cfg.get("master_seed", 42)
+    master_rng = random.Random(master_seed)
+    risk_seed = master_rng.randint(0, 2**32 - 1)
+    agent_seed = master_rng.randint(0, 2**32 - 1)
+    return risk_seed, agent_seed
+
+
+def _resolve_simulation_connection(
+    *,
+    paths: RunPaths,
+    shared_simulation_conn: sqlite3.Connection | None,
+    shared_simulation_db_file: Path | None,
+) -> tuple[sqlite3.Connection, Path, bool]:
+    if shared_simulation_conn is not None:
+        if shared_simulation_db_file is None:
+            raise ValueError(
+                "shared_simulation_db_file must be provided with shared_simulation_conn"
+            )
+        return shared_simulation_conn, shared_simulation_db_file, False
+
+    simulation_db_file = paths.db_dir / "simulation.db"
+    simulation_conn = init_db_connection(
+        simulation_db_file,
+        create_simulation_tables,
+    )
+    return simulation_conn, simulation_db_file, True
+
+
+def _build_agent_positioning_config(
+    cfg: dict[str, Any],
+    agent_seed: int,
+) -> AgentPositioningConfig:
+    return AgentPositioningConfig(
+        distance_to_agents=cfg.get("distance_to_agents", None),
+        distance_to_polygon=cfg.get("distance_to_polygon", None),
+        agent_position_seed=agent_seed,
+    )
+
+
+def _build_jps_config(cfg: dict[str, Any]) -> JuPedSimConfig:
+    return JuPedSimConfig(
+        strength_neighbor_repulsion=cfg.get("strength_neighbor_repulsion", 0),
+        range_neighbor_repulsion=cfg.get("range_neighbor_repulsion", 0),
+        range_geometry_repulsion=cfg.get("range_geometry_repulsion", 0),
+    )
+
+
+def allocate_positions(
+    *,
+    sources: list[Any],
+    total_agents: list[int],
+    specific_areas: dict[Any, Any],
+    distance_to_agents: float,
+    distance_to_polygon: float,
+    seed: int,
+) -> dict[str, np.ndarray]:
+    positions: dict[str, np.ndarray] = {}
+
+    for i, source in enumerate(sources):
+        positions[source] = jps.distribute_by_number(
+            polygon=specific_areas[source],
+            number_of_agents=total_agents[i],
+            distance_to_agents=distance_to_agents,
+            distance_to_polygon=distance_to_polygon,
+            seed=seed,
+        )
+
+    return positions
+
+
+def build_modes(mode_type: int) -> list[int]:
+    mode_indices = {
+        0: [0, 1, 2, 3],  # all combinations
+        1: [0, 1],        # two groups with different strategies
+        2: [0, 1],        # efficient low/high
+        3: [2, 3],        # agile low/high
+        4: [2],
+        5: [1],           # efficient high only
+        6: [3],           # agile high only
+    }
+
+    if mode_type not in mode_indices:
+        raise ValueError(f"Unsupported mode_type: {mode_type}")
+
+    return mode_indices[mode_type]
+
+
+def _prepare_risk_state(
+    *,
+    risk_config: RiskConfig,
+    risk_graph,
+    targets: list[Any],
+    simulation_conn: sqlite3.Connection,
+    case_name: str,
+    risk_seed: int,
+    every_nth_frame_animation: int,
+) -> dict[Any, float]:
+    if not risk_config.enabled or risk_config.risk_iterations == 0:
+        return {
+            node_id: 0.0
+            for node_id in risk_graph.nodes
+        }
+
+    risk_iterations = risk_config.risk_iterations
+    risk_increase_chance = risk_config.risk_increase_chance
+    propagation_threshold = risk_config.propagation_threshold
+    risk_threshold = risk_config.risk_threshold
+
+    starting_risks = risk_config.starting_risks
+    risk_overrides = risk_config.risk_overrides
+
+    risk_values = RiskSimulationValues(
+        risk_iterations,
+        risk_increase_chance,
+        propagation_threshold,
+        starting_risks,
+        risk_overrides,
+    )
+
+    validate_risk_inputs(
+        graph=risk_graph,
+        exits=targets,
+        risk_iterations=risk_iterations,
+        every_nth_frame=every_nth_frame_animation,
+        increase_chance=risk_increase_chance,
+        propagation_threshold=propagation_threshold,
+        risk_threshold=risk_threshold,
+        starting_risks=starting_risks,
+        risk_overrides=risk_overrides,
+    )
+
+    simulate_risk(
+        risk_values,
+        every_nth_frame_animation,
+        risk_graph,
+        targets,
+        simulation_conn,
+        risk_seed,
+        case_name=case_name,
+    )
+
+    return get_risk_levels_by_frame(simulation_conn, case_name, 0)
+
+
+def prepare_shared_resources(
+    cfg: dict[str, Any],
+    paths: RunPaths,
+    case_name: str,
+    shared_simulation_conn: sqlite3.Connection | None = None,
+    shared_simulation_db_file: Path | None = None,
+) -> ExperimentResources:
+    env = select_environment(cfg["environment"])
+
+    graph = env.graph.copy()
+
+    congestion_config = build_congestion_config(cfg)
+    apply_congestion_settings_to_graph(
+        graph,
+        congestion_config,
+    )
+
+    risk_config = build_risk_config(cfg)
+
+    graph.graph["capacity_reservation_config"] = (
+        congestion_config.capacity_reservations
+    )
+
+    graph.graph.pop("temporal_capacity_config", None)
+
+    risk_graph = graph.copy()
+
+    targets = cfg["targets"]
+    sources = cfg["sources"]
+    total_agents = cfg["agents"]
+
+    mode_type = int(cfg.get("mode_type", 0))
+    modes = build_modes(mode_type)
+
+    risk_seed, agent_seed = _build_random_seeds(cfg)
+
+    simulation_conn, simulation_db_file, owns_simulation_conn = (
+        _resolve_simulation_connection(
+            paths=paths,
+            shared_simulation_conn=shared_simulation_conn,
+            shared_simulation_db_file=shared_simulation_db_file,
+        )
+    )
+
+    pol.set_targets(targets, env)
+
+    agent_positioning = _build_agent_positioning_config(cfg, agent_seed)
+    grouping_config = build_group_distribution_config(cfg)
+
+    positions = allocate_positions(
+        sources=sources,
+        total_agents=total_agents,
+        specific_areas=env.specific_areas,
+        distance_to_agents=agent_positioning.distance_to_agents,
+        distance_to_polygon=agent_positioning.distance_to_polygon,
+        seed=agent_positioning.agent_position_seed,
+    )
+
+    jps_config = _build_jps_config(cfg)
+
+    every_nth_frame_simulation = int(cfg["every_nth_frame_simulation"])
+    every_nth_frame_animation = int(cfg["every_nth_frame_animation"])
+
+    risk_first_frame = _prepare_risk_state(
+        risk_config=risk_config,
+        risk_graph=risk_graph,
+        targets=targets,
+        simulation_conn=simulation_conn,
+        case_name=case_name,
+        risk_seed=risk_seed,
+        every_nth_frame_animation=every_nth_frame_animation,
+    )
+
+    env_info = EnvironmentInfo(graph, simulation_conn, floor_number=env.floor_number)
+    if env.floor_number > 1:
+        env_info.floors = env.floors
+        env_info.floor_connecting_nodes = env.floor_connecting_nodes
+
+    danger_visualization_frame = cfg.get(
+        "danger_visualization_frame",
+        cfg.get("danger_frame", None),
+    )
+    if danger_visualization_frame is not None:
+        danger_visualization_frame = int(danger_visualization_frame)
+
+    return ExperimentResources(
+        env_name=env.name,
+        walkable_area=env.walkable_area,
+        obstacles=env.obstacles,
+        targets=targets,
+        sources=sources,
+        total_agents=total_agents,
+        waypoints=env.waypoints,
+        graph=graph,
+        specific_areas=env.specific_areas,
+        env_info=env_info,
+        positions=positions,
+        risk_first_frame=risk_first_frame,
+        simulation_db_file=simulation_db_file,
+        simulation_conn=simulation_conn,
+        danger_visualization_frame=danger_visualization_frame,
+        risk_seed=risk_seed,
+        risk_threshold=risk_config.risk_threshold,
+        gamma=float(cfg["gamma"]),
+        stairs_max_speed=float(cfg["stairs_max_speed"]),
+        normal_max_speed=float(cfg["normal_max_speed"]),
+        every_nth_frame_simulation=every_nth_frame_simulation,
+        every_nth_frame_animation=every_nth_frame_animation,
+        mode_type=mode_type,
+        modes=modes,
+        agent_positioning=agent_positioning,
+        grouping_config=grouping_config,
+        congestion_config=congestion_config,
+        jps_config=jps_config,
+        owns_simulation_conn=owns_simulation_conn,
+    )
+
+
+def compute_initial_priority_cost(
+    *,
+    source: Any,
+    targets: list[Any],
+    env_info: EnvironmentInfo,
+    algorithm: int,
+    gamma: float,
+) -> float:
+    path = compute_initial_priority_path(
+        source=source,
+        targets=targets,
+        env_info=env_info,
+        algorithm=algorithm,
+        gamma=gamma,
+    )
+
+    if path is None or len(path) < 2:
+        return float("inf")
+
+    return sum(env_info.graph[u][v]["cost"] for u, v in zip(path, path[1:]))
+
+def _extract_waypoint_xy(
+    waypoints: dict[Any, Any],
+    node: Any,
+) -> tuple[float, float] | None:
+    waypoint = waypoints.get(node)
+
+    if waypoint is None:
+        return None
+
+    if isinstance(waypoint, (list, tuple)) and waypoint:
+        coords = waypoint[0]
+    else:
+        coords = waypoint
+
+    coords_array = np.asarray(coords, dtype=float)
+
+    if coords_array.ndim != 1 or len(coords_array) < 2:
+        return None
+
+    return float(coords_array[0]), float(coords_array[1])
+
+
+def compute_initial_priority_path(
+    *,
+    source: Any,
+    targets: list[Any],
+    env_info: EnvironmentInfo,
+    algorithm: int,
+    gamma: float,
+) -> list | None:
+    dummy_group = AgentGroup(
+        agents=[],
+        path=None,
+        current_nodes={},
+        algorithm=algorithm,
+        awareness_level=0,
+    )
+
+    return compute_initial_path(
+        targets,
+        dummy_group,
+        env_info,
+        source,
+        risk_per_node=None,
+        gamma=gamma,
+        heuristic="none",
+        group_size=1,
+    )
+
+
+def build_route_sort_targets_by_source(
+    *,
+    sources: list[Any],
+    targets: list[Any],
+    waypoints: dict[Any, Any],
+    env_info: EnvironmentInfo,
+    mode: int,
+    mode_type: int,
+    gamma: float,
+) -> dict[Any, tuple[float, float]]:
+    route_sort_targets_by_source: dict[Any, tuple[float, float]] = {}
+
+    for source_index, source in enumerate(sources):
+        algorithm, _ = _resolve_group_strategy(
+            mode,
+            mode_type,
+            source_index,
+        )
+
+        path = compute_initial_priority_path(
+            source=source,
+            targets=targets,
+            env_info=env_info,
+            algorithm=algorithm,
+            gamma=gamma,
+        )
+
+        if path is None or len(path) < 2:
+            continue
+
+        next_node = path[1]
+
+        target_xy = _extract_waypoint_xy(
+            waypoints,
+            next_node,
+        )
+
+        if target_xy is not None:
+            route_sort_targets_by_source[source] = target_xy
+
+    return route_sort_targets_by_source
+
+def _resolve_group_strategy(
+    mode: int,
+    mode_type: int,
+    source_index: int,
+) -> tuple[int, int]:
+    awareness_levels_per_group = [0, 1, 0, 1]
+    algorithm_per_group = [0, 0, 1, 1]
+
+    if mode_type == 1:
+        return source_index, mode
+
+    return algorithm_per_group[mode], awareness_levels_per_group[mode]
+
+
+def _build_group_candidates(
+    *,
+    mode: int,
+    mode_type: int,
+    group_batches: list[GroupPositionBatch],
+    targets: list[Any],
+    env_info: EnvironmentInfo,
+    gamma: float,
+) -> list[dict[str, Any]]:
+    candidates_by_source: dict[Any, list[dict[str, Any]]] = {}
+
+    for batch in group_batches:
+        algorithm, awareness_level = _resolve_group_strategy(
+            mode,
+            mode_type,
+            batch.source_index,
+        )
+
+        group_size = len(batch.positions)
+
+        base_exit_cost = compute_initial_priority_cost(
+            source=batch.source,
+            targets=targets,
+            env_info=env_info,
+            algorithm=algorithm,
+            gamma=gamma,
+        )
+
+        candidate = {
+            "group_id": batch.group_id,
+            "source": batch.source,
+            "source_index": batch.source_index,
+            "group_order": batch.order_index,
+            "group_positions": batch.positions,
+            "group_size": group_size,
+            "algorithm": algorithm,
+            "awareness_level": awareness_level,
+            "base_exit_cost": base_exit_cost,
+        }
+
+        candidates_by_source.setdefault(batch.source, []).append(candidate)
+
+    for source_candidates in candidates_by_source.values():
+        source_candidates.sort(
+            key=lambda g: (
+                g["group_order"],
+                -g["group_size"],
+                str(g["group_id"]),
+            )
+        )
+
+    source_order = sorted(
+        candidates_by_source,
+        key=lambda source: (
+            candidates_by_source[source][0]["base_exit_cost"],
+            candidates_by_source[source][0]["source_index"],
+            str(source),
+        ),
+    )
+
+    interleaved_candidates: list[dict[str, Any]] = []
+
+    max_groups_per_source = max(
+        len(source_candidates)
+        for source_candidates in candidates_by_source.values()
+    )
+
+    for group_index in range(max_groups_per_source):
+        for source in source_order:
+            source_candidates = candidates_by_source[source]
+
+            if group_index < len(source_candidates):
+                interleaved_candidates.append(source_candidates[group_index])
+
+    return interleaved_candidates
+
+
+def _create_initial_group(
+    *,
+    simulation: jps.Simulation,
+    group_id: str,
+    source: Any,
+    group_positions: np.ndarray,
+    group_size: int,
+    algorithm: int,
+    awareness_level: int,
+    targets: list[Any],
+    waypoints_ids: dict[Any, Any],
+    exit_ids: dict[Any, Any],
+    env_info: EnvironmentInfo,
+    risk_first_frame: dict[Any, float],
+    gamma: float,
+    normal_max_speed: float,
+    heuristic: str,
+    horizon_k: int | None,
+    no_path_policy: str = "raise",
+) -> AgentGroup:
+    group = AgentGroup(
+        agents=[],
+        path=None,
+        current_nodes={},
+        algorithm=algorithm,
+        awareness_level=awareness_level,
+    )
+
+    path = compute_initial_path(
+        targets,
+        group,
+        env_info,
+        source,
+        risk_per_node=risk_first_frame,
+        gamma=gamma,
+        heuristic=heuristic,
+        group_size=group_size,
+        horizon_k=horizon_k,
+        group_id=group_id,
+    )
+
+    waiting_due_to_congestion = False
+    reserved_schedule = None
+
+    if heuristic != "none":
+        manager = get_capacity_reservation_manager(env_info.graph)
+        horizon_edges = reservation_horizon_for_heuristic(
+            heuristic,
+            horizon_k,
+        )
+
+        schedule = None
+
+        if path is not None:
+            schedule = manager.find_earliest_feasible_schedule(
+                list(path),
+                group_size=group_size,
+                start_frame=0,
+                horizon_edges=horizon_edges,
+                ignore_group_id=group_id,
+            )
+
+        if schedule is None:
+            path = compute_initial_path(
+                targets,
+                group,
+                env_info,
+                source,
+                risk_per_node=risk_first_frame,
+                gamma=gamma,
+                heuristic="none",
+                group_size=group_size,
+                horizon_k=None,
+                group_id=group_id,
+            )
+            waiting_due_to_congestion = True
+        else:
+            reservation_confirmed = manager.reserve_path(
+                group_id,
+                list(path),
+                group_size,
+                schedule,
+            )
+
+            if reservation_confirmed:
+                reserved_schedule = schedule
+                waiting_due_to_congestion = schedule.first_departure_frame > 0
+            else:
+                reserved_schedule = None
+                waiting_due_to_congestion = True
+
+    if path is None:
+        raise ValueError(
+            f"No initial path found for group_id={group_id}, source={source}"
+        )
+
+    if not isinstance(path, (list, tuple)) or len(path) < 2:
+        raise ValueError(
+            f"Invalid initial path for group_id={group_id}, source={source}: {path}"
+        )
+
+    journeys_ids = set_journeys(
+        simulation,
+        source,
+        [path],
+        waypoints_ids,
+        exit_ids,
+    )
+
+    if source not in journeys_ids or not journeys_ids[source]:
+        if no_path_policy == "wait" and heuristic != "none":
+            if reserved_schedule is not None:
+                get_capacity_reservation_manager(env_info.graph).release_group(group_id)
+                reserved_schedule = None
+
+            path = compute_initial_path(
+                targets,
+                group,
+                env_info,
+                source,
+                risk_per_node=risk_first_frame,
+                gamma=gamma,
+                heuristic="none",
+                group_size=group_size,
+                horizon_k=None,
+                group_id=group_id,
+            )
+
+            waiting_due_to_congestion = True
+
+            if path is not None:
+                journeys_ids = set_journeys(
+                    simulation,
+                    source,
+                    [path],
+                    waypoints_ids,
+                    exit_ids,
+                )
+
+    if source not in journeys_ids or not journeys_ids[source]:
+        if reserved_schedule is not None:
+            get_capacity_reservation_manager(env_info.graph).release_group(group_id)
+
+        raise ValueError(
+            f"Could not create initial journey for group_id={group_id}, "
+            f"source={source}, path={path}"
+        )
+
+    journey_id, best_path_source = journeys_ids[source][0]
+    next_node = best_path_source[1]
+    first_waypoint_id = waypoints_ids[next_node]
+
+    initial_speed = 0.0 if waiting_due_to_congestion else normal_max_speed
+
+    agents = set_agents_in_simulation(
+        simulation,
+        group_positions,
+        journey_id,
+        first_waypoint_id,
+        initial_speed,
+    )
+
+    agent_ids = [
+        a.id if hasattr(a, "id") else int(a)
+        for a in agents
+    ]
+
+    group.path = list(path)
+    group.current_nodes = {
+        agent_id: path[0]
+        for agent_id in agent_ids
+    }
+    group.agents = agent_ids
+    group.initial_agents_ids = list(agent_ids)
+
+    group.reserved_edges = set()
+    group.reserved_group_size = 0
+
+    group.waiting_due_to_congestion = waiting_due_to_congestion
+    group.waiting_since_frame = 0 if waiting_due_to_congestion else None
+    group.no_path_count = 1 if waiting_due_to_congestion else 0
+
+    group.reserved_schedule = reserved_schedule
+
+    return group
+
+
+def build_agent_groups(
+    *,
+    simulation: jps.Simulation,
+    mode: int,
+    mode_type: int,
+    sources: list[Any],
+    targets: list[Any],
+    positions: dict[Any, np.ndarray],
+    exit_ids: dict[Any, Any],
+    waypoints_ids: dict[Any, Any],
+    waypoints: dict[Any, Any],
+    env_info: EnvironmentInfo,
+    risk_first_frame: dict[Any, float],
+    gamma: float,
+    normal_max_speed: float,
+    heuristic: str = "none",
+    horizon_k: int | None = None,
+    grouping_config: GroupDistributionConfig | None = None,
+    no_path_policy: str = "raise",
+    logger=None,
+) -> dict[str, AgentGroup]:
+    agent_groups: dict[str, AgentGroup] = {}
+
+    route_sort_targets_by_source: dict[Any, tuple[float, float]] = {}
+
+    if (
+            grouping_config is not None
+            and grouping_config.order_by_route_proximity
+    ):
+        route_sort_targets_by_source = build_route_sort_targets_by_source(
+            sources=sources,
+            targets=targets,
+            waypoints=waypoints,
+            env_info=env_info,
+            mode=mode,
+            mode_type=mode_type,
+            gamma=gamma,
+        )
+
+    group_batches = build_group_position_batches(
+        sources=sources,
+        positions=positions,
+        grouping_config=grouping_config,
+        route_sort_targets_by_source=route_sort_targets_by_source,
+    )
+
+    group_candidates = _build_group_candidates(
+        mode=mode,
+        mode_type=mode_type,
+        group_batches=group_batches,
+        targets=targets,
+        env_info=env_info,
+        gamma=gamma,
+    )
+
+    if logger is not None:
+        logger.info(
+            "Initial assignment order: %s",
+            [
+                (
+                    g["group_id"],
+                    g["source"],
+                    g["group_order"],
+                    g["group_size"],
+                    round(g["base_exit_cost"], 3),
+                )
+                for g in group_candidates
+            ],
+        )
+
+    for group_info in group_candidates:
+        group_id = group_info["group_id"]
+        source = group_info["source"]
+
+        group = _create_initial_group(
+            simulation=simulation,
+            group_id=group_id,
+            source=source,
+            group_positions=group_info["group_positions"],
+            group_size=group_info["group_size"],
+            algorithm=group_info["algorithm"],
+            awareness_level=group_info["awareness_level"],
+            targets=targets,
+            waypoints_ids=waypoints_ids,
+            exit_ids=exit_ids,
+            env_info=env_info,
+            risk_first_frame=risk_first_frame,
+            gamma=gamma,
+            normal_max_speed=normal_max_speed,
+            heuristic=heuristic,
+            horizon_k=horizon_k,
+            no_path_policy=no_path_policy,
+        )
+
+        agent_groups[group_id] = group
+
+        if logger is not None:
+            logger.info(
+                "Initial group created | group_id=%s source=%s agents=%d path=%s reserved_edges=%d",
+                group_id,
+                source,
+                len(group.agents),
+                group.path,
+                len(group.reserved_edges),
+            )
+
+    return agent_groups

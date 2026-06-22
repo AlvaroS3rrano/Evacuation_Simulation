@@ -1,0 +1,158 @@
+# Congestion heuristic scenarios
+# Run with:
+#   evac-sim run --config congestion_heuristics.yaml --heuristic none
+#   evac-sim run --config congestion_heuristics.yaml --heuristic h1
+#   evac-sim run --config congestion_heuristics.yaml --heuristic h2  --horizon-k 3
+
+congestion_parallel_corridors:
+  environment: "parallel_corridors"
+  sources: ["1", "9", "19"]
+  agents: [45, 45, 20]
+  targets: ["23"]
+  mode_type: 5
+  master_seed: 3101
+
+  grouping:
+    enabled: true
+    distribution: "normal"
+    max_group_size: 5
+    min_group_size: 1
+    mean_group_size: 3
+    std_group_size: 2
+    seed: 3201
+    order_by_route_proximity: true
+
+  congestion:
+    node_capacity_multiplier: 1.0
+    edge_flow_capacity_multiplier: 1.0
+    block_edges_at_capacity: true
+    no_path_policy: "wait"
+
+    capacity_reservations:
+      enabled: true
+      node_capacity_enabled: true
+      edge_flow_enabled: true
+      temporal_reservation_enabled: true
+      time_bucket_frames: 30
+      temporal_horizon_frames: 300
+      traversal_time_scale: 1.0
+      node_capacity_default: 20
+      edge_flow_capacity_default: 10
+      allow_waiting: true
+      block_at_capacity: true
+      allow_oversized_group_reservations: true
+      max_oversized_capacity_batches: 4
+
+  metrics:
+    density:
+      sample_every_frames: 10
+      high_density_threshold: 12
+
+  gamma: 0.3
+  stairs_max_speed: 0.6
+  normal_max_speed: 1.2
+  every_nth_frame_simulation: 3
+  every_nth_frame_animation: 25
+  danger_visualization_frame: 300
+
+congestion_short_vs_wide:
+  environment: "short_vs_wide"
+  sources: ["27", "3", "1", "33", "32", "28"]
+  agents: [45, 45, 45, 45, 45, 45]
+  targets: ["35", "31"]
+  mode_type: 5
+  master_seed: 3102
+
+  grouping:
+    enabled: true
+    distribution: "normal"
+    max_group_size: 5
+    min_group_size: 1
+    mean_group_size: 3
+    std_group_size: 2
+    seed: 3201
+    order_by_route_proximity: true
+
+  congestion:
+    node_capacity_multiplier: 1.0
+    edge_flow_capacity_multiplier: 1.0
+    block_edges_at_capacity: true
+    no_path_policy: "wait"
+
+    capacity_reservations:
+      enabled: true
+      node_capacity_enabled: true
+      edge_flow_enabled: true
+      temporal_reservation_enabled: true
+      time_bucket_frames: 30
+      temporal_horizon_frames: 300
+      traversal_time_scale: 1.0
+      node_capacity_default: 20
+      edge_flow_capacity_default: 10
+      allow_waiting: true
+      block_at_capacity: true
+      allow_oversized_group_reservations: true
+      max_oversized_capacity_batches: 4
+
+  metrics:
+    density:
+      sample_every_frames: 10
+      high_density_threshold: 12
+
+  gamma: 0.3
+  stairs_max_speed: 0.6
+  normal_max_speed: 1.2
+  every_nth_frame_simulation: 3
+  every_nth_frame_animation: 25
+  danger_visualization_frame: 300
+
+congestion_two_exits:
+  environment: "two_exits"
+  sources: ["1", "3", "7", "10", "50", "43", "6", "46", "20", "35"] # ["1", "3", "7", "10"]
+  agents: [25, 25, 25, 25, 25, 25, 25, 25, 25, 25] # [25, 25, 25, 25]
+  targets: ["17", "63", "64", "65", "18", "66"]
+  mode_type: 5
+  master_seed: 3103
+
+  grouping:
+    enabled: true
+    distribution: "normal"
+    max_group_size: 5
+    min_group_size: 1
+    mean_group_size: 3
+    std_group_size: 2
+    seed: 3201
+    order_by_route_proximity: true
+
+  congestion:
+    node_capacity_multiplier: 1.0
+    edge_flow_capacity_multiplier: 1.0
+    block_edges_at_capacity: true
+    no_path_policy: "wait"
+
+    capacity_reservations:
+      enabled: true
+      node_capacity_enabled: true
+      edge_flow_enabled: true
+      temporal_reservation_enabled: true
+      time_bucket_frames: 30
+      temporal_horizon_frames: 300
+      traversal_time_scale: 1.0
+      node_capacity_default: 20
+      edge_flow_capacity_default: 10
+      allow_waiting: true
+      block_at_capacity: true
+      allow_oversized_group_reservations: true
+      max_oversized_capacity_batches: 4
+
+  metrics:
+    density:
+      sample_every_frames: 10
+      high_density_threshold: 12
+
+  gamma: 0.3
+  stairs_max_speed: 0.6
+  normal_max_speed: 1.2
+  every_nth_frame_simulation: 3
+  every_nth_frame_animation: 25
+  danger_visualization_frame: 300
