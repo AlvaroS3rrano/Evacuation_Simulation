@@ -107,9 +107,6 @@ def apply_congestion_settings_to_graph(
     )
 
     for _, _, edge_data in graph.edges(data=True):
-        edge_data["use_linear_congestion_cost"] = (
-            congestion_config.use_linear_congestion_cost
-        )
         edge_data["block_edges_at_capacity"] = (
             congestion_config.block_edges_at_capacity
         )

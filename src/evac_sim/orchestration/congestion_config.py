@@ -39,7 +39,6 @@ class CongestionConfig:
     node_capacity_multiplier: float = 1.0
     edge_flow_capacity_multiplier: float = 1.0
 
-    use_linear_congestion_cost: bool = False
     block_edges_at_capacity: bool = False
     no_path_policy: str = "raise"
 
@@ -202,9 +201,6 @@ def build_congestion_config(
     return CongestionConfig(
         node_capacity_multiplier=node_capacity_multiplier,
         edge_flow_capacity_multiplier=edge_flow_capacity_multiplier,
-        use_linear_congestion_cost=bool(
-            congestion_cfg.get("use_linear_congestion_cost", True)
-        ),
         block_edges_at_capacity=bool(
             congestion_cfg.get("block_edges_at_capacity", True)
         ),
