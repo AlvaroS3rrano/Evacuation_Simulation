@@ -78,17 +78,19 @@ def truncate_path_at_first_exit(
     """
     Truncate a path as soon as it reaches any configured exit.
 
-    This prevents paths such as [..., "31", "35"] when both "31" and "35" are
-    exits. JuPedSim cannot use an exit as an intermediate waypoint, and
-    logically the agent should be considered evacuated when it reaches the first
-    exit in the path.
+    This prevents paths such as [..., "23", "25", "24"] when "23", "25"
+    and "24" are exits. JuPedSim cannot use an exit as an intermediate
+    waypoint, and logically the agent should be considered evacuated when
+    it reaches the first exit in the path.
     """
     if not path or len(path) < 2:
         return path
 
+    exit_nodes_as_str = {str(node) for node in exit_nodes}
+
     for idx, node in enumerate(path[1:], start=1):
-        if node in exit_nodes:
-            return path[:idx + 1]
+        if str(node) in exit_nodes_as_str:
+            return path[: idx + 1]
 
     return path
 
