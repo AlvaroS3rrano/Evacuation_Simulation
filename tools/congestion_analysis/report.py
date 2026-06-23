@@ -46,9 +46,20 @@ def write_markdown_report(
         lines.append("")
 
         case_comp = comparison[comparison["case_id"] == case_id]
-        if main_column in case_comp.columns and pct_column in case_comp.columns:
-            deltas = case_comp[["heuristic", main_column, pct_column]].copy()
-            lines.append(f"Change in `{main_metric}` vs `{baseline}`:")
+
+        lines.append(f"Change vs `{baseline}` by metric:")
+        lines.append("")
+
+        for metric in metrics:
+            metric_column = f"{metric}_weighted"
+            pct_column = f"{metric_column}_pct_vs_{baseline}"
+
+            if metric_column not in case_comp.columns or pct_column not in case_comp.columns:
+                continue
+
+            deltas = case_comp[["heuristic", metric_column, pct_column]].copy()
+
+            lines.append(f"#### `{metric}`")
             lines.append("")
             lines.append(deltas.to_markdown(index=False))
             lines.append("")

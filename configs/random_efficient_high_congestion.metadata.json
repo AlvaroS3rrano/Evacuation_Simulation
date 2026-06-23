@@ -1,0 +1,48 @@
+{
+  "generated_by": "tools/generate_random_congestion_yaml.py",
+  "output_config": "C:\\GitHub\\Evacuation_Simulation\\configs\\random_efficient_high_congestion.yaml",
+  "base_config": "congestion_heuristics.yaml",
+  "configs_per_scenario": 5,
+  "master_seed": 1234,
+  "scenarios": [
+    "two_corridors",
+    "short_vs_wide",
+    "two_exits"
+  ],
+  "heuristics": [
+    "none",
+    "h1",
+    "h2",
+    "h3"
+  ],
+  "include_base_config": true,
+  "required_sources": {},
+  "required_targets": {
+    "two_exits": [
+      "17"
+    ]
+  },
+  "agents_per_source_min": 20,
+  "agents_per_source_max": 80,
+  "sources_per_case_min": 1,
+  "sources_per_case_max": 4,
+  "targets_per_case_min": 1,
+  "targets_per_case_max": 3,
+  "generated_cases": [
+    "base_two_corridors",
+    "random_two_corridors_002",
+    "random_two_corridors_003",
+    "random_two_corridors_004",
+    "random_two_corridors_005",
+    "base_short_vs_wide",
+    "random_short_vs_wide_002",
+    "random_short_vs_wide_003",
+    "random_short_vs_wide_004",
+    "random_short_vs_wide_005",
+    "base_two_exits",
+    "random_two_exits_002",
+    "random_two_exits_003",
+    "random_two_exits_004",
+    "random_two_exits_005"
+  ]
+}

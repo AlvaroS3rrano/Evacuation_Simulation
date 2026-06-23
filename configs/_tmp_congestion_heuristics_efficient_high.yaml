@@ -1,0 +1,1449 @@
+base_two_corridors:
+  environment: parallel_corridors
+  sources: &id001
+  - '1'
+  - '9'
+  - '19'
+  agents: &id003
+  - 45
+  - 45
+  - 20
+  targets: &id002
+  - '23'
+  mode_type: 5
+  master_seed: 3101
+  grouping:
+    enabled: true
+    distribution: normal
+    max_group_size: 5
+    min_group_size: 1
+    mean_group_size: 3
+    std_group_size: 2
+    seed: 3201
+    order_by_route_proximity: true
+  congestion:
+    node_capacity_multiplier: 1.0
+    edge_flow_capacity_multiplier: 1.0
+    block_edges_at_capacity: true
+    no_path_policy: wait
+    capacity_reservations:
+      enabled: true
+      node_capacity_enabled: true
+      edge_flow_enabled: true
+      temporal_reservation_enabled: true
+      time_bucket_frames: 30
+      temporal_horizon_frames: 300
+      traversal_time_scale: 1.0
+      node_capacity_default: 20
+      edge_flow_capacity_default: 10
+      allow_waiting: true
+      block_at_capacity: true
+      allow_oversized_group_reservations: true
+      max_oversized_capacity_batches: 4
+  metrics:
+    density:
+      sample_every_frames: 10
+      high_density_threshold: 12
+  gamma: 0.3
+  stairs_max_speed: 0.6
+  normal_max_speed: 1.2
+  every_nth_frame_simulation: 3
+  every_nth_frame_animation: 25
+  danger_visualization_frame: 300
+  waypoints: &id004
+  - '24'
+  - '25'
+  - '22'
+  - '18'
+  - '17'
+  random_experiment:
+    scenario: two_corridors
+    config_index: 1
+    mode_type: 5
+    mode_label: efficient_high
+    is_base_config: true
+    source_template_case_id: congestion_parallel_corridors
+    description: Base case copied from congestion_heuristics.yaml without randomization.
+    final_sources: *id001
+    final_targets: *id002
+    final_agents: *id003
+    waypoints_added_from_non_selected_targets: *id004
+random_two_corridors_002:
+  environment: parallel_corridors
+  sources: &id005
+  - '9'
+  agents: &id007
+  - 21
+  targets: &id006
+  - '24'
+  - '23'
+  - '25'
+  mode_type: 5
+  master_seed: 1892932127
+  grouping:
+    enabled: true
+    distribution: normal
+    max_group_size: 5
+    min_group_size: 1
+    mean_group_size: 3
+    std_group_size: 2
+    seed: 32175636
+    order_by_route_proximity: true
+  congestion:
+    node_capacity_multiplier: 1.0
+    edge_flow_capacity_multiplier: 1.0
+    block_edges_at_capacity: true
+    no_path_policy: wait
+    capacity_reservations:
+      enabled: true
+      node_capacity_enabled: true
+      edge_flow_enabled: true
+      temporal_reservation_enabled: true
+      time_bucket_frames: 30
+      temporal_horizon_frames: 300
+      traversal_time_scale: 1.0
+      node_capacity_default: 20
+      edge_flow_capacity_default: 10
+      allow_waiting: true
+      block_at_capacity: true
+      allow_oversized_group_reservations: true
+      max_oversized_capacity_batches: 4
+  metrics:
+    density:
+      sample_every_frames: 10
+      high_density_threshold: 12
+  gamma: 0.3
+  stairs_max_speed: 0.6
+  normal_max_speed: 1.2
+  every_nth_frame_simulation: 3
+  every_nth_frame_animation: 25
+  danger_visualization_frame: 300
+  waypoints:
+  - '22'
+  - '18'
+  - '17'
+  random_experiment:
+    scenario: two_corridors
+    config_index: 2
+    mode_type: 5
+    mode_label: efficient_high
+    case_seed: 1892932127
+    grouping_seed: 32175636
+    agent_position_seed: 1356310371
+    requested_sources:
+    - '9'
+    requested_targets:
+    - '24'
+    - '23'
+    - '25'
+    requested_agents:
+    - 21
+    final_sources: *id005
+    final_targets: *id006
+    final_agents: *id007
+    capacity_report:
+    - source: '9'
+      requested_agents: 21
+      placed_agents: 21
+      reduced: false
+    waypoints_added_from_non_selected_targets:
+    - '22'
+    - '18'
+    - '17'
+    required_sources: []
+    required_targets: []
+random_two_corridors_003:
+  environment: parallel_corridors
+  sources: &id008
+  - '9'
+  - '19'
+  - '1'
+  - '2'
+  agents: &id010
+  - 52
+  - 45
+  - 76
+  - 35
+  targets: &id009
+  - '24'
+  mode_type: 5
+  master_seed: 3387753032
+  grouping:
+    enabled: true
+    distribution: normal
+    max_group_size: 5
+    min_group_size: 1
+    mean_group_size: 3
+    std_group_size: 2
+    seed: 2676973563
+    order_by_route_proximity: true
+  congestion:
+    node_capacity_multiplier: 1.0
+    edge_flow_capacity_multiplier: 1.0
+    block_edges_at_capacity: true
+    no_path_policy: wait
+    capacity_reservations:
+      enabled: true
+      node_capacity_enabled: true
+      edge_flow_enabled: true
+      temporal_reservation_enabled: true
+      time_bucket_frames: 30
+      temporal_horizon_frames: 300
+      traversal_time_scale: 1.0
+      node_capacity_default: 20
+      edge_flow_capacity_default: 10
+      allow_waiting: true
+      block_at_capacity: true
+      allow_oversized_group_reservations: true
+      max_oversized_capacity_batches: 4
+  metrics:
+    density:
+      sample_every_frames: 10
+      high_density_threshold: 12
+  gamma: 0.3
+  stairs_max_speed: 0.6
+  normal_max_speed: 1.2
+  every_nth_frame_simulation: 3
+  every_nth_frame_animation: 25
+  danger_visualization_frame: 300
+  waypoints:
+  - '25'
+  - '23'
+  - '22'
+  - '18'
+  - '17'
+  random_experiment:
+    scenario: two_corridors
+    config_index: 3
+    mode_type: 5
+    mode_label: efficient_high
+    case_seed: 3387753032
+    grouping_seed: 2676973563
+    agent_position_seed: 302892669
+    requested_sources:
+    - '9'
+    - '19'
+    - '1'
+    - '2'
+    requested_targets:
+    - '24'
+    requested_agents:
+    - 52
+    - 51
+    - 76
+    - 35
+    final_sources: *id008
+    final_targets: *id009
+    final_agents: *id010
+    capacity_report:
+    - source: '9'
+      requested_agents: 52
+      placed_agents: 52
+      reduced: false
+    - source: '19'
+      requested_agents: 51
+      placed_agents: 45
+      reduced: true
+    - source: '1'
+      requested_agents: 76
+      placed_agents: 76
+      reduced: false
+    - source: '2'
+      requested_agents: 35
+      placed_agents: 35
+      reduced: false
+    waypoints_added_from_non_selected_targets:
+    - '25'
+    - '23'
+    - '22'
+    - '18'
+    - '17'
+    required_sources: []
+    required_targets: []
+random_two_corridors_004:
+  environment: parallel_corridors
+  sources: &id011
+  - '9'
+  - '1'
+  - '19'
+  agents: &id013
+  - 61
+  - 79
+  - 32
+  targets: &id012
+  - '23'
+  - '17'
+  - '25'
+  mode_type: 5
+  master_seed: 2001019095
+  grouping:
+    enabled: true
+    distribution: normal
+    max_group_size: 5
+    min_group_size: 1
+    mean_group_size: 3
+    std_group_size: 2
+    seed: 2486797600
+    order_by_route_proximity: true
+  congestion:
+    node_capacity_multiplier: 1.0
+    edge_flow_capacity_multiplier: 1.0
+    block_edges_at_capacity: true
+    no_path_policy: wait
+    capacity_reservations:
+      enabled: true
+      node_capacity_enabled: true
+      edge_flow_enabled: true
+      temporal_reservation_enabled: true
+      time_bucket_frames: 30
+      temporal_horizon_frames: 300
+      traversal_time_scale: 1.0
+      node_capacity_default: 20
+      edge_flow_capacity_default: 10
+      allow_waiting: true
+      block_at_capacity: true
+      allow_oversized_group_reservations: true
+      max_oversized_capacity_batches: 4
+  metrics:
+    density:
+      sample_every_frames: 10
+      high_density_threshold: 12
+  gamma: 0.3
+  stairs_max_speed: 0.6
+  normal_max_speed: 1.2
+  every_nth_frame_simulation: 3
+  every_nth_frame_animation: 25
+  danger_visualization_frame: 300
+  waypoints:
+  - '24'
+  - '22'
+  - '18'
+  random_experiment:
+    scenario: two_corridors
+    config_index: 4
+    mode_type: 5
+    mode_label: efficient_high
+    case_seed: 2001019095
+    grouping_seed: 2486797600
+    agent_position_seed: 103624833
+    requested_sources:
+    - '9'
+    - '1'
+    - '19'
+    requested_targets:
+    - '23'
+    - '17'
+    - '25'
+    requested_agents:
+    - 61
+    - 79
+    - 32
+    final_sources: *id011
+    final_targets: *id012
+    final_agents: *id013
+    capacity_report:
+    - source: '9'
+      requested_agents: 61
+      placed_agents: 61
+      reduced: false
+    - source: '1'
+      requested_agents: 79
+      placed_agents: 79
+      reduced: false
+    - source: '19'
+      requested_agents: 32
+      placed_agents: 32
+      reduced: false
+    waypoints_added_from_non_selected_targets:
+    - '24'
+    - '22'
+    - '18'
+    required_sources: []
+    required_targets: []
+random_two_corridors_005:
+  environment: parallel_corridors
+  sources: &id014
+  - '10'
+  - '2'
+  agents: &id016
+  - 57
+  - 51
+  targets: &id015
+  - '25'
+  - '24'
+  - '18'
+  mode_type: 5
+  master_seed: 2182281158
+  grouping:
+    enabled: true
+    distribution: normal
+    max_group_size: 5
+    min_group_size: 1
+    mean_group_size: 3
+    std_group_size: 2
+    seed: 24825937
+    order_by_route_proximity: true
+  congestion:
+    node_capacity_multiplier: 1.0
+    edge_flow_capacity_multiplier: 1.0
+    block_edges_at_capacity: true
+    no_path_policy: wait
+    capacity_reservations:
+      enabled: true
+      node_capacity_enabled: true
+      edge_flow_enabled: true
+      temporal_reservation_enabled: true
+      time_bucket_frames: 30
+      temporal_horizon_frames: 300
+      traversal_time_scale: 1.0
+      node_capacity_default: 20
+      edge_flow_capacity_default: 10
+      allow_waiting: true
+      block_at_capacity: true
+      allow_oversized_group_reservations: true
+      max_oversized_capacity_batches: 4
+  metrics:
+    density:
+      sample_every_frames: 10
+      high_density_threshold: 12
+  gamma: 0.3
+  stairs_max_speed: 0.6
+  normal_max_speed: 1.2
+  every_nth_frame_simulation: 3
+  every_nth_frame_animation: 25
+  danger_visualization_frame: 300
+  waypoints:
+  - '23'
+  - '22'
+  - '17'
+  random_experiment:
+    scenario: two_corridors
+    config_index: 5
+    mode_type: 5
+    mode_label: efficient_high
+    case_seed: 2182281158
+    grouping_seed: 24825937
+    agent_position_seed: 2884303835
+    requested_sources:
+    - '10'
+    - '2'
+    requested_targets:
+    - '25'
+    - '24'
+    - '18'
+    requested_agents:
+    - 57
+    - 51
+    final_sources: *id014
+    final_targets: *id015
+    final_agents: *id016
+    capacity_report:
+    - source: '10'
+      requested_agents: 57
+      placed_agents: 57
+      reduced: false
+    - source: '2'
+      requested_agents: 51
+      placed_agents: 51
+      reduced: false
+    waypoints_added_from_non_selected_targets:
+    - '23'
+    - '22'
+    - '17'
+    required_sources: []
+    required_targets: []
+base_short_vs_wide:
+  environment: short_vs_wide
+  sources: &id017
+  - '27'
+  - '3'
+  - '1'
+  - '33'
+  - '32'
+  - '28'
+  agents: &id019
+  - 45
+  - 45
+  - 45
+  - 45
+  - 45
+  - 45
+  targets: &id018
+  - '35'
+  - '31'
+  mode_type: 5
+  master_seed: 3102
+  grouping:
+    enabled: true
+    distribution: normal
+    max_group_size: 5
+    min_group_size: 1
+    mean_group_size: 3
+    std_group_size: 2
+    seed: 3201
+    order_by_route_proximity: true
+  congestion:
+    node_capacity_multiplier: 1.0
+    edge_flow_capacity_multiplier: 1.0
+    block_edges_at_capacity: true
+    no_path_policy: wait
+    capacity_reservations:
+      enabled: true
+      node_capacity_enabled: true
+      edge_flow_enabled: true
+      temporal_reservation_enabled: true
+      time_bucket_frames: 30
+      temporal_horizon_frames: 300
+      traversal_time_scale: 1.0
+      node_capacity_default: 20
+      edge_flow_capacity_default: 10
+      allow_waiting: true
+      block_at_capacity: true
+      allow_oversized_group_reservations: true
+      max_oversized_capacity_batches: 4
+  metrics:
+    density:
+      sample_every_frames: 10
+      high_density_threshold: 12
+  gamma: 0.3
+  stairs_max_speed: 0.6
+  normal_max_speed: 1.2
+  every_nth_frame_simulation: 3
+  every_nth_frame_animation: 25
+  danger_visualization_frame: 300
+  waypoints: &id020
+  - '2'
+  - '29'
+  - '30'
+  - '4'
+  - '36'
+  - '37'
+  random_experiment:
+    scenario: short_vs_wide
+    config_index: 1
+    mode_type: 5
+    mode_label: efficient_high
+    is_base_config: true
+    source_template_case_id: congestion_short_vs_wide
+    description: Base case copied from congestion_heuristics.yaml without randomization.
+    final_sources: *id017
+    final_targets: *id018
+    final_agents: *id019
+    waypoints_added_from_non_selected_targets: *id020
+random_short_vs_wide_002:
+  environment: short_vs_wide
+  sources: &id021
+  - '32'
+  - '33'
+  agents: &id023
+  - 53
+  - 29
+  targets: &id022
+  - '29'
+  mode_type: 5
+  master_seed: 704388509
+  grouping:
+    enabled: true
+    distribution: normal
+    max_group_size: 5
+    min_group_size: 1
+    mean_group_size: 3
+    std_group_size: 2
+    seed: 2393715144
+    order_by_route_proximity: true
+  congestion:
+    node_capacity_multiplier: 1.0
+    edge_flow_capacity_multiplier: 1.0
+    block_edges_at_capacity: true
+    no_path_policy: wait
+    capacity_reservations:
+      enabled: true
+      node_capacity_enabled: true
+      edge_flow_enabled: true
+      temporal_reservation_enabled: true
+      time_bucket_frames: 30
+      temporal_horizon_frames: 300
+      traversal_time_scale: 1.0
+      node_capacity_default: 20
+      edge_flow_capacity_default: 10
+      allow_waiting: true
+      block_at_capacity: true
+      allow_oversized_group_reservations: true
+      max_oversized_capacity_batches: 4
+  metrics:
+    density:
+      sample_every_frames: 10
+      high_density_threshold: 12
+  gamma: 0.3
+  stairs_max_speed: 0.6
+  normal_max_speed: 1.2
+  every_nth_frame_simulation: 3
+  every_nth_frame_animation: 25
+  danger_visualization_frame: 300
+  waypoints:
+  - '2'
+  - '30'
+  - '31'
+  - '4'
+  - '35'
+  - '36'
+  - '37'
+  random_experiment:
+    scenario: short_vs_wide
+    config_index: 2
+    mode_type: 5
+    mode_label: efficient_high
+    case_seed: 704388509
+    grouping_seed: 2393715144
+    agent_position_seed: 366043041
+    requested_sources:
+    - '32'
+    - '33'
+    requested_targets:
+    - '29'
+    requested_agents:
+    - 53
+    - 29
+    final_sources: *id021
+    final_targets: *id022
+    final_agents: *id023
+    capacity_report:
+    - source: '32'
+      requested_agents: 53
+      placed_agents: 53
+      reduced: false
+    - source: '33'
+      requested_agents: 29
+      placed_agents: 29
+      reduced: false
+    waypoints_added_from_non_selected_targets:
+    - '2'
+    - '30'
+    - '31'
+    - '4'
+    - '35'
+    - '36'
+    - '37'
+    required_sources: []
+    required_targets: []
+random_short_vs_wide_003:
+  environment: short_vs_wide
+  sources: &id024
+  - '1'
+  - '26'
+  - '27'
+  - '33'
+  agents: &id026
+  - 29
+  - 69
+  - 73
+  - 49
+  targets: &id025
+  - '4'
+  - '36'
+  mode_type: 5
+  master_seed: 2879783370
+  grouping:
+    enabled: true
+    distribution: normal
+    max_group_size: 5
+    min_group_size: 1
+    mean_group_size: 3
+    std_group_size: 2
+    seed: 1950523684
+    order_by_route_proximity: true
+  congestion:
+    node_capacity_multiplier: 1.0
+    edge_flow_capacity_multiplier: 1.0
+    block_edges_at_capacity: true
+    no_path_policy: wait
+    capacity_reservations:
+      enabled: true
+      node_capacity_enabled: true
+      edge_flow_enabled: true
+      temporal_reservation_enabled: true
+      time_bucket_frames: 30
+      temporal_horizon_frames: 300
+      traversal_time_scale: 1.0
+      node_capacity_default: 20
+      edge_flow_capacity_default: 10
+      allow_waiting: true
+      block_at_capacity: true
+      allow_oversized_group_reservations: true
+      max_oversized_capacity_batches: 4
+  metrics:
+    density:
+      sample_every_frames: 10
+      high_density_threshold: 12
+  gamma: 0.3
+  stairs_max_speed: 0.6
+  normal_max_speed: 1.2
+  every_nth_frame_simulation: 3
+  every_nth_frame_animation: 25
+  danger_visualization_frame: 300
+  waypoints:
+  - '2'
+  - '29'
+  - '30'
+  - '31'
+  - '35'
+  - '37'
+  random_experiment:
+    scenario: short_vs_wide
+    config_index: 3
+    mode_type: 5
+    mode_label: efficient_high
+    case_seed: 2879783370
+    grouping_seed: 1950523684
+    agent_position_seed: 2551697468
+    requested_sources:
+    - '1'
+    - '26'
+    - '27'
+    - '33'
+    requested_targets:
+    - '4'
+    - '36'
+    requested_agents:
+    - 29
+    - 69
+    - 73
+    - 49
+    final_sources: *id024
+    final_targets: *id025
+    final_agents: *id026
+    capacity_report:
+    - source: '1'
+      requested_agents: 29
+      placed_agents: 29
+      reduced: false
+    - source: '26'
+      requested_agents: 69
+      placed_agents: 69
+      reduced: false
+    - source: '27'
+      requested_agents: 73
+      placed_agents: 73
+      reduced: false
+    - source: '33'
+      requested_agents: 49
+      placed_agents: 49
+      reduced: false
+    waypoints_added_from_non_selected_targets:
+    - '2'
+    - '29'
+    - '30'
+    - '31'
+    - '35'
+    - '37'
+    required_sources: []
+    required_targets: []
+random_short_vs_wide_004:
+  environment: short_vs_wide
+  sources: &id027
+  - '34'
+  - '33'
+  - '3'
+  - '26'
+  agents: &id029
+  - 66
+  - 69
+  - 53
+  - 72
+  targets: &id028
+  - '37'
+  mode_type: 5
+  master_seed: 1501487499
+  grouping:
+    enabled: true
+    distribution: normal
+    max_group_size: 5
+    min_group_size: 1
+    mean_group_size: 3
+    std_group_size: 2
+    seed: 3506682143
+    order_by_route_proximity: true
+  congestion:
+    node_capacity_multiplier: 1.0
+    edge_flow_capacity_multiplier: 1.0
+    block_edges_at_capacity: true
+    no_path_policy: wait
+    capacity_reservations:
+      enabled: true
+      node_capacity_enabled: true
+      edge_flow_enabled: true
+      temporal_reservation_enabled: true
+      time_bucket_frames: 30
+      temporal_horizon_frames: 300
+      traversal_time_scale: 1.0
+      node_capacity_default: 20
+      edge_flow_capacity_default: 10
+      allow_waiting: true
+      block_at_capacity: true
+      allow_oversized_group_reservations: true
+      max_oversized_capacity_batches: 4
+  metrics:
+    density:
+      sample_every_frames: 10
+      high_density_threshold: 12
+  gamma: 0.3
+  stairs_max_speed: 0.6
+  normal_max_speed: 1.2
+  every_nth_frame_simulation: 3
+  every_nth_frame_animation: 25
+  danger_visualization_frame: 300
+  waypoints:
+  - '2'
+  - '29'
+  - '30'
+  - '31'
+  - '4'
+  - '35'
+  - '36'
+  random_experiment:
+    scenario: short_vs_wide
+    config_index: 4
+    mode_type: 5
+    mode_label: efficient_high
+    case_seed: 1501487499
+    grouping_seed: 3506682143
+    agent_position_seed: 2343820131
+    requested_sources:
+    - '34'
+    - '33'
+    - '3'
+    - '26'
+    requested_targets:
+    - '37'
+    requested_agents:
+    - 66
+    - 69
+    - 53
+    - 72
+    final_sources: *id027
+    final_targets: *id028
+    final_agents: *id029
+    capacity_report:
+    - source: '34'
+      requested_agents: 66
+      placed_agents: 66
+      reduced: false
+    - source: '33'
+      requested_agents: 69
+      placed_agents: 69
+      reduced: false
+    - source: '3'
+      requested_agents: 53
+      placed_agents: 53
+      reduced: false
+    - source: '26'
+      requested_agents: 72
+      placed_agents: 72
+      reduced: false
+    waypoints_added_from_non_selected_targets:
+    - '2'
+    - '29'
+    - '30'
+    - '31'
+    - '4'
+    - '35'
+    - '36'
+    required_sources: []
+    required_targets: []
+random_short_vs_wide_005:
+  environment: short_vs_wide
+  sources: &id030
+  - '33'
+  - '34'
+  agents: &id032
+  - 26
+  - 73
+  targets: &id031
+  - '29'
+  - '4'
+  mode_type: 5
+  master_seed: 1880646080
+  grouping:
+    enabled: true
+    distribution: normal
+    max_group_size: 5
+    min_group_size: 1
+    mean_group_size: 3
+    std_group_size: 2
+    seed: 1181292127
+    order_by_route_proximity: true
+  congestion:
+    node_capacity_multiplier: 1.0
+    edge_flow_capacity_multiplier: 1.0
+    block_edges_at_capacity: true
+    no_path_policy: wait
+    capacity_reservations:
+      enabled: true
+      node_capacity_enabled: true
+      edge_flow_enabled: true
+      temporal_reservation_enabled: true
+      time_bucket_frames: 30
+      temporal_horizon_frames: 300
+      traversal_time_scale: 1.0
+      node_capacity_default: 20
+      edge_flow_capacity_default: 10
+      allow_waiting: true
+      block_at_capacity: true
+      allow_oversized_group_reservations: true
+      max_oversized_capacity_batches: 4
+  metrics:
+    density:
+      sample_every_frames: 10
+      high_density_threshold: 12
+  gamma: 0.3
+  stairs_max_speed: 0.6
+  normal_max_speed: 1.2
+  every_nth_frame_simulation: 3
+  every_nth_frame_animation: 25
+  danger_visualization_frame: 300
+  waypoints:
+  - '2'
+  - '30'
+  - '31'
+  - '35'
+  - '36'
+  - '37'
+  random_experiment:
+    scenario: short_vs_wide
+    config_index: 5
+    mode_type: 5
+    mode_label: efficient_high
+    case_seed: 1880646080
+    grouping_seed: 1181292127
+    agent_position_seed: 3997362171
+    requested_sources:
+    - '33'
+    - '34'
+    requested_targets:
+    - '29'
+    - '4'
+    requested_agents:
+    - 26
+    - 73
+    final_sources: *id030
+    final_targets: *id031
+    final_agents: *id032
+    capacity_report:
+    - source: '33'
+      requested_agents: 26
+      placed_agents: 26
+      reduced: false
+    - source: '34'
+      requested_agents: 73
+      placed_agents: 73
+      reduced: false
+    waypoints_added_from_non_selected_targets:
+    - '2'
+    - '30'
+    - '31'
+    - '35'
+    - '36'
+    - '37'
+    required_sources: []
+    required_targets: []
+base_two_exits:
+  environment: two_exits
+  sources: &id033
+  - '1'
+  - '3'
+  - '7'
+  - '10'
+  - '50'
+  - '43'
+  - '6'
+  - '46'
+  - '20'
+  - '35'
+  agents: &id035
+  - 25
+  - 25
+  - 25
+  - 25
+  - 25
+  - 25
+  - 25
+  - 25
+  - 25
+  - 25
+  targets: &id034
+  - '17'
+  - '63'
+  - '64'
+  - '65'
+  - '18'
+  - '66'
+  mode_type: 5
+  master_seed: 3103
+  grouping:
+    enabled: true
+    distribution: normal
+    max_group_size: 5
+    min_group_size: 1
+    mean_group_size: 3
+    std_group_size: 2
+    seed: 3201
+    order_by_route_proximity: true
+  congestion:
+    node_capacity_multiplier: 1.0
+    edge_flow_capacity_multiplier: 1.0
+    block_edges_at_capacity: true
+    no_path_policy: wait
+    capacity_reservations:
+      enabled: true
+      node_capacity_enabled: true
+      edge_flow_enabled: true
+      temporal_reservation_enabled: true
+      time_bucket_frames: 30
+      temporal_horizon_frames: 300
+      traversal_time_scale: 1.0
+      node_capacity_default: 20
+      edge_flow_capacity_default: 10
+      allow_waiting: true
+      block_at_capacity: true
+      allow_oversized_group_reservations: true
+      max_oversized_capacity_batches: 4
+  metrics:
+    density:
+      sample_every_frames: 10
+      high_density_threshold: 12
+  gamma: 0.3
+  stairs_max_speed: 0.6
+  normal_max_speed: 1.2
+  every_nth_frame_simulation: 3
+  every_nth_frame_animation: 25
+  danger_visualization_frame: 300
+  waypoints: &id036
+  - '58'
+  - '59'
+  - '60'
+  - '61'
+  - '62'
+  random_experiment:
+    scenario: two_exits
+    config_index: 1
+    mode_type: 5
+    mode_label: efficient_high
+    is_base_config: true
+    source_template_case_id: congestion_two_exits
+    description: Base case copied from congestion_heuristics.yaml without randomization.
+    final_sources: *id033
+    final_targets: *id034
+    final_agents: *id035
+    waypoints_added_from_non_selected_targets: *id036
+random_two_exits_002:
+  environment: two_exits
+  sources: &id037
+  - '51'
+  agents: &id039
+  - 29
+  targets: &id038
+  - '64'
+  - '61'
+  - '18'
+  - '17'
+  mode_type: 5
+  master_seed: 3610222285
+  grouping:
+    enabled: true
+    distribution: normal
+    max_group_size: 5
+    min_group_size: 1
+    mean_group_size: 3
+    std_group_size: 2
+    seed: 822113090
+    order_by_route_proximity: true
+  congestion:
+    node_capacity_multiplier: 1.0
+    edge_flow_capacity_multiplier: 1.0
+    block_edges_at_capacity: true
+    no_path_policy: wait
+    capacity_reservations:
+      enabled: true
+      node_capacity_enabled: true
+      edge_flow_enabled: true
+      temporal_reservation_enabled: true
+      time_bucket_frames: 30
+      temporal_horizon_frames: 300
+      traversal_time_scale: 1.0
+      node_capacity_default: 20
+      edge_flow_capacity_default: 10
+      allow_waiting: true
+      block_at_capacity: true
+      allow_oversized_group_reservations: true
+      max_oversized_capacity_batches: 4
+  metrics:
+    density:
+      sample_every_frames: 10
+      high_density_threshold: 12
+  gamma: 0.3
+  stairs_max_speed: 0.6
+  normal_max_speed: 1.2
+  every_nth_frame_simulation: 3
+  every_nth_frame_animation: 25
+  danger_visualization_frame: 300
+  waypoints:
+  - '17'
+  - '63'
+  - '65'
+  - '66'
+  - '58'
+  - '59'
+  - '60'
+  - '62'
+  random_experiment:
+    scenario: two_exits
+    config_index: 2
+    mode_type: 5
+    mode_label: efficient_high
+    case_seed: 3610222285
+    grouping_seed: 822113090
+    agent_position_seed: 916109806
+    requested_sources:
+    - '51'
+    requested_targets:
+    - '64'
+    - '61'
+    - '18'
+    requested_agents:
+    - 29
+    final_sources: *id037
+    final_targets: *id038
+    final_agents: *id039
+    capacity_report:
+    - source: '51'
+      requested_agents: 29
+      placed_agents: 29
+      reduced: false
+    waypoints_added_from_non_selected_targets:
+    - '17'
+    - '63'
+    - '65'
+    - '66'
+    - '58'
+    - '59'
+    - '60'
+    - '62'
+    required_sources: []
+    required_targets: &id043
+    - '17'
+random_two_exits_003:
+  environment: two_exits
+  sources: &id040
+  - '20'
+  agents: &id042
+  - 71
+  targets: &id041
+  - '17'
+  - '18'
+  mode_type: 5
+  master_seed: 3380095576
+  grouping:
+    enabled: true
+    distribution: normal
+    max_group_size: 5
+    min_group_size: 1
+    mean_group_size: 3
+    std_group_size: 2
+    seed: 3095314641
+    order_by_route_proximity: true
+  congestion:
+    node_capacity_multiplier: 1.0
+    edge_flow_capacity_multiplier: 1.0
+    block_edges_at_capacity: true
+    no_path_policy: wait
+    capacity_reservations:
+      enabled: true
+      node_capacity_enabled: true
+      edge_flow_enabled: true
+      temporal_reservation_enabled: true
+      time_bucket_frames: 30
+      temporal_horizon_frames: 300
+      traversal_time_scale: 1.0
+      node_capacity_default: 20
+      edge_flow_capacity_default: 10
+      allow_waiting: true
+      block_at_capacity: true
+      allow_oversized_group_reservations: true
+      max_oversized_capacity_batches: 4
+  metrics:
+    density:
+      sample_every_frames: 10
+      high_density_threshold: 12
+  gamma: 0.3
+  stairs_max_speed: 0.6
+  normal_max_speed: 1.2
+  every_nth_frame_simulation: 3
+  every_nth_frame_animation: 25
+  danger_visualization_frame: 300
+  waypoints:
+  - '63'
+  - '64'
+  - '65'
+  - '66'
+  - '58'
+  - '59'
+  - '60'
+  - '61'
+  - '62'
+  random_experiment:
+    scenario: two_exits
+    config_index: 3
+    mode_type: 5
+    mode_label: efficient_high
+    case_seed: 3380095576
+    grouping_seed: 3095314641
+    agent_position_seed: 1029619614
+    requested_sources:
+    - '20'
+    requested_targets:
+    - '17'
+    - '18'
+    requested_agents:
+    - 71
+    final_sources: *id040
+    final_targets: *id041
+    final_agents: *id042
+    capacity_report:
+    - source: '20'
+      requested_agents: 71
+      placed_agents: 71
+      reduced: false
+    waypoints_added_from_non_selected_targets:
+    - '63'
+    - '64'
+    - '65'
+    - '66'
+    - '58'
+    - '59'
+    - '60'
+    - '61'
+    - '62'
+    required_sources: []
+    required_targets: *id043
+random_two_exits_004:
+  environment: two_exits
+  sources: &id044
+  - '44'
+  - '23'
+  - '5'
+  - '51'
+  agents: &id046
+  - 76
+  - 32
+  - 26
+  - 45
+  targets: &id045
+  - '58'
+  - '17'
+  mode_type: 5
+  master_seed: 163185562
+  grouping:
+    enabled: true
+    distribution: normal
+    max_group_size: 5
+    min_group_size: 1
+    mean_group_size: 3
+    std_group_size: 2
+    seed: 1361444623
+    order_by_route_proximity: true
+  congestion:
+    node_capacity_multiplier: 1.0
+    edge_flow_capacity_multiplier: 1.0
+    block_edges_at_capacity: true
+    no_path_policy: wait
+    capacity_reservations:
+      enabled: true
+      node_capacity_enabled: true
+      edge_flow_enabled: true
+      temporal_reservation_enabled: true
+      time_bucket_frames: 30
+      temporal_horizon_frames: 300
+      traversal_time_scale: 1.0
+      node_capacity_default: 20
+      edge_flow_capacity_default: 10
+      allow_waiting: true
+      block_at_capacity: true
+      allow_oversized_group_reservations: true
+      max_oversized_capacity_batches: 4
+  metrics:
+    density:
+      sample_every_frames: 10
+      high_density_threshold: 12
+  gamma: 0.3
+  stairs_max_speed: 0.6
+  normal_max_speed: 1.2
+  every_nth_frame_simulation: 3
+  every_nth_frame_animation: 25
+  danger_visualization_frame: 300
+  waypoints:
+  - '17'
+  - '63'
+  - '64'
+  - '65'
+  - '18'
+  - '66'
+  - '59'
+  - '60'
+  - '61'
+  - '62'
+  random_experiment:
+    scenario: two_exits
+    config_index: 4
+    mode_type: 5
+    mode_label: efficient_high
+    case_seed: 163185562
+    grouping_seed: 1361444623
+    agent_position_seed: 2411376677
+    requested_sources:
+    - '44'
+    - '23'
+    - '5'
+    - '51'
+    requested_targets:
+    - '58'
+    requested_agents:
+    - 80
+    - 32
+    - 26
+    - 45
+    final_sources: *id044
+    final_targets: *id045
+    final_agents: *id046
+    capacity_report:
+    - source: '44'
+      requested_agents: 80
+      placed_agents: 76
+      reduced: true
+    - source: '23'
+      requested_agents: 32
+      placed_agents: 32
+      reduced: false
+    - source: '5'
+      requested_agents: 26
+      placed_agents: 26
+      reduced: false
+    - source: '51'
+      requested_agents: 45
+      placed_agents: 45
+      reduced: false
+    waypoints_added_from_non_selected_targets:
+    - '17'
+    - '63'
+    - '64'
+    - '65'
+    - '18'
+    - '66'
+    - '59'
+    - '60'
+    - '61'
+    - '62'
+    required_sources: []
+    required_targets: *id043
+random_two_exits_005:
+  environment: two_exits
+  sources: &id047
+  - '4'
+  - '29'
+  agents: &id049
+  - 51
+  - 77
+  targets: &id048
+  - '60'
+  - '64'
+  - '17'
+  mode_type: 5
+  master_seed: 3425460342
+  grouping:
+    enabled: true
+    distribution: normal
+    max_group_size: 5
+    min_group_size: 1
+    mean_group_size: 3
+    std_group_size: 2
+    seed: 1808926993
+    order_by_route_proximity: true
+  congestion:
+    node_capacity_multiplier: 1.0
+    edge_flow_capacity_multiplier: 1.0
+    block_edges_at_capacity: true
+    no_path_policy: wait
+    capacity_reservations:
+      enabled: true
+      node_capacity_enabled: true
+      edge_flow_enabled: true
+      temporal_reservation_enabled: true
+      time_bucket_frames: 30
+      temporal_horizon_frames: 300
+      traversal_time_scale: 1.0
+      node_capacity_default: 20
+      edge_flow_capacity_default: 10
+      allow_waiting: true
+      block_at_capacity: true
+      allow_oversized_group_reservations: true
+      max_oversized_capacity_batches: 4
+  metrics:
+    density:
+      sample_every_frames: 10
+      high_density_threshold: 12
+  gamma: 0.3
+  stairs_max_speed: 0.6
+  normal_max_speed: 1.2
+  every_nth_frame_simulation: 3
+  every_nth_frame_animation: 25
+  danger_visualization_frame: 300
+  waypoints:
+  - '17'
+  - '63'
+  - '65'
+  - '18'
+  - '66'
+  - '58'
+  - '59'
+  - '61'
+  - '62'
+  random_experiment:
+    scenario: two_exits
+    config_index: 5
+    mode_type: 5
+    mode_label: efficient_high
+    case_seed: 3425460342
+    grouping_seed: 1808926993
+    agent_position_seed: 50769507
+    requested_sources:
+    - '4'
+    - '29'
+    requested_targets:
+    - '60'
+    - '64'
+    requested_agents:
+    - 51
+    - 78
+    final_sources: *id047
+    final_targets: *id048
+    final_agents: *id049
+    capacity_report:
+    - source: '4'
+      requested_agents: 51
+      placed_agents: 51
+      reduced: false
+    - source: '29'
+      requested_agents: 78
+      placed_agents: 77
+      reduced: true
+    waypoints_added_from_non_selected_targets:
+    - '17'
+    - '63'
+    - '65'
+    - '18'
+    - '66'
+    - '58'
+    - '59'
+    - '61'
+    - '62'
+    required_sources: []
+    required_targets: *id043

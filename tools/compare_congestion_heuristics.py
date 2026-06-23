@@ -104,6 +104,7 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> int:
     args = parse_args()
+
     runs_dir = args.runs_dir.resolve()
     out_dir = args.out_dir or runs_dir / DEFAULT_OUTPUT_DIR_NAME
 
@@ -122,13 +123,20 @@ def main() -> int:
         heuristics=args.heuristics,
         cases=args.cases,
     )
+
     summary = build_summary(combined, metrics)
+
     summary = validate_completeness(
         summary=summary,
         selected_heuristics=args.heuristics,
         require_all_heuristics=args.require_all_heuristics,
     )
-    comparison = build_comparison_vs_baseline(summary, baseline=args.baseline)
+
+    comparison = build_comparison_vs_baseline(
+        summary,
+        baseline=args.baseline,
+    )
+
     best_by_metric = build_best_by_metric(
         summary,
         metrics=metrics,
@@ -136,6 +144,7 @@ def main() -> int:
     )
 
     visual_pdf_paths = []
+
     if not args.skip_visual_pdfs:
         visual_pdf_paths = generate_visual_comparison_pdfs(
             summary=summary,
@@ -171,6 +180,7 @@ def main() -> int:
     print("Comparison finished.")
     print(f"Output directory: {out_dir}")
     print(f"Main metric: {main_metric}")
+
     if visual_pdf_paths:
         print("Visual PDFs:")
         for pdf_path in visual_pdf_paths:

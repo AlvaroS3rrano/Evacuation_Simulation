@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import random
 import sqlite3
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
@@ -194,7 +195,18 @@ def prepare_shared_resources(
     shared_simulation_conn: sqlite3.Connection | None = None,
     shared_simulation_db_file: Path | None = None,
 ) -> ExperimentResources:
-    env = select_environment(cfg["environment"])
+    base_env = select_environment(cfg["environment"])
+
+    # IMPORTANT:
+    # Environments are cached with @lru_cache. pol.set_targets(...) mutates
+    # env.waypoints by removing target nodes. If we mutate the cached environment,
+    # targets removed in one case disappear as waypoints in later cases.
+    #
+    # Therefore, each case must work with its own environment copy.
+    env = replace(
+        base_env,
+        waypoints=dict(base_env.waypoints),
+    )
 
     graph = env.graph.copy()
 
