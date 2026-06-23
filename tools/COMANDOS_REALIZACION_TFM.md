@@ -43,7 +43,8 @@ A continuación, se generó el archivo YAML con las configuraciones experimental
 python .\tools\generate_random_congestion_yaml.py `
   --output-config random_efficient_high_congestion.yaml `
   --configs-per-scenario 5 `
-  --master-seed 1234
+  --master-seed 1234 `
+  --required-targets two_exits:17
 ```
 
 Este comando genera:
