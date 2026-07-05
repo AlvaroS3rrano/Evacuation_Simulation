@@ -1,8 +1,8 @@
 basement:
   environment: "management_building_basement"
-  sources: ["278", "27", "111"]
+  sources: ["24", "21", "1"]
   agents: [5, 5, 1]
-  targets: ["5", "174"]
+  targets: ["41", "3"]
   mode_type: 0
   master_seed: 233
   risk:
@@ -22,15 +22,15 @@ basement:
 
 floor_0:
   environment: "management_building_floor_0"
-  sources: ["39", "129"]
+  sources: ["1", "25"]
   agents: [5, 5]
-  targets: ["107", "27", "108", "204"]
+  targets: ["11", "139", "17", "47"]
   mode_type: 0
   master_seed: 233
   risk:
     enabled: true
     risk_iterations: 7000
-    risk_increase_chance: 0.005 #0.05
+    risk_increase_chance: 0.005
     starting_risks:
     risk_overrides:
     risk_threshold: 0.5
@@ -44,15 +44,15 @@ floor_0:
 
 floor_1:
   environment: "management_building_floor_1"
-  sources: [ "21", "139", "122", "498", "432", ] #  21
-  agents: [ 25, 7, 10, 5, 20] # 10
-  targets: [ "224"]
+  sources: ["25", "9", "6", "5", "2"]
+  agents: [25, 7, 10, 5, 20]
+  targets: ["137"]
   mode_type: 0
   master_seed: 233
   risk:
     enabled: true
     risk_iterations: 7000
-    risk_increase_chance: 0.005 #0.05
+    risk_increase_chance: 0.005
     starting_risks:
     risk_overrides:
     risk_threshold: 0.5

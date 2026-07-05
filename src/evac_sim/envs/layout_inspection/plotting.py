@@ -183,6 +183,7 @@ def plot_layout(
     edges: list[tuple[str, str, float]],
     waypoints: dict[str, tuple[list[float], float]],
     args,
+    output_file: str | None = None,
 ) -> None:
     fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(24, 16))
     ax.set_aspect("equal")
@@ -231,4 +232,13 @@ def plot_layout(
     )
 
     plt.tight_layout()
-    plt.show()
+
+    if output_file is not None:
+        from pathlib import Path
+        Path(output_file).parent.mkdir(parents=True, exist_ok=True)
+        fig.savefig(output_file, bbox_inches="tight", dpi=150)
+
+    if not getattr(args, "no_plot", False):
+        plt.show()
+    else:
+        plt.close(fig)

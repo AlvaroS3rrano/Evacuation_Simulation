@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import argparse
 
+import networkx as nx
+
 from evac_sim.envs.environment_factory import select_environment
 from evac_sim.envs.layout_creation import (
     build_bidirectional_weighted_edges,
@@ -17,6 +19,7 @@ from evac_sim.envs.layout_inspection.current_layout import (
     get_largest_waypoints_from_cells,
     load_layout_from_environment_data,
 )
+from evac_sim.envs.layout_inspection.geometry import get_polygon
 from evac_sim.envs.layout_inspection.plotting import plot_layout
 from evac_sim.envs.layout_inspection.printers import (
     print_edges_python,
@@ -26,6 +29,7 @@ from evac_sim.envs.layout_inspection.printers import (
 )
 from evac_sim.envs.layout_inspection.refresh import refresh_current_edges
 from evac_sim.envs.layout_inspection.summary import print_layout_summary
+from evac_sim.envs.layout_io import save_layout_json
 
 
 def parse_args() -> argparse.Namespace:
@@ -245,6 +249,30 @@ def parse_args() -> argparse.Namespace:
         help="Maximum triangle area for convex_navmesh before subdivision",
     )
 
+    parser.add_argument(
+        "--use-flow-capacity",
+        action="store_true",
+        help=(
+            "For --layout-source computed: use flow-based edge capacity "
+            "(shared boundary width × edge-flow-agents-per-meter) "
+            "instead of the legacy area-based capacity"
+        ),
+    )
+
+    parser.add_argument(
+        "--output-image",
+        type=str,
+        default=None,
+        help="Save the layout plot to this file (PNG, SVG, PDF, etc.)",
+    )
+
+    parser.add_argument(
+        "--output-data",
+        type=str,
+        default=None,
+        help="Export the layout (waypoints, edges, areas) to a JSON file",
+    )
+
     return parser.parse_args()
 
 
@@ -333,7 +361,10 @@ def _print_requested_outputs(
         print_node_capacities_python(node_capacities)
 
     if args.print_edges:
-        if args.layout_source == "current" and args.refresh_current_edges:
+        use_flow = (args.layout_source == "current" and args.refresh_current_edges) or (
+            args.layout_source == "computed" and args.use_flow_capacity
+        )
+        if use_flow:
             edges_to_print = enrich_edges_with_flow_capacity(
                 cells=cells,
                 edges=edges,
@@ -350,6 +381,33 @@ def _print_requested_outputs(
 
     if args.print_specific_areas:
         print_specific_areas_python(cells)
+
+
+def _export_layout_data(
+    output_path: str,
+    *,
+    waypoints,
+    edges,
+    cells,
+    env_name: str,
+    layout_source: str,
+) -> None:
+    G = nx.DiGraph()
+    for source, target, cost in edges:
+        G.add_node(source)
+        G.add_node(target)
+        G.add_edge(source, target, cost=cost)
+
+    specific_areas = {node_id: get_polygon(cell) for node_id, cell in cells.items()}
+
+    save_layout_json(
+        output_path,
+        waypoints=waypoints,
+        specific_areas=specific_areas,
+        graph=G,
+        metadata={"env": env_name, "layout_source": layout_source},
+    )
+    print(f"Layout data exported to: {output_path}")
 
 
 def main() -> None:
@@ -373,13 +431,24 @@ def main() -> None:
         waypoints=waypoints,
     )
 
-    if not args.no_plot:
+    if args.output_data:
+        _export_layout_data(
+            args.output_data,
+            waypoints=waypoints,
+            edges=edges,
+            cells=cells,
+            env_name=args.env,
+            layout_source=args.layout_source,
+        )
+
+    if not args.no_plot or args.output_image:
         plot_layout(
             walkable_area=walkable_area,
             cells=cells,
             edges=edges,
             waypoints=waypoints,
             args=args,
+            output_file=args.output_image,
         )
 
 
