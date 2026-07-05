@@ -435,9 +435,13 @@ def main(argv: list[str] | None = None) -> int:
     # Load config to get env name etc. for post-processing
     config_path = Path(args.config)
     if not config_path.is_absolute():
-        config_path = project_root / "configs" / config_path
-    if not config_path.exists():
-        config_path = Path(args.config)
+        # Try as-is first, then under project_root, then under project_root/configs
+        if config_path.exists():
+            config_path = config_path.resolve()
+        elif (project_root / config_path).exists():
+            config_path = project_root / config_path
+        else:
+            config_path = project_root / "configs" / config_path
 
     cfg: dict[str, Any] = {}
     if config_path.exists() and args.scenario:
@@ -461,7 +465,7 @@ def main(argv: list[str] | None = None) -> int:
 
         run_from_yaml(
             project_root=project_root,
-            config_name=args.config if not Path(args.config).is_absolute() else str(config_path.relative_to(project_root / "configs")),
+            config_name=str(config_path.relative_to(project_root / "configs")) if config_path.is_absolute() and (project_root / "configs") in config_path.parents else args.config,
             case_id=args.scenario,
             out_dir=out_dir,
             verbose=args.verbose,

@@ -1,10 +1,12 @@
 basement:
   environment: "management_building_basement"
   sources: ["24", "21", "1"]
-  agents: [5, 5, 1]
+  agents: [2, 5, 5]
   targets: ["41", "3"]
   mode_type: 0
   master_seed: 233
+  distance_to_agents: 0.3
+  distance_to_polygon: 0.1
   risk:
     enabled: true
     risk_iterations: 7000
@@ -27,6 +29,8 @@ floor_0:
   targets: ["11", "139", "17", "47"]
   mode_type: 0
   master_seed: 233
+  distance_to_agents: 0.3
+  distance_to_polygon: 0.1
   risk:
     enabled: true
     risk_iterations: 7000
@@ -45,10 +49,12 @@ floor_0:
 floor_1:
   environment: "management_building_floor_1"
   sources: ["25", "9", "6", "5", "2"]
-  agents: [25, 7, 10, 5, 20]
+  agents: [10, 7, 10, 5, 20]
   targets: ["137"]
   mode_type: 0
   master_seed: 233
+  distance_to_agents: 0.4
+  distance_to_polygon: 0.1
   risk:
     enabled: true
     risk_iterations: 7000
@@ -64,5 +70,3 @@ floor_1:
   every_nth_frame_animation: 50
   danger_visualization_frame: 2500
   group_split_threshold: 5
-  distance_to_agents: 0.4
-  distance_to_polygon: 0.1
