@@ -50,7 +50,7 @@ mi_escenario:
   sources: ["1", "25"]
   agents: [8, 4]
   targets: ["11", "139", "17", "47"]
-  mode_type: 0
+  mode_type: 0  # ver "Valores de mode_type" más abajo — se recomienda 5
   gamma: 0.2
   stairs_max_speed: 0.6
   normal_max_speed: 1.2
@@ -77,7 +77,7 @@ mi_escenario:
 | `sources` | lista de strings | IDs de nodos de inicio |
 | `agents` | lista de int | Nº de agentes por source (mismo orden) |
 | `targets` | lista de strings | IDs de nodos de salida |
-| `mode_type` | int (0–5) | Modo de enrutamiento |
+| `mode_type` | int (0–5) | Modo de enrutamiento (ver [Valores de `mode_type`](#valores-de-mode_type); se recomienda `5`) |
 | `gamma` | float > 0 | Peso del riesgo en la ruta |
 | `stairs_max_speed` | float > 0 | Velocidad en escaleras (m/s) |
 | `normal_max_speed` | float > 0 | Velocidad normal (m/s) |
@@ -127,7 +127,7 @@ mi_escenario:
   - '139'
   - '17'
   - '47'
-  mode_type: 0
+  mode_type: 0  # ver "Valores de mode_type" más abajo — se recomienda 5
   gamma: 0.2
   stairs_max_speed: 0.6
   normal_max_speed: 1.2
@@ -529,7 +529,7 @@ basement:
   sources: ["24", "21", "1"]                    # IDs de nodos de inicio
   agents: [2, 5, 5]                             # Nº agentes por source (mismo orden)
   targets: ["41", "3"]                          # IDs de nodos de salida/evacuación
-  mode_type: 0                                  # Modo de enrutamiento (ver tabla)
+  mode_type: 0                                  # Modo de enrutamiento (ver tabla, se recomienda 5)
   master_seed: 233                              # Semilla aleatoria (int, null = aleatorio)
 ```
 
@@ -558,23 +558,41 @@ basement:
 
 ### Valores de `mode_type`
 
-| Valor | Nombre | Descripción |
-|-------|--------|-------------|
-| `0` | Efficient | Ruta más corta (Dijkstra). Todos los grupos usan la misma estrategia |
-| `1` | Centrality | Prioriza nodos de alta centralidad en la red |
-| `2` | Mixed 0+1 | Mitad Efficient, mitad Centrality |
-| `3` | Mixed 0+2 | Mitad Efficient, mitad otra estrategia |
-| `4` | Mixed 0+3 | Mitad Efficient, mitad otra estrategia |
-| `5` | Mixed 0+4 | Mitad Efficient, mitad otra estrategia |
+`mode_type` controla con qué estrategia de enrutamiento se mueven los agentes. Cada estrategia combina dos ejes:
 
-> La simulación ejecuta **4 modos** siempre (0, 1, 2, 3), independientemente del valor de `mode_type`. El campo `mode_type` indica el modo que se usa para decidir la asignación inicial de grupos.
+- **Algoritmo de ruta**: `shortest path` (Dijkstra, siempre el camino más corto/rápido) o `centrality` (prioriza nodos de alta centralidad para repartir el flujo entre varias rutas).
+- **Nivel de conocimiento (`awareness`)**: `bajo` (el grupo solo recalcula su ruta cuando el **siguiente** nodo se vuelve peligroso) o `alto` (el grupo conoce el riesgo de **todo el camino restante** y recalcula en cuanto cualquier nodo por delante se vuelve peligroso — es decir, tiene conocimiento completo del entorno).
+
+`mode_type` selecciona qué combinación(es) se simulan; la simulación ejecuta una pasada completa por cada modo incluido:
+
+| `mode_type` | Algoritmo | Awareness | Descripción |
+|-------|--------|--------|-------------|
+| `0` | ambos | ambos | Ejecuta las 4 combinaciones (shortest/bajo, shortest/alto, centrality/bajo, centrality/alto) |
+| `1` | shortest path | bajo y alto | Dos grupos con estrategia distinta asignada por índice de source |
+| `2` | shortest path | bajo y alto | Compara awareness bajo vs. alto usando siempre la ruta más corta |
+| `3` | centrality | bajo y alto | Compara awareness bajo vs. alto usando siempre centralidad |
+| `4` | centrality | bajo | Solo centralidad con conocimiento bajo |
+| `5` | shortest path | **alto** | Todos los agentes usan siempre la ruta más rápida y tienen conocimiento completo del entorno |
+
+> **Recomendado: `mode_type: 5`.** Para estas simulaciones se recomienda este valor porque los agentes tienen conocimiento completo de su entorno (recalculan la ruta en cuanto cualquier nodo del camino restante se vuelve peligroso) y siempre usan el camino más rápido disponible (Dijkstra).
 
 ### Nodos disponibles por escenario
 
 Los nodos se identifican con IDs numéricos (strings). Para saber qué nodos existen y sus posiciones:
 
 ```bash
-# Inspeccionar el layout del escenario (genera imagen + JSON con todos los nodos)
+# Ver el escenario en una ventana interactiva con los waypoints y sus node id
+# (útil para elegir a mano los nodos source/target al crear la configuración)
+.venv\Scripts\python.exe -m evac_sim.envs.scripts.inspect_grid_layout \
+    --env management_building_basement \
+    --layout-source current \
+    --show-node-id
+```
+
+Cambia `--env` por `management_building_floor_0` o `management_building_floor_1` según la planta que quieras inspeccionar.
+
+```bash
+# Alternativa sin ventana: genera imagen + JSON con todos los nodos (headless)
 .venv\Scripts\python.exe -m evac_sim.envs.scripts.inspect_grid_layout \
     --env management_building_basement \
     --layout-source current \
