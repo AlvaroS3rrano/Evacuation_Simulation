@@ -1,9 +1,9 @@
 basement:
   environment: "management_building_basement"
-  sources: ["24", "21", "1"]
+  sources: ["278", "27", "111"]
   agents: [2, 5, 5]
-  targets: ["41", "3"]
-  mode_type: 0
+  targets: ["5", "174"]
+  mode_type: 5
   master_seed: 233
   distance_to_agents: 0.3
   distance_to_polygon: 0.1
@@ -24,10 +24,10 @@ basement:
 
 floor_0:
   environment: "management_building_floor_0"
-  sources: ["1", "25"]
+  sources: ["39", "129"]
   agents: [5, 5]
-  targets: ["11", "139", "17", "47"]
-  mode_type: 0
+  targets: ["107", "27", "108", "204"]
+  mode_type: 5
   master_seed: 233
   distance_to_agents: 0.3
   distance_to_polygon: 0.1
@@ -48,10 +48,10 @@ floor_0:
 
 floor_1:
   environment: "management_building_floor_1"
-  sources: ["25", "9", "6", "5", "2"]
+  sources: ["21", "139", "122", "498", "432"]
   agents: [10, 7, 10, 5, 20]
-  targets: ["137"]
-  mode_type: 0
+  targets: ["224"]
+  mode_type: 5
   master_seed: 233
   distance_to_agents: 0.4
   distance_to_polygon: 0.1
