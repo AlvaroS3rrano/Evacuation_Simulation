@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import sys
 
 import networkx as nx
 
@@ -32,7 +33,7 @@ from evac_sim.envs.layout_inspection.summary import print_layout_summary
 from evac_sim.envs.layout_io import save_layout_json
 
 
-def parse_args() -> argparse.Namespace:
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
             "Inspect grid layout: walkable area, specific areas, "
@@ -273,7 +274,7 @@ def parse_args() -> argparse.Namespace:
         help="Export the layout (waypoints, edges, areas) to a JSON file",
     )
 
-    return parser.parse_args()
+    return parser.parse_args(argv)
 
 
 def _validate_args(args: argparse.Namespace) -> None:
@@ -410,8 +411,8 @@ def _export_layout_data(
     print(f"Layout data exported to: {output_path}")
 
 
-def main() -> None:
-    args = parse_args()
+def main(argv: list[str] | None = None) -> int:
+    args = parse_args(argv)
     _validate_args(args)
 
     env = select_environment(args.env)
@@ -451,6 +452,8 @@ def main() -> None:
             output_file=args.output_image,
         )
 
+    return 0
+
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

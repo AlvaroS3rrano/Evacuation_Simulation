@@ -179,9 +179,12 @@ python -m evac_sim run --config study.yaml --case corridor_case_1
 |-----------|------|---------|-------------|
 | `--config` | str | `study.yaml` | Nombre del archivo YAML dentro de `./configs/` |
 | `--case` | str | None | ID del caso a ejecutar (excluyente con `--environment`) |
+| `--scenario` | str | None | Alias de `--case` |
 | `--environment` | str | None | Ejecutar todos los casos con ese entorno |
 | `--project-root` | str | `.` | Directorio raíz del proyecto |
 | `--out-dir` | str | None | Directorio de salida (solo para un caso; default: `./runs/<ts>_<case>`) |
+| `--output-dir` | str | None | Alias de `--out-dir` |
+| `--output-format` | str | None | Si se especifica (o si se usa `--scenario`), además de la simulación escribe `result.json`/CSVs/animaciones HTML como `run_scenario` (ver [6.2](#62-run_scenario)); valores: `json`, `csv`, `html` separados por coma. Requiere un único caso (no compatible con `--environment`) |
 | `-v` / `--verbose` | flag | False | Logs detallados |
 | `--heuristic` | choice | `none` | Heurística de routing: `none`, `h1`, `h2`, `h3` |
 | `--horizon-k` | int | 6 | Horizonte de reserva de aristas para heurística `h2` |
@@ -199,6 +202,10 @@ artifacts/csv/experiment_metrics.csv # métricas por grupo de agentes
 artifacts/images/             # capturas de animación y mapa de riesgo
 ```
 
+> Si se usa `--scenario`/`--output-format`, también se escriben `result.json`,
+> `agents.csv`/`summary.csv` y (con `html`) `artifacts/animations/<env>_mode_<n>.html`
+> directamente bajo `--output-dir` — ver [6.2 `run_scenario`](#62-run_scenario).
+
 ---
 
 ## 5. Scripts de inspección de entornos
@@ -211,9 +218,10 @@ artifacts/images/             # capturas de animación y mapa de riesgo
 waypoints/nodos, edges/conexiones, capacidades y áreas específicas. Ahora también
 permite exportar la imagen y los datos del layout.
 
-**Invocación:**
+**Invocación:** también disponible como `evac-sim inspect ...` (reenvía todos los
+argumentos tal cual a este script).
 ```bash
-python -m evac_sim.envs.scripts.inspect_grid_layout \
+evac-sim inspect \
     --env management_building_basement \
     --layout-source current \
     --show-node-id \
@@ -221,7 +229,7 @@ python -m evac_sim.envs.scripts.inspect_grid_layout \
     --output-image results/layouts/basement.png \
     --output-data results/layouts/basement_layout.json
 
-python -m evac_sim.envs.scripts.inspect_grid_layout \
+evac-sim inspect \
     --env corridor \
     --method greedy \
     --min-cell-size 1.0 \
@@ -357,14 +365,14 @@ python -m evac_sim.envs.scripts.generate_layout \
 Comprueba que fuentes, destinos, agentes, parámetros de riesgo y conectividad
 son coherentes. Si es válida, escribe un YAML normalizado.
 
-**Invocación:**
+**Invocación:** también disponible como `evac-sim validate ...`.
 ```bash
-python -m evac_sim.envs.scripts.validate_scenario_config \
+evac-sim validate \
     --config configs/management_building.yaml \
     --scenario basement \
     --output configs/generated/basement.validated.yaml
 
-python -m evac_sim.envs.scripts.validate_scenario_config \
+evac-sim validate \
     --config configs/study.yaml \
     --scenario corridor_case_1
 ```
@@ -424,15 +432,16 @@ Errors (2):
 JSON y CSV, apta para integración con aplicaciones externas. Envuelve el runner
 estándar y post-procesa las bases de datos SQLite de JuPedSim.
 
-**Invocación:**
+**Invocación:** también disponible como `evac-sim run --scenario ... --output-format ...`
+(alias de `--case`/`--out-dir`; ver [4.1](#41-evac-sim-run--python--m-evac_sim)).
 ```bash
-python -m evac_sim.simulation.scripts.run_scenario \
+evac-sim run \
     --config configs/management_building.yaml \
     --scenario basement \
     --output-dir results/api/basement \
-    --output-format json,csv
+    --output-format json,csv,html
 
-python -m evac_sim.simulation.scripts.run_scenario \
+evac-sim run \
     --config configs/study.yaml \
     --scenario corridor_case_1 \
     --heuristic h1 \
@@ -446,7 +455,7 @@ python -m evac_sim.simulation.scripts.run_scenario \
 | `--config` | str | `study.yaml` | Nombre del YAML en `./configs/` o ruta absoluta |
 | `--scenario` | str | None | Clave del escenario en el YAML |
 | `--output-dir` | str | None | Directorio de salida (sin él no se genera `result.json`) |
-| `--output-format` | str | `json,csv` | Formatos: `json`, `csv` (separados por coma) |
+| `--output-format` | str | `json,csv` | Formatos: `json`, `csv`, `html` (separados por coma) |
 | `--project-root` | str | `.` | Directorio raíz |
 | `--heuristic` | choice | `none` | Heurística de routing: `none`, `h1`, `h2`, `h3` |
 | `--horizon-k` | int | 6 | Horizonte de reserva para heurística `h2` |
@@ -456,7 +465,11 @@ python -m evac_sim.simulation.scripts.run_scenario \
 **Salidas (en `--output-dir`):**
 
 Además de todos los archivos generados por `evac-sim run` (ver sección 4.1),
-produce `result.json` y `agents.csv` / `summary.csv`:
+produce `result.json` y `agents.csv` / `summary.csv`. Con `--output-format`
+incluyendo `html`, además produce `artifacts/animations/<env>_mode_<n>.html`:
+un replay interactivo (Plotly, autocontenido, sin dependencias externas) con
+controles de play y slider de frame, uno por cada modo de enrutamiento —
+la misma animación que genera `Notebooks/replay_existing_run.ipynb`.
 
 `result.json` — estructura completa:
 ```json
@@ -777,13 +790,15 @@ runs/<timestamp>_<case>/
         └── ...                   # capturas de animación y mapa de riesgo
 ```
 
-Si se usa `run_scenario` con `--output-dir`:
+Si se usa `evac-sim run --scenario ... --output-format ...` (alias de `run_scenario`,
+ver [6.2](#62-run_scenario)) con `--output-dir`:
 ```
 <output-dir>/
 ├── [todo lo anterior]
 ├── result.json         # salida JSON estructurada completa
 ├── agents.csv          # tabla de agentes (agent_id, mode, evacuated, evacuation_time)
-└── summary.csv         # resumen de métricas clave
+├── summary.csv         # resumen de métricas clave
+└── artifacts/animations/<env>_mode_<n>.html   # solo si --output-format incluye "html"
 ```
 
 ### Tablas en `simulation.db`
@@ -877,7 +892,7 @@ mismo pasillo crean congestión física independiente de la heurística.
 El nuevo script `validate_scenario_config` detecta automáticamente estos warnings:
 
 ```bash
-python -m evac_sim.envs.scripts.validate_scenario_config \
+evac-sim validate \
     --config configs/management_building.yaml \
     --scenario floor_1
 

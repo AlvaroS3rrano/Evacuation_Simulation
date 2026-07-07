@@ -47,6 +47,9 @@ dist/
 .vscode/
 .idea/
 *.iml
+.claude
+.pytest_cache
+.ruff_cache
 
 # -----------------------------
 # OS files

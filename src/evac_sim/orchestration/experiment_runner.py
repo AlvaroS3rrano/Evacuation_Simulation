@@ -71,7 +71,13 @@ def create_stages(
 ) -> tuple[dict[Any, Any], dict[Any, Any]]:
     exit_ids: dict[Any, Any] = {}
     for area_id in targets:
-        exit_ids[area_id] = simulation.add_exit_stage(specific_areas[area_id])
+        # JuPedSim exit stages must be bounded by a convex polygon; some
+        # hand-placed specific_areas are slightly non-convex (notches around
+        # doorways), so fall back to the convex hull for those.
+        area = specific_areas[area_id]
+        if not area.equals(area.convex_hull):
+            area = area.convex_hull
+        exit_ids[area_id] = simulation.add_exit_stage(area)
 
     waypoints_ids: dict[Any, Any] = {}
     for node, (waypoint, distance) in waypoints.items():

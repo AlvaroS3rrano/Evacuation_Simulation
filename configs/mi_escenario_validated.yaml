@@ -1,0 +1,31 @@
+floor_0:
+  environment: management_building_floor_0
+  sources:
+  - '1'
+  - '25'
+  agents:
+  - 5
+  - 5
+  targets:
+  - '11'
+  - '139'
+  - '17'
+  - '47'
+  mode_type: 0
+  master_seed: 233
+  distance_to_agents: 0.3
+  distance_to_polygon: 0.1
+  risk:
+    enabled: true
+    risk_iterations: 7000
+    risk_increase_chance: 0.005
+    starting_risks: null
+    risk_overrides: null
+    risk_threshold: 0.5
+    propagation_threshold: 0.5
+  gamma: 0.2
+  stairs_max_speed: 0.6
+  normal_max_speed: 1.2
+  every_nth_frame_simulation: 3
+  every_nth_frame_animation: 50
+  danger_visualization_frame: 2500

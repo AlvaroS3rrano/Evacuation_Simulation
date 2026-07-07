@@ -319,38 +319,58 @@ def print_validation_report(
 # Entry point
 # ---------------------------------------------------------------------------
 
-def main(argv: list[str] | None = None) -> int:
-    parser = build_parser()
-    args = parser.parse_args(argv)
+def validate_and_report(
+    *,
+    config: str,
+    scenario: str,
+    output: str | None = None,
+    project_root: str = ".",
+) -> int:
+    """Validate a scenario, print the report, and write the normalised YAML if valid.
 
-    project_root = Path(args.project_root).resolve()
-    config_path = Path(args.config)
+    Shared by validate_scenario_config's CLI (main()) and evac-sim validate
+    (src/evac_sim/cli.py), so both entry points run the exact same logic.
+    """
+    project_root_path = Path(project_root).resolve()
+    config_path = Path(config)
     if not config_path.is_absolute():
-        config_path = project_root / config_path
+        config_path = project_root_path / config_path
 
     try:
-        cfg = _load_config(config_path, args.scenario)
+        cfg = _load_config(config_path, scenario)
     except (FileNotFoundError, KeyError, ValueError) as exc:
         print(f"Error loading config: {exc}", file=sys.stderr)
         return 1
 
-    errors, warnings = validate_scenario(cfg, args.scenario)
+    errors, warnings = validate_scenario(cfg, scenario)
 
     output_path = None
-    if not errors and args.output:
-        output_path = args.output
+    if not errors and output:
+        output_path = output
         out = Path(output_path)
         if not out.is_absolute():
-            out = project_root / out
+            out = project_root_path / out
         out.parent.mkdir(parents=True, exist_ok=True)
         out.write_text(
-            yaml.safe_dump({args.scenario: cfg}, sort_keys=False, allow_unicode=True),
+            yaml.safe_dump({scenario: cfg}, sort_keys=False, allow_unicode=True),
             encoding="utf-8",
         )
 
-    print_validation_report(args.scenario, errors, warnings, output_path)
+    print_validation_report(scenario, errors, warnings, output_path)
 
     return 0 if not errors else 1
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = build_parser()
+    args = parser.parse_args(argv)
+
+    return validate_and_report(
+        config=args.config,
+        scenario=args.scenario,
+        output=args.output,
+        project_root=args.project_root,
+    )
 
 
 if __name__ == "__main__":

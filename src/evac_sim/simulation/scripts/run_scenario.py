@@ -62,7 +62,11 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument(
         "--output-format",
         default="json,csv",
-        help="Comma-separated list of output formats: json, csv (default: json,csv).",
+        help=(
+            "Comma-separated list of output formats: json, csv, html "
+            "(default: json,csv). 'html' writes one interactive Plotly "
+            "animation per routing mode under artifacts/animations/."
+        ),
     )
     p.add_argument(
         "--project-root",
@@ -281,12 +285,65 @@ def _build_agent_records(
     return agent_list
 
 
+def _write_mode_animation(
+    *,
+    traj_file: Path,
+    env_name: str,
+    mode: int,
+    every_nth_frame: int,
+    run_dir: Path,
+) -> Path:
+    """Render an interactive Plotly replay for one mode's trajectory DB.
+
+    Mirrors the flow in Notebooks/replay_existing_run.ipynb (pedpy.TrajectoryData
+    + evac_sim.viz.animation.animate), but resolves the walkable area straight
+    from select_environment(env_name).walkable_area instead of the notebook's
+    generic geometry-sniffing fallback.
+    """
+    import pandas as pd
+    import pedpy
+
+    from evac_sim.envs.environment_factory import select_environment
+    from evac_sim.viz.animation import animate
+
+    conn = sqlite3.connect(str(traj_file))
+    try:
+        df = pd.read_sql_query(
+            "SELECT frame, id, pos_x AS x, pos_y AS y, ori_x AS ox, ori_y AS oy "
+            "FROM trajectory_data ORDER BY frame, id",
+            conn,
+        )
+        fps_row = conn.execute(
+            "SELECT value FROM metadata WHERE key = 'fps'"
+        ).fetchone()
+    finally:
+        conn.close()
+    fps = float(fps_row[0]) if fps_row else 8.0
+
+    trajectory_data = pedpy.TrajectoryData(data=df, frame_rate=fps)
+    walkable_area = select_environment(env_name).walkable_area
+
+    fig = animate(
+        trajectory_data,
+        walkable_area,
+        every_nth_frame=every_nth_frame,
+        title_note=f"{env_name} | mode {mode}",
+    )
+
+    animations_dir = run_dir / "artifacts" / "animations"
+    animations_dir.mkdir(parents=True, exist_ok=True)
+    html_path = animations_dir / f"{env_name}_mode_{mode}.html"
+    fig.write_html(str(html_path), include_plotlyjs=True)
+    return html_path
+
+
 def _build_result_json(
     *,
     scenario_name: str,
     config: dict[str, Any],
     run_dir: Path,
     status: str,
+    output_formats: set[str] = frozenset(),
     error_info: dict | None = None,
 ) -> dict[str, Any]:
     env_name: str = config.get("environment", "unknown")
@@ -361,6 +418,18 @@ def _build_result_json(
             for g in metrics["groups"]:
                 all_times.append(g["avg_time"])
 
+        if "html" in output_formats:
+            try:
+                _write_mode_animation(
+                    traj_file=traj_file,
+                    env_name=env_name,
+                    mode=mode,
+                    every_nth_frame=int(config.get("every_nth_frame_animation", 50)),
+                    run_dir=run_dir,
+                )
+            except Exception as exc:
+                print(f"Warning: failed to render animation for mode {mode}: {exc}", file=sys.stderr)
+
     if not all_risks and sim_db.exists():
         all_risks = _read_risks(sim_db, scenario_name)
 
@@ -417,37 +486,51 @@ def _write_csv(result: dict[str, Any], output_dir: Path) -> None:
 # Entry point
 # ---------------------------------------------------------------------------
 
-def main(argv: list[str] | None = None) -> int:
-    parser = build_parser()
-    args = parser.parse_args(argv)
+def run_and_postprocess(
+    *,
+    config: str,
+    scenario: str | None,
+    output_dir: str | None,
+    output_format: str = "json,csv",
+    project_root: str = ".",
+    heuristic: str = "none",
+    horizon_k: int = 6,
+    congestion_reroute_epsilon: float = 0.1,
+    verbose: bool = False,
+) -> int:
+    """Run a scenario via run_from_yaml and write the requested output formats.
 
-    project_root = Path(args.project_root).resolve()
-    output_formats = {fmt.strip().lower() for fmt in args.output_format.split(",")}
+    Shared by run_scenario's CLI (main()) and evac-sim run's
+    --scenario/--output-format aliases (src/evac_sim/cli.py), so both entry
+    points execute the exact same post-processing logic.
+    """
+    project_root_path = Path(project_root).resolve()
+    output_formats = {fmt.strip().lower() for fmt in output_format.split(",")}
 
     # Resolve output dir if provided so we can write result.json there
     out_dir: Path | None = None
-    if args.output_dir:
-        out_dir = Path(args.output_dir)
+    if output_dir:
+        out_dir = Path(output_dir)
         if not out_dir.is_absolute():
-            out_dir = project_root / out_dir
+            out_dir = project_root_path / out_dir
         out_dir.mkdir(parents=True, exist_ok=True)
 
     # Load config to get env name etc. for post-processing
-    config_path = Path(args.config)
+    config_path = Path(config)
     if not config_path.is_absolute():
         # Try as-is first, then under project_root, then under project_root/configs
         if config_path.exists():
             config_path = config_path.resolve()
-        elif (project_root / config_path).exists():
-            config_path = project_root / config_path
+        elif (project_root_path / config_path).exists():
+            config_path = project_root_path / config_path
         else:
-            config_path = project_root / "configs" / config_path
+            config_path = project_root_path / "configs" / config_path
 
     cfg: dict[str, Any] = {}
-    if config_path.exists() and args.scenario:
+    if config_path.exists() and scenario:
         try:
             raw = yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
-            cfg = dict(raw.get(args.scenario, {}))
+            cfg = dict(raw.get(scenario, {}))
         except Exception:
             pass
 
@@ -464,14 +547,14 @@ def main(argv: list[str] | None = None) -> int:
         from evac_sim.runner import run_from_yaml
 
         run_from_yaml(
-            project_root=project_root,
-            config_name=str(config_path.relative_to(project_root / "configs")) if config_path.is_absolute() and (project_root / "configs") in config_path.parents else args.config,
-            case_id=args.scenario,
+            project_root=project_root_path,
+            config_name=str(config_path.relative_to(project_root_path / "configs")) if config_path.is_absolute() and (project_root_path / "configs") in config_path.parents else config,
+            case_id=scenario,
             out_dir=out_dir,
-            verbose=args.verbose,
-            heuristic=args.heuristic,
-            horizon_k=args.horizon_k,
-            congestion_reroute_epsilon=args.congestion_reroute_epsilon,
+            verbose=verbose,
+            heuristic=heuristic,
+            horizon_k=horizon_k,
+            congestion_reroute_epsilon=congestion_reroute_epsilon,
         )
     except Exception as exc:
         status = "failed"
@@ -494,14 +577,15 @@ def main(argv: list[str] | None = None) -> int:
 
     if run_dir_for_postprocess is None:
         # Still write error JSON somewhere
-        run_dir_for_postprocess = project_root / "runs" / "last_failed"
+        run_dir_for_postprocess = project_root_path / "runs" / "last_failed"
         run_dir_for_postprocess.mkdir(parents=True, exist_ok=True)
 
     result = _build_result_json(
-        scenario_name=args.scenario or "unknown",
+        scenario_name=scenario or "unknown",
         config=cfg,
         run_dir=run_dir_for_postprocess,
         status=status,
+        output_formats=output_formats,
         error_info=error_info,
     )
 
@@ -517,7 +601,27 @@ def main(argv: list[str] | None = None) -> int:
         _write_csv(result, run_dir_for_postprocess)
         print(f"CSV files written to: {run_dir_for_postprocess}")
 
+    if "html" in output_formats:
+        print(f"HTML animations written to: {run_dir_for_postprocess / 'artifacts' / 'animations'}")
+
     return 0 if status == "completed" else 1
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = build_parser()
+    args = parser.parse_args(argv)
+
+    return run_and_postprocess(
+        config=args.config,
+        scenario=args.scenario,
+        output_dir=args.output_dir,
+        output_format=args.output_format,
+        project_root=args.project_root,
+        heuristic=args.heuristic,
+        horizon_k=args.horizon_k,
+        congestion_reroute_epsilon=args.congestion_reroute_epsilon,
+        verbose=args.verbose,
+    )
 
 
 if __name__ == "__main__":

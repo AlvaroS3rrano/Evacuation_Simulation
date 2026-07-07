@@ -22,6 +22,10 @@ O usar siempre la ruta completa al intérprete:
 .venv\Scripts\python.exe
 ```
 
+Con el paquete instalado (`pip install -e .`), todos los comandos de esta guía están
+disponibles también como el ejecutable `evac-sim` (más corto que `.venv\Scripts\python.exe
+-m evac_sim...`). Ambas formas son equivalentes; esta guía usa `evac-sim`.
+
 ---
 
 ## Flujo completo (resumen rápido)
@@ -50,7 +54,7 @@ mi_escenario:
   sources: ["1", "25"]
   agents: [8, 4]
   targets: ["11", "139", "17", "47"]
-  mode_type: 0  # ver "Valores de mode_type" más abajo — se recomienda 5
+  mode_type: 5  # ver "Valores de mode_type" 
   gamma: 0.2
   stairs_max_speed: 0.6
   normal_max_speed: 1.2
@@ -93,9 +97,9 @@ mi_escenario:
 ### Comando
 
 ```bash
-.venv\Scripts\python.exe -m evac_sim.envs.scripts.validate_scenario_config \
-    --config configs/mi_escenario.yaml \
-    --scenario mi_escenario \
+evac-sim validate `
+    --config configs/mi_escenario.yaml `
+    --scenario mi_escenario `
     --output configs/mi_escenario_validated.yaml
 ```
 
@@ -148,12 +152,16 @@ mi_escenario:
 ### Simular directamente desde el YAML generado
 
 ```bash
-.venv\Scripts\python.exe -m evac_sim.simulation.scripts.run_scenario \
-    --config configs/mi_escenario_validated.yaml \
-    --scenario mi_escenario \
-    --output-dir results/api/mi_escenario \
-    --output-format json,csv
+evac-sim run `
+    --config configs/mi_escenario_validated.yaml `
+    --scenario mi_escenario `
+    --output-dir results/api/mi_escenario `
+    --output-format json,csv,html
 ```
+
+> Añadir `html` a `--output-format` genera, además de `result.json`/CSVs, una
+> animación interactiva (Plotly, con controles de play y slider de frame) por
+> cada modo de enrutamiento simulado — ver [artifacts/animations/](#estructura-de-salida).
 
 Salida en `results/api/mi_escenario/result.json`:
 
@@ -173,8 +181,8 @@ Salida en `results/api/mi_escenario/result.json`:
 ### Comando
 
 ```bash
-.venv\Scripts\python.exe -m evac_sim.envs.scripts.validate_scenario_config \
-    --config configs/management_building.yaml \
+evac-sim validate `
+    --config configs/management_building.yaml `
     --scenario <NOMBRE_ESCENARIO>
 ```
 
@@ -213,16 +221,13 @@ Errors (1):
 
 ```bash
 # Basement
-.venv\Scripts\python.exe -m evac_sim.envs.scripts.validate_scenario_config \
-    --config configs/management_building.yaml --scenario basement
+evac-sim validate --config configs/management_building.yaml --scenario basement
 
 # Planta baja
-.venv\Scripts\python.exe -m evac_sim.envs.scripts.validate_scenario_config \
-    --config configs/management_building.yaml --scenario floor_0
+evac-sim validate --config configs/management_building.yaml --scenario floor_0
 
 # Primera planta
-.venv\Scripts\python.exe -m evac_sim.envs.scripts.validate_scenario_config \
-    --config configs/management_building.yaml --scenario floor_1
+evac-sim validate --config configs/management_building.yaml --scenario floor_1
 ```
 
 ---
@@ -232,11 +237,11 @@ Errors (1):
 ### Comando
 
 ```bash
-.venv\Scripts\python.exe -m evac_sim.simulation.scripts.run_scenario \
-    --config configs/management_building.yaml \
-    --scenario <NOMBRE_ESCENARIO> \
-    --output-dir <DIRECTORIO_SALIDA> \
-    --output-format json,csv
+evac-sim run `
+    --config configs/management_building.yaml `
+    --scenario <NOMBRE_ESCENARIO> `
+    --output-dir <DIRECTORIO_SALIDA> `
+    --output-format json,csv,html
 ```
 
 ### Parámetros
@@ -246,34 +251,38 @@ Errors (1):
 | `--config` | ✅ | — | Ruta al YAML de configuración |
 | `--scenario` | ✅ | — | Clave del escenario: `basement`, `floor_0` o `floor_1` |
 | `--output-dir` | ❌ | `runs/<timestamp>_<scenario>` | Carpeta donde se guardan todos los resultados. Si existe debe estar vacía |
-| `--output-format` | ❌ | `json,csv` | Formatos de salida separados por coma: `json`, `csv` o `json,csv` |
+| `--output-format` | ❌ | `json,csv` | Formatos de salida separados por coma: `json`, `csv`, `html`, o cualquier combinación (p. ej. `json,csv,html`) |
 | `--heuristic` | ❌ | `none` | Algoritmo de enrutamiento extra: `none`, `h1`, `h2`, `h3` |
 | `--horizon-k` | ❌ | `6` | Solo con `--heuristic h2`: número de edges reservados |
 | `--verbose` | ❌ | `false` | Mostrar logs detallados de la simulación |
+
+> `evac-sim run` acepta `--scenario`/`--output-dir`/`--output-format` como alias
+> amigables de las opciones internas `--case`/`--out-dir` que ya usaban otras
+> herramientas del proyecto — ambos nombres funcionan igual.
 
 ### Ejemplos para cada escenario
 
 ```bash
 # Basement → resultados en results/api/basement/
-.venv\Scripts\python.exe -m evac_sim.simulation.scripts.run_scenario \
-    --config configs/management_building.yaml \
-    --scenario basement \
-    --output-dir results/api/basement \
-    --output-format json,csv
+evac-sim run `
+    --config configs/management_building.yaml `
+    --scenario basement `
+    --output-dir results/api/basement `
+    --output-format json,csv,html
 
 # Planta baja → resultados en results/api/floor_0/
-.venv\Scripts\python.exe -m evac_sim.simulation.scripts.run_scenario \
-    --config configs/management_building.yaml \
-    --scenario floor_0 \
-    --output-dir results/api/floor_0 \
-    --output-format json,csv
+evac-sim run `
+    --config configs/management_building.yaml `
+    --scenario floor_0 `
+    --output-dir results/api/floor_0 `
+    --output-format json,csv,html
 
 # Primera planta → resultados en results/api/floor_1/
-.venv\Scripts\python.exe -m evac_sim.simulation.scripts.run_scenario \
-    --config configs/management_building.yaml \
-    --scenario floor_1 \
-    --output-dir results/api/floor_1 \
-    --output-format json,csv
+evac-sim run `
+    --config configs/management_building.yaml `
+    --scenario floor_1 `
+    --output-dir results/api/floor_1 `
+    --output-format json,csv,html
 ```
 
 ### Códigos de salida
@@ -310,10 +319,14 @@ Todos los archivos se guardan en el `--output-dir` especificado:
     │   ├── <env>_mode_1.sqlite        ← Trayectorias JuPedSim, modo 1
     │   ├── <env>_mode_2.sqlite        ← Trayectorias JuPedSim, modo 2
     │   └── <env>_mode_3.sqlite        ← Trayectorias JuPedSim, modo 3
-    └── images/
-        ├── <env>_mode_0_density.png        ← Mapa de densidad (modo 0)
-        ├── <env>_mode_0_trajectories.png   ← Mapa de trayectorias (modo 0)
-        ├── <env>_mode_1_density.png
+    ├── images/
+    │   ├── <env>_mode_0_density.png        ← Mapa de densidad (modo 0)
+    │   ├── <env>_mode_0_trajectories.png   ← Mapa de trayectorias (modo 0)
+    │   ├── <env>_mode_1_density.png
+    │   ...
+    └── animations/                          ← Solo si --output-format incluye "html"
+        ├── <env>_mode_0.html                ← Replay interactivo (Plotly) del modo 0
+        ├── <env>_mode_1.html
         ...
 ```
 
@@ -517,6 +530,17 @@ SQLite con tablas: `experiments`, `experiment_metrics`, `agent_area_data`, `risk
 
 ---
 
+### `artifacts/animations/<env>_mode_N.html` — Replay interactivo
+
+Solo se genera cuando `--output-format` incluye `html`. Es un archivo HTML autocontenido
+(no requiere conexión a internet ni servidor: el JavaScript de Plotly va embebido) con
+la misma animación que produce `Notebooks/replay_existing_run.ipynb` — trayectorias de
+los agentes coloreadas por velocidad, con botón de play y slider para navegar frame a
+frame. Se genera un archivo por cada modo de enrutamiento simulado. La interfaz puede
+simplemente ofrecer este fichero para abrir en una pestaña del navegador.
+
+---
+
 ## Configuración YAML — Variables que puede cambiar la interfaz
 
 El archivo `configs/management_building.yaml` contiene los tres escenarios. La interfaz puede modificar las siguientes variables antes de llamar al script:
@@ -583,9 +607,9 @@ Los nodos se identifican con IDs numéricos (strings). Para saber qué nodos exi
 ```bash
 # Ver el escenario en una ventana interactiva con los waypoints y sus node id
 # (útil para elegir a mano los nodos source/target al crear la configuración)
-.venv\Scripts\python.exe -m evac_sim.envs.scripts.inspect_grid_layout \
-    --env management_building_basement \
-    --layout-source current \
+evac-sim inspect `
+    --env management_building_basement `
+    --layout-source current `
     --show-node-id
 ```
 
@@ -593,47 +617,52 @@ Cambia `--env` por `management_building_floor_0` o `management_building_floor_1`
 
 ```bash
 # Alternativa sin ventana: genera imagen + JSON con todos los nodos (headless)
-.venv\Scripts\python.exe -m evac_sim.envs.scripts.inspect_grid_layout \
-    --env management_building_basement \
-    --layout-source current \
-    --no-plot \
-    --show-node-id \
-    --output-image layout_basement.png \
+evac-sim inspect `
+    --env management_building_basement `
+    --layout-source current `
+    --no-plot `
+    --show-node-id `
+    --output-image layout_basement.png `
     --output-data  layout_basement.json
 ```
 
+> `evac-sim inspect` reenvía todos sus argumentos directamente a
+> `inspect_grid_layout` — consulta `python -m evac_sim.envs.scripts.inspect_grid_layout --help`
+> para ver la lista completa de flags disponibles.
+
 #### Nodos source/target recomendados por planta
 
-**Basement** (97 nodos, entorno `management_building_basement`):
+**Basement** (283 nodos, entorno `management_building_basement`):
 
 | Zona | Nodo | Posición (x,y) | Capacidad | Uso típico |
 |------|------|-----------------|-----------|------------|
-| Zona central izquierda | `1` | (19.2, 2.7) | 40 | source grande |
-| Zona central superior | `21` | (19.5, 13.5) | 10 | source medio |
-| Esquina inferior izquierda | `24` | (1.2, 2.7) | 4 | source pequeño |
-| Salida derecha | `41` | (25.9, 12.4) | 4 | target |
-| Salida izquierda | `3` | (2.3, 12.0) | 28 | target |
+| Esquina inferior izquierda | `278` | (1.4, 3.4) | 8 | source |
+| Zona central superior | `27` | (19.4, 13.4) | 8 | source |
+| Zona central inferior | `111` | (19.4, 3.4) | 8 | source |
+| Salida derecha | `5` | (25.9, 12.9) | 2 | target |
+| Salida izquierda | `174` | (1.4, 13.4) | 8 | target |
 
-**floor_0** (178 nodos, entorno `management_building_floor_0`):
-
-| Zona | Nodo | Posición (x,y) | Capacidad | Uso típico |
-|------|------|-----------------|-----------|------------|
-| Gran sala derecha | `1` | (49.5, 13.1) | 190 | source grande |
-| Corredor izquierdo | `25` | (9.4, 15.0) | 17 | source medio |
-| Salida A | `11` | (35.3, 1.9) | 14 | target |
-| Salida B | `17` | (11.9, 8.6) | 8 | target |
-| Salida C | `139` | (32.3, 15.8) | 11 | target |
-| Salida D | `47` | (56.7, 8.6) | 11 | target |
-
-**floor_1** (198 nodos, entorno `management_building_floor_1`):
+**floor_0** (212 nodos, entorno `management_building_floor_0`):
 
 | Zona | Nodo | Posición (x,y) | Capacidad | Uso típico |
 |------|------|-----------------|-----------|------------|
-| Zona central | `6` | (31.9, 12.0) | 40 | source grande |
-| Lado izquierdo | `9` | (2.7, 15.8) | 28 | source medio |
-| Pasillo central | `25` | (21.4, 12.8) | 10 | source pequeño |
-| Sala grande | `2` | (9.4, 15.0) | 91 | source grande |
-| Salida principal | `137` | (56.3, 12.4) | 9 | target |
+| Gran sala derecha | `39` | (50.4, 14.0) | 32 | source grande |
+| Corredor superior | `129` | (15.4, 17.0) | 7 | source medio |
+| Salida A | `107` | (33.4, 1.0) | 8 | target |
+| Salida B | `27` | (62.9, 10.5) | 2 | target |
+| Salida C | `108` | (31.4, 20.9) | 7 | target |
+| Salida D | `204` | (7.4, 9.0) | 7 | target |
+
+**floor_1** (501 nodos, entorno `management_building_floor_1`):
+
+| Zona | Nodo | Posición (x,y) | Capacidad | Uso típico |
+|------|------|-----------------|-----------|------------|
+| Zona derecha | `21` | (58.0, 10.0) | 32 | source grande |
+| Zona central | `139` | (43.0, 13.0) | 8 | source medio |
+| Sala central | `122` | (50.0, 2.0) | 32 | source grande |
+| Lado izquierdo | `498` | (10.0, 2.0) | 32 | source grande |
+| Corredor izquierdo | `432` | (10.0, 10.0) | 32 | source grande |
+| Salida principal | `224` | (36.4, 7.5) | 1 | target |
 
 ---
 
@@ -698,12 +727,12 @@ import tempfile
 from pathlib import Path
 
 PROJECT_ROOT = Path("C:/GitHub/Evacuation_Simulation")
-PYTHON = PROJECT_ROOT / ".venv/Scripts/python.exe"
+EVAC_SIM = PROJECT_ROOT / ".venv/Scripts/evac-sim.exe"
 
 
 def generate_and_validate(scenario_name: str, config: dict, validated_yaml_path: Path) -> tuple[bool, list[str]]:
     """
-    Escribe el config mínimo en un YAML temporal, llama a validate_scenario_config
+    Escribe el config mínimo en un YAML temporal, llama a "evac-sim validate"
     con --output para generar el YAML normalizado y devuelve (is_valid, warnings).
     """
     # Paso 1: escribir YAML mínimo
@@ -713,7 +742,7 @@ def generate_and_validate(scenario_name: str, config: dict, validated_yaml_path:
 
     # Paso 2: validate + generate
     result = subprocess.run(
-        [str(PYTHON), "-m", "evac_sim.envs.scripts.validate_scenario_config",
+        [str(EVAC_SIM), "validate",
          "--config", tmp_path,
          "--scenario", scenario_name,
          "--output", str(validated_yaml_path)],
@@ -733,11 +762,11 @@ def generate_and_validate(scenario_name: str, config: dict, validated_yaml_path:
 def run_simulation(validated_yaml_path: Path, scenario_name: str, output_dir: str) -> dict:
     """Ejecuta la simulación desde el YAML generado y devuelve el result.json."""
     subprocess.run(
-        [str(PYTHON), "-m", "evac_sim.simulation.scripts.run_scenario",
+        [str(EVAC_SIM), "run",
          "--config", str(validated_yaml_path),
          "--scenario", scenario_name,
          "--output-dir", output_dir,
-         "--output-format", "json,csv"],
+         "--output-format", "json,csv,html"],
         cwd=PROJECT_ROOT, check=True
     )
     result_path = Path(output_dir) / "result.json"
