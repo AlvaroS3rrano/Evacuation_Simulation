@@ -200,3 +200,50 @@ runs/congestion_heuristics_efficient_high/comparison/visual_snapshots/
 
 Estos PDFs permiten comparar visualmente, para cada caso base, las trayectorias y los mapas de densidad obtenidos con las distintas estrategias de guiado.
 
+---
+
+## 8. Generación de las tablas de resultados de la memoria
+
+Una vez generado el informe agregado por escenario (paso 6), se construyeron las tablas utilizadas en el Capítulo 7 de la memoria (diferencias de tiempo y densidad frente a la estrategia base, resultados medios por escenario, síntesis de la mejor estrategia y coeficiente de variación).
+
+```powershell
+python .\tools\build_thesis_result_tables.py `
+  --run-root .\runs\congestion_heuristics_efficient_high
+```
+
+Este comando no vuelve a leer las simulaciones: reutiliza los CSV ya generados en el paso 6 (`scenario_metric_summary.csv`, `scenario_delta_vs_baseline.csv`, `scenario_case_metric_values.csv`).
+
+Genera, en formato CSV y en un informe Markdown combinado:
+
+```text
+runs/congestion_heuristics_efficient_high/comparison/thesis_tables/diff_time_density_vs_baseline.csv
+runs/congestion_heuristics_efficient_high/comparison/thesis_tables/mean_results_by_scenario.csv
+runs/congestion_heuristics_efficient_high/comparison/thesis_tables/best_strategy_by_scenario.csv
+runs/congestion_heuristics_efficient_high/comparison/thesis_tables/robustness_cv.csv
+runs/congestion_heuristics_efficient_high/comparison/thesis_tables/thesis_tables_report.md
+```
+
+---
+
+## 9. Generación de las figuras de resultados de la memoria
+
+A continuación se generaron las cuatro figuras incluidas en el Capítulo 7 (comparación de medias, variación porcentual frente a la base, compromiso tiempo/densidad y dispersión por configuración).
+
+```powershell
+python .\tools\build_thesis_result_figures.py `
+  --run-root .\runs\congestion_heuristics_efficient_high
+```
+
+Al igual que el script anterior, parte de los CSV ya generados en el paso 6 y no requiere volver a ejecutar simulaciones.
+
+Genera, en PDF (vectorial, para incluir en la memoria) y en PNG (vista previa):
+
+```text
+runs/congestion_heuristics_efficient_high/comparison/thesis_tables/figures/mean_comparison.{pdf,png}
+runs/congestion_heuristics_efficient_high/comparison/thesis_tables/figures/delta_vs_baseline.{pdf,png}
+runs/congestion_heuristics_efficient_high/comparison/thesis_tables/figures/tradeoff_scatter.{pdf,png}
+runs/congestion_heuristics_efficient_high/comparison/thesis_tables/figures/dispersion_outliers.{pdf,png}
+```
+
+Los PDF se copiaron a la carpeta `figures/` del proyecto de la memoria y se referencian desde `07_analisis_resultados.tex` mediante `\includegraphics`.
+

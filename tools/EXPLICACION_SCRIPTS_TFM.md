@@ -8,6 +8,8 @@ Se asume que todos los comandos se ejecutan desde la rama `main` y desde la raí
 C:\GitHub\Evacuation_Simulation
 ```
 
+> English version: `tools/SCRIPTS_EXPLANATION_TFM.md`. Keep both files in sync when the scripts change.
+
 ---
 
 ## 1. Visión general del flujo experimental
@@ -327,6 +329,61 @@ scenario_composite_summary.csv
 
 ---
 
+## 6b. `build_thesis_result_tables.py` y `build_thesis_result_figures.py`
+
+### Objetivo
+
+Estos dos scripts no ejecutan simulaciones ni recalculan métricas: leen los CSV que ya genera `compare_congestion_by_scenario.py` (`scenario_metric_summary.csv`, `scenario_delta_vs_baseline.csv`, `scenario_case_metric_values.csv`) y los reorganizan en las tablas y figuras que se usan directamente en la memoria (Capítulo 7).
+
+Deben ejecutarse **después** de `compare_congestion_by_scenario.py`, por ejemplo:
+
+```powershell
+python tools/build_thesis_result_tables.py --run-root runs/congestion_heuristics_efficient_high
+python tools/build_thesis_result_figures.py --run-root runs/congestion_heuristics_efficient_high
+```
+
+### `build_thesis_result_tables.py`
+
+Genera cuatro tablas (CSV + un informe Markdown combinado):
+
+```text
+diff_time_density_vs_baseline  -> Tevac y D medios por estrategia, y variación % vs. la base
+mean_results_by_scenario       -> media de todas las métricas por escenario (equivalente a las tablas 7.1-7.3)
+best_strategy_by_scenario      -> heurística con mejor valor medio por métrica y escenario (tabla 7.4)
+robustness_cv                  -> CV % de Tevac/D y % de configuraciones en que cada heurística reduce la densidad (tabla 7.5)
+```
+
+Salida:
+
+```text
+runs/congestion_heuristics_efficient_high/comparison/thesis_tables/
+```
+
+### `build_thesis_result_figures.py`
+
+Genera cuatro figuras (PDF vectorial para `\includegraphics` + PNG de vista previa):
+
+```text
+dispersion_outliers   -> un punto por configuración (Tevac y D), media ± desviación típica, y la
+                          configuración más extrema de cada grupo etiquetada por su sufijo (útil para
+                          identificar casos atípicos, p. ej. una única configuración disparando el CV)
+mean_comparison        -> barras agrupadas con la media de Tevac y D por estrategia y escenario, con
+                           barras de error (±1 desviación típica)
+delta_vs_baseline      -> variación porcentual de Tevac y D de h1/h2/h3 respecto a la estrategia base
+tradeoff_scatter        -> Tevac vs. D por configuración, con la media de cada estrategia destacada,
+                           para ilustrar el compromiso rapidez/congestión
+```
+
+Salida:
+
+```text
+runs/congestion_heuristics_efficient_high/comparison/thesis_tables/figures/
+```
+
+La paleta de color es fija en los cuatro gráficos (`none` en gris neutro por ser la referencia; `h1`, `h2`, `h3` en azul, verde-azulado y naranja respectivamente), para que las figuras sean consistentes entre sí al incluirlas en la memoria.
+
+---
+
 ## 7. `diagnose_h2_k.py`
 
 ### Objetivo
@@ -515,6 +572,8 @@ runs/congestion_heuristics_efficient_high/comparison/visual_snapshots/
 | `run_all_congestion_heuristics.py` | Ejecutar todas las simulaciones |
 | `compare_congestion_heuristics.py` | Comparar estrategias por simulación |
 | `compare_congestion_by_scenario.py` | Comparar estrategias por escenario |
+| `build_thesis_result_tables.py` | Tablas de la memoria (diferencias Tevac/D, síntesis, CV) |
+| `build_thesis_result_figures.py` | Figuras de la memoria (dispersión, medias, deltas, trade-off) |
 | `diagnose_h2_k.py` | Diagnosticar el valor de `k` en `h2` |
 | `profile_single_congestion_case.py` | Depurar y perfilar una simulación concreta |
 | `tools/random_experiments/case_generation.py` | Lógica interna de generación de casos |
