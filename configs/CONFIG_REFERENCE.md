@@ -41,7 +41,7 @@ distance_to_polygon: 0.5
 strength_neighbor_repulsion: 2.6
 range_neighbor_repulsion: 0.1
 range_geometry_repulsion: 0.05
-group_split_threshold: 2
+group_split_threshold: null
 ```
 
 ---
@@ -64,7 +64,7 @@ group_split_threshold: 2
 | `danger_visualization_frame` | `int > 0` | No | `None` | Frame used to render the danger map in visualizations. Legacy alias: `danger_frame`. |
 | `distance_to_agents` | `float` | No | `0.4` (from `defaults.yaml`) | Minimum separation between agents when positioning them (`jps.distribute_by_number`). |
 | `distance_to_polygon` | `float` | No | `0.5` (from `defaults.yaml`) | Minimum separation from the source polygon's edge when positioning agents. |
-| `group_split_threshold` | `int` | No | `2` (from `defaults.yaml`) / `None` if absent from both the case and defaults | Group size above which a group delayed by congestion is split into "lead"/"lag" subgroups. |
+| `group_split_threshold` | `int` \| `null` | No | `null` (from `defaults.yaml`) | Max number of path nodes an agent may lag behind its group's leader (furthest-along agent) before being split off into a "lag" subgroup (`simulation/group_splitting.py:split_group_by_progress_threshold`). `null` or any negative value disables splitting entirely — a group never divides. |
 | `log_every_frames` | `int` | No | `10` (from `defaults.yaml`) | Every how many frames a progress line is written to the log. |
 | `strength_neighbor_repulsion` | `float` | No | `2.6` (from `defaults.yaml`) / `0` if also absent from defaults | Parameter of JuPedSim's `CollisionFreeSpeedModel` (repulsion between agents). |
 | `range_neighbor_repulsion` | `float` | No | `0.1` (from `defaults.yaml`) / `0` | Range of repulsion between agents. |

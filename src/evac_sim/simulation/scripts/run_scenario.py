@@ -192,6 +192,34 @@ def _read_risks(sim_db: Path, case_name: str) -> list[dict]:
     ]
 
 
+def _read_risk_per_frame(sim_db: Path, case_name: str) -> dict[int, dict[str, float]]:
+    """Risk levels grouped by frame, in the shape `animate()` expects.
+
+    Mirrors the `all_risks` dict built in Notebooks/Main.ipynb from the same
+    `risk_data` table.
+    """
+    conn = sqlite3.connect(str(sim_db))
+    try:
+        rows = conn.execute(
+            """
+            SELECT frame, area, risk_level
+            FROM risk_data
+            WHERE case_name = ?
+            ORDER BY frame, area
+            """,
+            (case_name,),
+        ).fetchall()
+    except sqlite3.OperationalError:
+        return {}
+    finally:
+        conn.close()
+
+    risk_per_frame: dict[int, dict[str, float]] = {}
+    for frame, area, risk_level in rows:
+        risk_per_frame.setdefault(int(frame), {})[str(area)] = float(risk_level)
+    return risk_per_frame
+
+
 def _read_metrics(sim_db: Path, case_name_mode: str) -> dict[str, Any] | None:
     conn = sqlite3.connect(str(sim_db))
     try:
@@ -292,13 +320,17 @@ def _write_mode_animation(
     mode: int,
     every_nth_frame: int,
     run_dir: Path,
+    risk_per_frame: dict[int, dict[str, float]] | None = None,
+    specific_areas: dict | None = None,
+    risk_threshold: float = 0.5,
 ) -> Path:
     """Render an interactive Plotly replay for one mode's trajectory DB.
 
-    Mirrors the flow in Notebooks/replay_existing_run.ipynb (pedpy.TrajectoryData
-    + evac_sim.viz.animation.animate), but resolves the walkable area straight
-    from select_environment(env_name).walkable_area instead of the notebook's
-    generic geometry-sniffing fallback.
+    Mirrors the flow in Notebooks/replay_existing_run.ipynb and Notebooks/Main.ipynb
+    (pedpy.TrajectoryData + evac_sim.viz.animation.animate, with the risk overlay
+    built from risk_per_frame/specific_areas), but resolves the walkable area
+    straight from select_environment(env_name).walkable_area instead of the
+    notebooks' generic geometry-sniffing fallback.
     """
     import pandas as pd
     import pedpy
@@ -328,6 +360,9 @@ def _write_mode_animation(
         walkable_area,
         every_nth_frame=every_nth_frame,
         title_note=f"{env_name} | mode {mode}",
+        risk_per_frame=risk_per_frame or None,
+        specific_areas=specific_areas,
+        risk_threshold=risk_threshold,
     )
 
     animations_dir = run_dir / "artifacts" / "animations"
@@ -383,6 +418,23 @@ def _build_result_json(
     all_times: list[float] = []
     total_frames_global = 0
 
+    # Risk overlay for HTML animations: same data Notebooks/Main.ipynb uses
+    # (risk_data table, grouped by frame) + the environment's specific_areas
+    # with obstacles removed. Only built when there's actually risk data to show.
+    risk_per_frame: dict[int, dict[str, float]] = {}
+    animation_specific_areas: dict | None = None
+    risk_threshold = float(config.get("risk", {}).get("risk_threshold", 0.5))
+    if "html" in output_formats and sim_db.exists():
+        risk_per_frame = _read_risk_per_frame(sim_db, scenario_name)
+        if risk_per_frame:
+            from evac_sim.envs.environment import remove_obstacles_from_areas
+            from evac_sim.envs.environment_factory import select_environment
+
+            env = select_environment(env_name)
+            animation_specific_areas = remove_obstacles_from_areas(
+                env.specific_areas, env.obstacles
+            )
+
     for traj_file in trajectory_files:
         mode_str = traj_file.stem.split("_mode_")[-1]
         try:
@@ -426,6 +478,9 @@ def _build_result_json(
                     mode=mode,
                     every_nth_frame=int(config.get("every_nth_frame_animation", 50)),
                     run_dir=run_dir,
+                    risk_per_frame=risk_per_frame,
+                    specific_areas=animation_specific_areas,
+                    risk_threshold=risk_threshold,
                 )
             except Exception as exc:
                 print(f"Warning: failed to render animation for mode {mode}: {exc}", file=sys.stderr)

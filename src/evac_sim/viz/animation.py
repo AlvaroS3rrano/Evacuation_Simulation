@@ -8,6 +8,7 @@ reserve the right to change the code here without warning. Do not use the
 code here. Use it at your own risk.
 """
 
+import bisect
 import sqlite3
 
 import matplotlib.pyplot as plt
@@ -447,6 +448,59 @@ def _has_risk_overlay(
     return bool(risk_per_frame) and bool(specific_areas)
 
 
+def _risk_snapshot_at(
+    frame_num,
+    sorted_risk_frames: list,
+    risk_per_frame: dict,
+) -> dict:
+    """
+    Most recently known risk snapshot at or before `frame_num`.
+
+    Risk levels are only persisted every `every_nth_frame_animation` frames
+    (see risk/risk_simulation.py), so most animation frames fall *between*
+    two samples. Without forward-filling, those in-between frames would look
+    up an empty snapshot and render with no risk overlay at all, making the
+    danger areas flicker on/off rather than evolve smoothly.
+    """
+    if not sorted_risk_frames:
+        return {}
+    idx = bisect.bisect_right(sorted_risk_frames, frame_num) - 1
+    if idx < 0:
+        return {}
+    return risk_per_frame[sorted_risk_frames[idx]]
+
+
+def _risk_overlay_traces(
+    geometry_traces: list,
+    *,
+    area_names: list,
+    specific_areas: dict,
+    risk_snapshot: dict,
+    risk_colors: list,
+) -> list:
+    """
+    Append one fill trace per area in `area_names`, in a fixed order, using
+    the risk level from `risk_snapshot` (defaulting to 0 for areas with no
+    recorded value yet).
+
+    Always emitting exactly `len(area_names)` traces — regardless of how
+    many areas actually have a nonzero/known risk at this instant — keeps
+    the trace count constant across every animation frame. That constant
+    count is what lets `animate()` compute stable trace indices for
+    `go.Frame(traces=...)`; a frame-count that varies is what previously
+    caused the risk colorbar to be silently overwritten a frame or two into
+    the animation (see the `traces=` wiring below).
+    """
+    for area_name in area_names:
+        risk_level = float(risk_snapshot.get(area_name, 0.0))
+        risk_index = max(0, min(10, int(risk_level * 10)))
+        color = risk_colors[risk_index]
+        specific_area = specific_areas.get(area_name)
+        if specific_area is not None:
+            geometry_traces = _change_geometry_traces(geometry_traces, specific_area, color)
+    return geometry_traces
+
+
 def animate(
     data: pedpy.TrajectoryData,  # TrajectoryData with positions and frame info
     area: pedpy.WalkableArea,  # WalkableArea polygon
@@ -531,6 +585,36 @@ def animate(
         else []
     )
 
+    # Fixed, sorted list of areas so every frame (including the initial one)
+    # emits exactly the same number of risk-overlay traces, in the same
+    # order — see _risk_overlay_traces for why that matters.
+    sorted_area_names = sorted(specific_areas) if show_risk_overlay else []
+    sorted_risk_frames = sorted(risk_per_frame) if show_risk_overlay else []
+
+    if show_risk_overlay:
+        initial_risk_snapshot = _risk_snapshot_at(
+            data_df["frame"].min(), sorted_risk_frames, risk_per_frame
+        )
+        geometry_traces = _risk_overlay_traces(
+            geometry_traces,
+            area_names=sorted_area_names,
+            specific_areas=specific_areas,
+            risk_snapshot=initial_risk_snapshot,
+            risk_colors=risk_colors,
+        )
+
+    # Trace-index layout of the base figure: [geometry (+ risk overlay)] +
+    # [speed/risk colorbars] + [hover traces]. Every go.Frame below declares
+    # `traces=` explicitly using these fixed offsets so it only ever touches
+    # its own geometry/hover slots and never the colorbar traces in between
+    # — without this, Plotly falls back to overwriting fig.data[0:len(frame.data)]
+    # by position, which clobbers the colorbars as soon as a frame's trace
+    # count differs from the initial one (exactly what was happening before
+    # the risk overlay had a constant per-frame trace count).
+    num_geometry_traces = len(geometry_traces)
+    hover_trace_start = num_geometry_traces + len(traces)
+    geometry_trace_indices = list(range(num_geometry_traces))
+
     # Process each selected frame
     for frame_num in selected_frames:
         # Get processed data for this frame (ensuring max_agents rows)
@@ -546,20 +630,18 @@ def animate(
         if waypoint_coords:
             frame_geometry_traces.extend(_get_waypoint_traces(waypoint_coords))
 
-        # If specific risk areas and risk_per_frame are provided, color them
+        # Color every area using the most recently known risk level (risk
+        # is only sampled every `every_nth_frame_animation` frames, so this
+        # forward-fills it across the frames in between).
         if show_risk_overlay:
-            current_risks = risk_per_frame.get(frame_num, {})
-            for area_name, risk_level in current_risks.items():
-                risk_index = max(0, min(10, int(float(risk_level) * 10)))
-                color = risk_colors[risk_index]
-                specific_area = specific_areas.get(area_name)
-
-                if specific_area is not None:
-                    frame_geometry_traces = _change_geometry_traces(
-                        frame_geometry_traces,
-                        specific_area,
-                        color,
-                    )
+            risk_snapshot = _risk_snapshot_at(frame_num, sorted_risk_frames, risk_per_frame)
+            frame_geometry_traces = _risk_overlay_traces(
+                frame_geometry_traces,
+                area_names=sorted_area_names,
+                specific_areas=specific_areas,
+                risk_snapshot=risk_snapshot,
+                risk_colors=risk_colors,
+            )
 
         # Generate shapes, hover traces, and orientation arrows for this frame
         shapes, hover_traces, arrows = _get_shapes_for_frame(
@@ -580,6 +662,8 @@ def animate(
         # Create a go.Frame object with data and layout for this frame
         frame = go.Frame(
             data=frame_geometry_traces + hover_traces,
+            traces=geometry_trace_indices
+            + list(range(hover_trace_start, hover_trace_start + len(hover_traces))),
             name=frame_name,
             layout=go.Layout(
                 shapes=shapes + arrows,

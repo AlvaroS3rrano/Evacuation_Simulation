@@ -11,6 +11,7 @@ congestion_parallel_corridors:
   targets: ["23"]
   mode_type: 5
   master_seed: 3101
+  group_split_threshold: 2
 
   grouping:
     enabled: true
@@ -62,6 +63,7 @@ congestion_short_vs_wide:
   targets: ["35", "31"]
   mode_type: 5
   master_seed: 3102
+  group_split_threshold: 2
 
   grouping:
     enabled: true
@@ -113,6 +115,7 @@ congestion_two_exits:
   targets: ["17", "63", "64", "65", "18", "66"]
   mode_type: 5
   master_seed: 3103
+  group_split_threshold: 2
 
   grouping:
     enabled: true
