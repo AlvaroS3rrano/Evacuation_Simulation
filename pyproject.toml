@@ -36,6 +36,7 @@ dev = [
   "black",
   "pytest",
   "pytest-cov",
+  "ipykernel",
 ]
 
 [tool.black]

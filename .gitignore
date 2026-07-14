@@ -1,9 +1,17 @@
 # -----------------------------
+# LaTeX projects
+# -----------------------------
+/latex_projects/
+
+# -----------------------------
 # Simulation outputs / artifacts
 # -----------------------------
 /runs/
 /results/
 /data/sqlite/
+
+# Notebook-generated configs (docs/management_building_api_walkthrough.ipynb)
+/configs/notebook_generated/
 
 /src/evac_sim/envs/generated_layouts/
 
