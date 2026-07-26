@@ -14,8 +14,12 @@ from congestion_analysis.comparison import (
     lower_is_better_map,
     validate_completeness,
 )
+from congestion_analysis.congestion_gif import generate_congestion_gifs
 from congestion_analysis.report import write_outputs
-from congestion_analysis.visualization import generate_visual_comparison_pdfs
+from congestion_analysis.visualization import (
+    generate_trajectory_time_evolution_images,
+    generate_visual_comparison_pdfs,
+)
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -99,6 +103,75 @@ def parse_args() -> argparse.Namespace:
         default=300,
         help="Maximum number of agents plotted in fallback trajectory panels. Use <=0 for all.",
     )
+    parser.add_argument(
+        "--skip-trajectory-time-evolution",
+        action="store_true",
+        help="Do not generate the per-case trajectory image colored by frame bin.",
+    )
+    parser.add_argument(
+        "--trajectory-time-bin-size",
+        type=int,
+        default=500,
+        help=(
+            "Frame width of each color bin in the trajectory time-evolution image "
+            "(e.g. 500 -> frames 0-500 one color, 500-1000 the next, ...). Independent "
+            "of --density-frame-step."
+        ),
+    )
+    parser.add_argument(
+        "--trajectory-time-subdir",
+        default="trajectory_time_evolution",
+        help="Subdirectory inside comparison/ where trajectory time-evolution images are stored.",
+    )
+    parser.add_argument(
+        "--skip-congestion-gifs",
+        action="store_true",
+        help="Do not generate per-case Voronoi-density congestion GIFs.",
+    )
+    parser.add_argument(
+        "--congestion-gif-subdir",
+        default="congestion_gifs",
+        help="Subdirectory inside comparison/ where congestion GIFs (and highlight snapshots) are stored.",
+    )
+    parser.add_argument(
+        "--gif-max-frames",
+        type=int,
+        default=60,
+        help="Target number of frames sampled for the congestion GIF when --gif-frame-step is not set.",
+    )
+    parser.add_argument(
+        "--gif-frame-step",
+        type=int,
+        default=None,
+        help="Explicit stride (in raw simulation frame units) between congestion GIF frames.",
+    )
+    parser.add_argument(
+        "--gif-fps",
+        type=int,
+        default=8,
+        help="Playback speed (frames per second) of the saved congestion GIF.",
+    )
+    parser.add_argument(
+        "--voronoi-cutoff-radius",
+        type=float,
+        default=None,
+        help="Optional max radius (meters) for individual Voronoi cells. Omit for no cutoff.",
+    )
+    parser.add_argument(
+        "--gif-cmap",
+        default="YlGn",
+        help="Matplotlib colormap used to color Voronoi cells by density.",
+    )
+    parser.add_argument(
+        "--congestion-highlight-frames",
+        nargs="*",
+        type=int,
+        default=None,
+        help=(
+            "Extra frames to save as standalone congestion snapshot PNGs (one per case, "
+            "all heuristics), in addition to the GIF."
+        ),
+    )
     return parser.parse_args()
 
 
@@ -144,6 +217,11 @@ def main() -> int:
     )
 
     visual_pdf_paths = []
+    trajectory_time_evolution_paths = []
+    congestion_gif_paths = []
+    congestion_highlight_paths = []
+
+    trajectory_max_agents = None if args.trajectory_max_agents <= 0 else args.trajectory_max_agents
 
     if not args.skip_visual_pdfs:
         visual_pdf_paths = generate_visual_comparison_pdfs(
@@ -157,11 +235,36 @@ def main() -> int:
             include_terminal_density_frame=not args.no_terminal_density_frame,
             visual_subdir=args.visual_subdir,
             trajectory_frame_stride=args.trajectory_frame_stride,
-            trajectory_max_agents=(
-                None
-                if args.trajectory_max_agents <= 0
-                else args.trajectory_max_agents
-            ),
+            trajectory_max_agents=trajectory_max_agents,
+        )
+
+    if not args.skip_trajectory_time_evolution:
+        trajectory_time_evolution_paths = generate_trajectory_time_evolution_images(
+            summary=summary,
+            project_root=PROJECT_ROOT,
+            comparison_dir=out_dir,
+            simulation_config=args.simulation_config,
+            heuristics=args.heuristics,
+            frame_bin_size=args.trajectory_time_bin_size,
+            subdir=args.trajectory_time_subdir,
+            trajectory_frame_stride=args.trajectory_frame_stride,
+            trajectory_max_agents=trajectory_max_agents,
+        )
+
+    if not args.skip_congestion_gifs:
+        congestion_gif_paths, congestion_highlight_paths = generate_congestion_gifs(
+            summary=summary,
+            project_root=PROJECT_ROOT,
+            comparison_dir=out_dir,
+            simulation_config=args.simulation_config,
+            heuristics=args.heuristics,
+            gif_subdir=args.congestion_gif_subdir,
+            gif_max_frames=args.gif_max_frames,
+            gif_frame_step=args.gif_frame_step,
+            gif_fps=args.gif_fps,
+            cutoff_radius=args.voronoi_cutoff_radius,
+            cmap_name=args.gif_cmap,
+            highlight_frames=args.congestion_highlight_frames,
         )
 
     write_outputs(
@@ -174,6 +277,9 @@ def main() -> int:
         main_metric=main_metric,
         baseline=args.baseline,
         visual_pdf_paths=visual_pdf_paths,
+        trajectory_time_evolution_paths=trajectory_time_evolution_paths,
+        congestion_gif_paths=congestion_gif_paths,
+        congestion_highlight_paths=congestion_highlight_paths,
     )
 
     print()
@@ -185,6 +291,21 @@ def main() -> int:
         print("Visual PDFs:")
         for pdf_path in visual_pdf_paths:
             print(f"  - {pdf_path}")
+
+    if trajectory_time_evolution_paths:
+        print("Trajectory time-evolution images:")
+        for png_path in trajectory_time_evolution_paths:
+            print(f"  - {png_path}")
+
+    if congestion_gif_paths:
+        print("Congestion GIFs:")
+        for gif_path in congestion_gif_paths:
+            print(f"  - {gif_path}")
+
+    if congestion_highlight_paths:
+        print("Congestion frame snapshots:")
+        for png_path in congestion_highlight_paths:
+            print(f"  - {png_path}")
 
     return 0
 

@@ -16,6 +16,9 @@ def write_markdown_report(
     main_metric: str,
     baseline: str,
     visual_pdf_paths: list[Path] | None = None,
+    trajectory_time_evolution_paths: list[Path] | None = None,
+    congestion_gif_paths: list[Path] | None = None,
+    congestion_highlight_paths: list[Path] | None = None,
 ) -> Path:
     report_path = out_dir / "comparison_report.md"
     main_column = f"{main_metric}_weighted"
@@ -76,6 +79,27 @@ def write_markdown_report(
             lines.append(f"- `{pdf_path.as_posix()}`")
         lines.append("")
 
+    if trajectory_time_evolution_paths:
+        lines.append("## Trajectory time-evolution images")
+        lines.append("")
+        for png_path in trajectory_time_evolution_paths:
+            lines.append(f"- `{png_path.as_posix()}`")
+        lines.append("")
+
+    if congestion_gif_paths:
+        lines.append("## Congestion GIFs (Voronoi density)")
+        lines.append("")
+        for gif_path in congestion_gif_paths:
+            lines.append(f"- `{gif_path.as_posix()}`")
+        lines.append("")
+
+    if congestion_highlight_paths:
+        lines.append("## Congestion frame snapshots")
+        lines.append("")
+        for png_path in congestion_highlight_paths:
+            lines.append(f"- `{png_path.as_posix()}`")
+        lines.append("")
+
     lines.append("## Input metric files")
     lines.append("")
     input_files = combined[["case_id", "heuristic", "metrics_source", "metrics_path"]].drop_duplicates()
@@ -97,6 +121,9 @@ def write_outputs(
     main_metric: str,
     baseline: str,
     visual_pdf_paths: list[Path] | None = None,
+    trajectory_time_evolution_paths: list[Path] | None = None,
+    congestion_gif_paths: list[Path] | None = None,
+    congestion_highlight_paths: list[Path] | None = None,
 ) -> None:
     out_dir.mkdir(parents=True, exist_ok=True)
     combined.to_csv(out_dir / "combined_metrics.csv", index=False)
@@ -114,6 +141,9 @@ def write_outputs(
         main_metric=main_metric,
         baseline=baseline,
         visual_pdf_paths=visual_pdf_paths,
+        trajectory_time_evolution_paths=trajectory_time_evolution_paths,
+        congestion_gif_paths=congestion_gif_paths,
+        congestion_highlight_paths=congestion_highlight_paths,
     )
 
     print(f"Report written to: {report}")

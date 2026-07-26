@@ -11,7 +11,7 @@ import pandas as pd
 import yaml
 from matplotlib.backends.backend_pdf import PdfPages
 from matplotlib.cm import ScalarMappable
-from matplotlib.colors import Normalize
+from matplotlib.colors import BoundaryNorm, Normalize
 
 
 HEURISTIC_ORDER = ["none", "h1", "h2", "h3"]
@@ -132,7 +132,7 @@ def sqlite_has_table(db_path: Path, table_name: str) -> bool:
 
 
 def choose_trajectory_db(run_dir: Path) -> Path | None:
-    db_paths = sorted(run_dir.rglob("*.db"))
+    db_paths = sorted(set(run_dir.rglob("*.db")) | set(run_dir.rglob("*.sqlite")))
 
     if not db_paths:
         return None
@@ -755,3 +755,209 @@ def generate_visual_comparison_pdfs(
         print(f"Visual comparison PDF: {pdf_path}")
 
     return pdf_paths
+
+
+def _build_frame_bins(terminal_frame: int, bin_size: int) -> list[tuple[int, int]]:
+    """Split [0, terminal_frame] into consecutive (start, end) bins of width `bin_size`."""
+    bin_size = max(1, int(bin_size))
+    terminal_frame = max(0, int(terminal_frame))
+
+    bins: list[tuple[int, int]] = []
+    start = 0
+    while start <= terminal_frame:
+        end = min(start + bin_size, terminal_frame)
+        bins.append((start, end))
+        if end >= terminal_frame:
+            break
+        start = end
+
+    return bins or [(0, terminal_frame)]
+
+
+def _plot_time_colored_trajectory_panel(
+    *,
+    ax,
+    env: Any,
+    heuristic: str,
+    trajectory_df: pd.DataFrame | None,
+    bins: Sequence[tuple[int, int]],
+    cmap: Any,
+) -> None:
+    _plot_polygon_boundaries(ax, env.walkable_area, linewidth=1.0, alpha=0.9)
+
+    if trajectory_df is None or trajectory_df.empty:
+        ax.text(
+            0.5,
+            0.5,
+            "No trajectory data",
+            ha="center",
+            va="center",
+            transform=ax.transAxes,
+            fontsize=11,
+        )
+        ax.set_title(heuristic)
+        ax.set_aspect("equal", adjustable="box")
+        return
+
+    for _, agent_df in trajectory_df.groupby("agent_id", sort=False):
+        agent_df = agent_df.sort_values("frame")
+
+        for bin_idx, (lo, hi) in enumerate(bins):
+            mask = (agent_df["frame"] >= lo) & (agent_df["frame"] <= hi)
+            segment = agent_df[mask]
+
+            if len(segment) < 2:
+                # Borrow the last point before this bin so the colored segments
+                # visually connect at bin boundaries instead of leaving gaps.
+                prior_point = agent_df[agent_df["frame"] < lo].tail(1)
+                segment = pd.concat([prior_point, segment])
+
+            if len(segment) < 2:
+                continue
+
+            ax.plot(
+                segment["x"],
+                segment["y"],
+                color=cmap(bin_idx),
+                linewidth=0.5,
+                alpha=0.5,
+            )
+
+    ax.text(
+        0.02,
+        0.02,
+        f"agents={trajectory_df['agent_id'].nunique()} frames={trajectory_df['frame'].nunique()}",
+        transform=ax.transAxes,
+        ha="left",
+        va="bottom",
+        fontsize=8,
+        bbox={"facecolor": "white", "alpha": 0.7, "edgecolor": "none"},
+    )
+
+    ax.set_title(heuristic)
+    ax.set_aspect("equal", adjustable="box")
+    ax.set_xlabel("x")
+    ax.set_ylabel("y")
+
+
+def generate_trajectory_time_evolution_images(
+    *,
+    summary: pd.DataFrame,
+    project_root: Path,
+    comparison_dir: Path,
+    simulation_config: Path | None,
+    heuristics: Sequence[str],
+    frame_bin_size: int = 500,
+    subdir: str = "trajectory_time_evolution",
+    trajectory_frame_stride: int = 10,
+    trajectory_max_agents: int | None = 300,
+) -> list[Path]:
+    """Render, per case, agent trajectories colored by the frame bin they occurred in.
+
+    Frames [0, bin_size) get one color, [bin_size, 2*bin_size) the next, etc., so the
+    evolution of congestion over time can be read directly off a single static image.
+    """
+    from evac_sim.envs.environment_factory import select_environment
+
+    out_dir = comparison_dir / subdir
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    records = build_visual_records(summary)
+    by_case: dict[str, dict[str, RunVisualRecord]] = {}
+
+    for record in records:
+        by_case.setdefault(record.case_id, {})[record.heuristic] = record
+
+    png_paths: list[Path] = []
+
+    for case_id in sorted(by_case):
+        case_records = by_case[case_id]
+        selected_heuristics = _ordered_heuristics(
+            available=set(case_records),
+            requested=heuristics,
+        )
+
+        try:
+            case_cfg, used_config = load_case_config(
+                project_root=project_root,
+                case_id=case_id,
+                simulation_config=simulation_config,
+            )
+            env = select_environment(case_cfg["environment"])
+        except Exception as exc:
+            print(f"[trajectory-time] SKIP case={case_id} reason={exc}")
+            continue
+
+        trajectory_tables: dict[str, pd.DataFrame | None] = {}
+
+        for heuristic in selected_heuristics:
+            record = case_records.get(heuristic)
+
+            if record is None:
+                trajectory_tables[heuristic] = None
+                continue
+
+            try:
+                db_path = choose_trajectory_db(record.run_dir)
+                trajectory_tables[heuristic] = (
+                    load_trajectory_dataframe(
+                        db_path,
+                        frame_stride=trajectory_frame_stride,
+                        max_agents=trajectory_max_agents,
+                    )
+                    if db_path is not None
+                    else None
+                )
+            except Exception as exc:
+                print(f"[trajectory-time] WARN case={case_id} heuristic={heuristic} error={exc}")
+                trajectory_tables[heuristic] = None
+
+        terminal_frame = _common_terminal_frame(trajectory_tables)
+        if terminal_frame is None:
+            print(f"[trajectory-time] SKIP case={case_id} reason=no trajectory data for any heuristic")
+            continue
+
+        bins = _build_frame_bins(terminal_frame, frame_bin_size)
+        cmap = plt.get_cmap("viridis", len(bins))
+
+        fig, axes = _create_2x2_figure(
+            title=(
+                f"{case_id} | trajectories colored by frame "
+                f"(bin size={frame_bin_size}) | config={used_config.name}"
+            ),
+            with_sidebar=True,
+        )
+
+        for idx, heuristic in enumerate(selected_heuristics[:4]):
+            _plot_time_colored_trajectory_panel(
+                ax=axes[idx],
+                env=env,
+                heuristic=heuristic,
+                trajectory_df=trajectory_tables.get(heuristic),
+                bins=bins,
+                cmap=cmap,
+            )
+
+        for idx in range(len(selected_heuristics[:4]), 4):
+            axes[idx].axis("off")
+
+        boundaries = [bin_range[0] for bin_range in bins] + [bins[-1][1]]
+        norm = BoundaryNorm(boundaries, cmap.N)
+
+        cax = fig.add_axes([0.87, 0.18, 0.018, 0.64])
+        cbar = fig.colorbar(
+            ScalarMappable(norm=norm, cmap=cmap),
+            cax=cax,
+            boundaries=boundaries,
+            ticks=boundaries,
+        )
+        cbar.set_label("Frame")
+
+        png_path = out_dir / f"{case_id}_trajectories_time_evolution.png"
+        fig.savefig(png_path, dpi=150)
+        plt.close(fig)
+
+        png_paths.append(png_path)
+        print(f"Trajectory time-evolution image: {png_path}")
+
+    return png_paths

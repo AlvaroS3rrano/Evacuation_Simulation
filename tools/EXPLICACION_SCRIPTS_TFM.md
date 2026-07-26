@@ -234,6 +234,25 @@ Opcionalmente también genera PDFs comparativos en:
 runs/congestion_heuristics_efficient_high/comparison/visual_snapshots/
 ```
 
+Además, y también de forma opcional (activadas por defecto, se pueden desactivar por separado), genera:
+
+```text
+runs/congestion_heuristics_efficient_high/comparison/trajectory_time_evolution/
+  {case_id}_trajectories_time_evolution.png
+
+runs/congestion_heuristics_efficient_high/comparison/congestion_gifs/{case_id}/
+  {case_id}_congestion.gif
+  {case_id}_frame_{frame:06d}.png   (solo si se piden frames concretos)
+```
+
+- **Imagen de trayectorias coloreada por tramo temporal** (`trajectory_time_evolution/`): una imagen por caso con la trayectoria de cada agente coloreada según el tramo de frames en el que ocurrió (p. ej. frames 0-500 de un color, 500-1000 de otro, etc.). El tamaño del tramo se controla con `--trajectory-time-bin-size` (por defecto 500 frames), independiente del `--density-frame-step` usado en los PDFs de densidad.
+- **GIF de congestión** (`congestion_gifs/{case_id}/{case_id}_congestion.gif`): animación por caso, con un panel por heurística, que muestra la evolución de la densidad de Voronoi por agente (`pedpy.compute_individual_voronoi_polygons` + `plot_voronoi_cells`) a lo largo de la simulación. La escala de color es fija en toda la animación para que la congestión sea comparable entre frames. Se controla con `--gif-max-frames`, `--gif-frame-step`, `--gif-fps`, `--voronoi-cutoff-radius` y `--gif-cmap`.
+- **Snapshots de frames concretos** (`--congestion-highlight-frames <frame1> <frame2> ...`): además del GIF, guarda una imagen PNG independiente por cada frame solicitado (con el mismo estilo que el GIF), útil para incluir un instante concreto en la memoria sin depurar el GIF completo.
+
+Estas tres salidas nuevas pueden desactivarse con `--skip-trajectory-time-evolution` y `--skip-congestion-gifs` si solo interesa el informe de métricas o el PDF de densidad por área.
+
+> Requisito: estas salidas necesitan el archivo `.sqlite` con las trayectorias por agente (`artifacts/db/<entorno>_mode_<n>.sqlite`, generado por JuPedSim), no solo el `simulation.db` con las métricas de riesgo/densidad. Si ese `.sqlite` no existe para algún caso/heurística, el panel correspondiente se muestra vacío con el aviso "No trajectory data".
+
 ### Relación con `tools/congestion_analysis`
 
 Este script no implementa directamente toda la lógica de análisis. Utiliza los módulos internos:
@@ -242,6 +261,7 @@ Este script no implementa directamente toda la lógica de análisis. Utiliza los
 tools/congestion_analysis/comparison.py
 tools/congestion_analysis/report.py
 tools/congestion_analysis/visualization.py
+tools/congestion_analysis/congestion_gif.py
 ```
 
 Esto permite separar la interfaz de ejecución de la lógica de análisis y visualización.
@@ -515,7 +535,11 @@ Este informe compara cada caso con la estrategia base `none`.
 
 ### `visualization.py`
 
-Genera PDFs visuales de comparación, incluyendo trayectorias y mapas de congestión.
+Genera PDFs visuales de comparación (trayectorias y mapas de densidad por área), así como la imagen de trayectorias coloreada por tramo temporal (`generate_trajectory_time_evolution_images`). También contiene `choose_trajectory_db`, la función que localiza el `.sqlite` de trayectorias de cada caso (busca tanto `*.db` como `*.sqlite` bajo `artifacts/db/`), usada tanto por los PDFs como por el módulo de GIFs de congestión.
+
+### `congestion_gif.py`
+
+Genera los GIFs de congestión basados en densidad de Voronoi por agente (`generate_congestion_gifs`), reutilizando `pedpy.compute_individual_voronoi_polygons` y `pedpy.plot_voronoi_cells`. Para mantener el cómputo asumible en runs con miles de frames y cientos de agentes, la densidad de Voronoi solo se calcula sobre el subconjunto de frames que finalmente se muestran (nunca sobre la resolución completa de la simulación). También genera, si se piden, los snapshots PNG de frames concretos, reutilizando el mismo renderizador que el GIF.
 
 Estos módulos no deberían eliminarse aunque no se ejecuten directamente desde consola, ya que son utilizados por `compare_congestion_heuristics.py`.
 
@@ -562,6 +586,18 @@ runs/congestion_heuristics_efficient_high/comparison/scenario_strategy/scenario_
 runs/congestion_heuristics_efficient_high/comparison/visual_snapshots/
 ```
 
+### Imagen de trayectorias por tramo temporal
+
+```text
+runs/congestion_heuristics_efficient_high/comparison/trajectory_time_evolution/
+```
+
+### GIFs de congestión y snapshots de frames concretos
+
+```text
+runs/congestion_heuristics_efficient_high/comparison/congestion_gifs/
+```
+
 ---
 
 ## 12. Resumen de responsabilidades
@@ -580,7 +616,8 @@ runs/congestion_heuristics_efficient_high/comparison/visual_snapshots/
 | `tools/random_experiments/scenario_space.py` | Definición de escenarios y nodos candidatos |
 | `tools/congestion_analysis/comparison.py` | Procesamiento interno de métricas |
 | `tools/congestion_analysis/report.py` | Generación del informe por simulación |
-| `tools/congestion_analysis/visualization.py` | Generación de PDFs visuales |
+| `tools/congestion_analysis/visualization.py` | Generación de PDFs visuales e imagen de trayectorias por tramo temporal |
+| `tools/congestion_analysis/congestion_gif.py` | Generación de GIFs de congestión (Voronoi) y snapshots de frames concretos |
 
 ---
 
