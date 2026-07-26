@@ -18,6 +18,15 @@ and reshapes them into the tables used in Chapter 7 of the TFM:
   - robustness_cv              -> Tabla 7.5 (coeficiente de variación y % de
                                    configuraciones en que cada heurística
                                    reduce la densidad frente a la base)
+  - mean_speed_by_scenario      -> estadísticas de velocidad por agente (m/s):
+                                   media, mediana, desviación típica, mínimo,
+                                   p10, p90 y máximo, por escenario, con
+                                   variación % respecto a la base para la
+                                   media y el mínimo. Requiere haber ejecutado
+                                   antes ``tools/compute_mean_speed_by_scenario.py``
+                                   (lee las trayectorias .sqlite crudas, algo
+                                   que este script deliberadamente no hace);
+                                   si no se ha ejecutado, esta tabla se omite.
 
 Run this after step 6 of the pipeline, e.g.:
 
@@ -55,11 +64,39 @@ METRIC_LABELS = {
     "high_density_agent_ratio": "Rhigh",
     "congestion_density_score": "CongScore",
     "avg_path_cost": "Cpath",
+    "avg_speed": "Vmed",
+    "median_speed": "Vmediana",
+    "std_speed": "Vstd",
+    "min_speed": "Vmin",
+    "p10_speed": "Vp10",
+    "p90_speed": "Vp90",
+    "max_speed": "Vmax",
 }
 
 # The two metrics the user asked for explicitly: mean evacuation time and
 # mean density exposure.
 DIFF_METRICS = ["avg_evac_time", "avg_density_exposure"]
+
+# Per-agent walking speed statistics (m/s), computed by
+# compute_mean_speed_by_scenario.py directly from the raw trajectory .sqlite
+# files (not derivable from the already-aggregated comparison_metrics.csv).
+# avg_speed is the headline metric; the rest cover the full operating range
+# (median/std/min/p10/p90/max), e.g. min/p10 show how slow agents get during
+# the worst congestion moments.
+SPEED_METRIC = "avg_speed"
+SPEED_METRICS = [
+    "avg_speed",
+    "median_speed",
+    "min_speed",
+    "p10_speed",
+    "p90_speed",
+    "max_speed",
+    "std_speed",
+]
+# Metrics that also get a %-vs-baseline column in the mean-speed table: the
+# headline average, and the worst-case (min) speed, since "how much worse
+# does congestion get" is the more thesis-relevant question for the tail.
+SPEED_DELTA_METRICS = ["avg_speed", "min_speed"]
 
 
 def label(metric: str) -> str:
@@ -141,6 +178,24 @@ def load_scenario_case_values(run_root: Path) -> pd.DataFrame:
     return pd.read_csv(path)
 
 
+def load_mean_speed_csvs(run_root: Path) -> tuple[pd.DataFrame, pd.DataFrame] | None:
+    """Load the mean-speed scenario CSVs, or None if the (optional) prerequisite
+    step hasn't been run yet.
+
+    Unlike load_scenario_strategy_csvs, this does not raise: the mean-speed
+    table/figure are additive extras, so their absence shouldn't block the
+    other four tables from being generated.
+    """
+    strategy_dir = run_root / "comparison" / "scenario_strategy"
+    summary_path = strategy_dir / "scenario_mean_speed_summary.csv"
+    delta_path = strategy_dir / "scenario_mean_speed_delta_vs_baseline.csv"
+
+    if not summary_path.exists() or not delta_path.exists():
+        return None
+
+    return pd.read_csv(summary_path), pd.read_csv(delta_path)
+
+
 def scenario_label(scenario: str) -> str:
     return SCENARIO_LABELS.get(scenario, scenario)
 
@@ -171,17 +226,29 @@ def build_mean_results_by_scenario(summary: pd.DataFrame) -> pd.DataFrame:
     return pivot
 
 
-def build_diff_time_density(
-    summary: pd.DataFrame, delta: pd.DataFrame, baseline: str
+def _build_metric_table(
+    summary: pd.DataFrame,
+    delta: pd.DataFrame,
+    baseline: str,
+    metrics: list[str],
+    *,
+    delta_metrics: list[str] | None = None,
 ) -> pd.DataFrame:
-    """Core requested table: mean Tevac/D per strategy, plus % change vs
-    baseline, per scenario."""
+    """One row per (scenario, heuristic), with a `{label}_mean` column per
+    metric and a `{label}_delta_pct` column for the metrics in `delta_metrics`
+    (all of `metrics` by default). Shared by build_diff_time_density (Tevac/D)
+    and build_mean_speed_by_scenario (speed statistics) since both need the
+    same "mean + %-vs-baseline per metric" shape.
+    """
+    if delta_metrics is None:
+        delta_metrics = metrics
+
     rows = []
     scenarios = sorted(summary["scenario"].unique())
     for scenario in scenarios:
         for heuristic in HEURISTIC_ORDER:
             row = {"scenario": scenario, "heuristic": heuristic}
-            for metric in DIFF_METRICS:
+            for metric in metrics:
                 mean_val = summary.loc[
                     (summary["scenario"] == scenario)
                     & (summary["heuristic"] == heuristic)
@@ -191,6 +258,9 @@ def build_diff_time_density(
                 row[f"{label(metric)}_mean"] = (
                     float(mean_val.iloc[0]) if not mean_val.empty else float("nan")
                 )
+
+                if metric not in delta_metrics:
+                    continue
 
                 if heuristic == baseline:
                     row[f"{label(metric)}_delta_pct"] = 0.0
@@ -210,6 +280,32 @@ def build_diff_time_density(
     out = order_categorical(out, "heuristic", HEURISTIC_ORDER)
     out = out.sort_values(["scenario", "heuristic"]).reset_index(drop=True)
     return out
+
+
+def build_diff_time_density(
+    summary: pd.DataFrame, delta: pd.DataFrame, baseline: str
+) -> pd.DataFrame:
+    """Core requested table: mean Tevac/D per strategy, plus % change vs
+    baseline, per scenario."""
+    return _build_metric_table(summary, delta, baseline, DIFF_METRICS)
+
+
+def build_mean_speed_by_scenario(
+    speed_summary: pd.DataFrame, speed_delta: pd.DataFrame, baseline: str
+) -> pd.DataFrame:
+    """Per-agent walking speed statistics (m/s) per strategy and scenario —
+    mean, median, min, p10, p90, max, std — plus % change vs. the baseline
+    for the headline mean and the worst-case (min) speed. Same shape as
+    build_diff_time_density, for the metrics produced by
+    compute_mean_speed_by_scenario.py.
+    """
+    return _build_metric_table(
+        speed_summary,
+        speed_delta,
+        baseline,
+        SPEED_METRICS,
+        delta_metrics=SPEED_DELTA_METRICS,
+    )
 
 
 def build_best_strategy_by_scenario(summary: pd.DataFrame) -> pd.DataFrame:
@@ -299,6 +395,7 @@ def write_report(
     diff_time_density: pd.DataFrame,
     best_strategy: pd.DataFrame,
     robustness: pd.DataFrame,
+    mean_speed: pd.DataFrame | None,
     baseline: str,
     decimals: int,
 ) -> Path:
@@ -308,6 +405,9 @@ def write_report(
     diff_time_density.to_csv(output_dir / "diff_time_density_vs_baseline.csv", index=False)
     best_strategy.to_csv(output_dir / "best_strategy_by_scenario.csv", index=False)
     robustness.to_csv(output_dir / "robustness_cv.csv", index=False)
+
+    if mean_speed is not None:
+        mean_speed.to_csv(output_dir / "mean_speed_by_scenario.csv", index=False)
 
     lines: list[str] = []
     lines.append("# Tablas de resultados (generado automáticamente)\n")
@@ -345,6 +445,24 @@ def write_report(
     )
     lines.append(markdown_table(robustness, decimals) + "\n")
 
+    lines.append("## 5. Estadísticas de velocidad de los agentes\n")
+    if mean_speed is not None:
+        lines.append(
+            "Estadísticas de velocidad por agente (m/s), calculadas directamente "
+            "sobre las trayectorias registradas por JuPedSim (no derivadas de "
+            "`avg_path_cost`): `Vmed` (media), `Vmediana`, `Vstd` (desviación "
+            "típica), `Vmin`, `Vp10`, `Vp90` y `Vmax`. `Vmin`/`Vp10` reflejan "
+            "cómo de lentos se mueven los agentes en los momentos de mayor "
+            "congestión. Se incluye variación porcentual respecto a la "
+            f"estrategia base (`{baseline}`) para `Vmed` y `Vmin`.\n"
+        )
+        lines.append(markdown_table(mean_speed, decimals) + "\n")
+    else:
+        lines.append(
+            "_No disponible: ejecuta `python tools/compute_mean_speed_by_scenario.py "
+            "--run-root <run-root>` antes de este script para generar esta tabla._\n"
+        )
+
     report_path = output_dir / "thesis_tables_report.md"
     report_path.write_text("\n".join(lines), encoding="utf-8")
     return report_path
@@ -362,12 +480,25 @@ def main() -> int:
     best_strategy = build_best_strategy_by_scenario(summary)
     robustness = build_robustness_cv(summary, delta, args.baseline)
 
+    speed_csvs = load_mean_speed_csvs(run_root)
+    if speed_csvs is None:
+        print(
+            "[mean-speed] not found under comparison/scenario_strategy/ - skipping "
+            "table 5. Run `python tools/compute_mean_speed_by_scenario.py "
+            f"--run-root {run_root}` first to include it."
+        )
+        mean_speed = None
+    else:
+        speed_summary, speed_delta = speed_csvs
+        mean_speed = build_mean_speed_by_scenario(speed_summary, speed_delta, args.baseline)
+
     report_path = write_report(
         output_dir,
         mean_results=mean_results,
         diff_time_density=diff_time_density,
         best_strategy=best_strategy,
         robustness=robustness,
+        mean_speed=mean_speed,
         baseline=args.baseline,
         decimals=args.decimals,
     )

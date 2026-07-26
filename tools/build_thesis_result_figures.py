@@ -15,9 +15,16 @@ thesis discussion (Chapter 7):
   4. tradeoff_scatter      -> Tevac vs. D scatter per scenario, individual
                               configurations plus per-strategy mean markers,
                               illustrating the speed/congestion compromise.
+  5. mean_speed_comparison -> grouped bars of mean per-agent walking speed
+                              (m/s) per strategy and scenario, with +/-1 std
+                              error bars. Only rendered if
+                              tools/compute_mean_speed_by_scenario.py has
+                              already been run (it needs the raw trajectory
+                              .sqlite files, which this script deliberately
+                              does not re-read).
 
 Each figure is written as both PDF (vector, for \\includegraphics in the
-thesis) and PNG (quick preview).
+thesis) and PNG (quick preview). All figures are labelled in English.
 
 Usage:
     python tools/build_thesis_result_figures.py \\
@@ -43,11 +50,25 @@ from build_thesis_result_tables import (
     HEURISTIC_ORDER,
     METRIC_LABELS,
     PROJECT_ROOT,
+    SPEED_METRIC,
     label,
+    load_mean_speed_csvs,
     load_scenario_case_values,
     load_scenario_strategy_csvs,
-    scenario_label,
 )
+
+# English scenario names for the figures (the tables built by
+# build_thesis_result_tables.py stay in Spanish, matching the thesis body
+# text; only the figures were asked to be in English).
+SCENARIO_LABELS_EN = {
+    "two_corridors": "Parallel corridors",
+    "short_vs_wide": "Short vs. wide route",
+    "two_exits": "Two exits",
+}
+
+
+def scenario_label(scenario: str) -> str:
+    return SCENARIO_LABELS_EN.get(scenario, scenario)
 
 # Categorical palette (dataviz skill, references/palette.md): fixed order,
 # validated for CVD separation. "none" is deliberately a neutral gray since
@@ -217,8 +238,8 @@ def fig_dispersion_outliers(case_df: pd.DataFrame, out_dir: Path, dpi: int) -> l
                 ax.set_title(scenario_label(scenario), fontsize=10)
 
     fig.suptitle(
-        "Dispersión por configuración y valores atípicos "
-        "(rombo = media ± desviación típica; etiqueta = configuración más extrema)",
+        "Per-configuration dispersion and outliers "
+        "(diamond = mean ± standard deviation; label = most extreme configuration)",
         fontsize=10.5,
         y=1.02,
     )
@@ -276,15 +297,98 @@ def fig_mean_comparison(summary: pd.DataFrame, out_dir: Path, dpi: int) -> list[
         loc="lower center",
         ncol=len(heuristics),
         bbox_to_anchor=(0.5, -0.06),
-        title="Estrategia",
+        title="Strategy",
     )
     fig.suptitle(
-        "Tiempo medio de evacuación y exposición media a densidad por estrategia y escenario",
+        "Mean evacuation time and mean density exposure by strategy and scenario",
         fontsize=11,
         y=1.03,
     )
     fig.tight_layout()
     return save(fig, out_dir, "mean_comparison", dpi)
+
+
+def _speed_metric_value(
+    speed_summary: pd.DataFrame, scenario: str, heuristic: str, metric: str, column: str
+) -> float:
+    row = speed_summary[
+        (speed_summary["scenario"] == scenario)
+        & (speed_summary["heuristic"] == heuristic)
+        & (speed_summary["metric"] == metric)
+    ]
+    return float(row[column].iloc[0]) if not row.empty else np.nan
+
+
+def fig_mean_speed_comparison(speed_summary: pd.DataFrame, out_dir: Path, dpi: int) -> list[Path]:
+    scenarios = sorted(speed_summary["scenario"].unique())
+    heuristics = [h for h in HEURISTIC_ORDER if h in speed_summary["heuristic"].unique()]
+
+    fig, ax = plt.subplots(figsize=(6.2, 4.2))
+
+    n_heuristics = len(heuristics)
+    group_width = 0.8
+    bar_width = group_width / n_heuristics
+
+    for h_idx, heuristic in enumerate(heuristics):
+        means, stds, range_min, range_max = [], [], [], []
+        for scenario in scenarios:
+            means.append(_speed_metric_value(speed_summary, scenario, heuristic, SPEED_METRIC, "mean"))
+            stds.append(_speed_metric_value(speed_summary, scenario, heuristic, SPEED_METRIC, "std") or 0.0)
+            range_min.append(_speed_metric_value(speed_summary, scenario, heuristic, "min_speed", "mean"))
+            range_max.append(_speed_metric_value(speed_summary, scenario, heuristic, "max_speed", "mean"))
+
+        offsets = (h_idx - (n_heuristics - 1) / 2) * bar_width
+        positions = np.arange(len(scenarios)) + offsets
+
+        # Thin whisker behind the bar: the across-configuration mean of each
+        # case's own min/max speed, i.e. the typical full operating range —
+        # distinct from (and usually wider than) the +/-1 std error bar,
+        # which only reflects variability *between* configurations.
+        ax.vlines(
+            positions,
+            ymin=range_min,
+            ymax=range_max,
+            color=INK_MUTED,
+            linewidth=1.4,
+            zorder=1,
+        )
+
+        ax.bar(
+            positions,
+            means,
+            width=bar_width * 0.92,
+            yerr=stds,
+            capsize=3,
+            color=COLORS[heuristic],
+            edgecolor=INK_PRIMARY,
+            linewidth=0.5,
+            label=heuristic,
+            zorder=2,
+        )
+
+    ax.set_xticks(range(len(scenarios)))
+    ax.set_xticklabels([scenario_label(s) for s in scenarios], rotation=10)
+    ax.set_ylabel("Walking speed (m/s)")
+    ax.margins(y=0.12)
+
+    handles = [plt.Rectangle((0, 0), 1, 1, color=COLORS[h]) for h in heuristics]
+    fig.legend(
+        handles,
+        heuristics,
+        loc="lower center",
+        ncol=len(heuristics),
+        bbox_to_anchor=(0.5, -0.08),
+        title="Strategy",
+    )
+    fig.suptitle(
+        "Mean per-agent walking speed by strategy and scenario\n"
+        "(bar = mean ± std across configurations; thin line = mean of each "
+        "run's own min-max speed range)",
+        fontsize=10.5,
+        y=1.05,
+    )
+    fig.tight_layout()
+    return save(fig, out_dir, "mean_speed_comparison", dpi)
 
 
 def fig_delta_vs_baseline(delta: pd.DataFrame, out_dir: Path, baseline: str, dpi: int) -> list[Path]:
@@ -348,10 +452,10 @@ def fig_delta_vs_baseline(delta: pd.DataFrame, out_dir: Path, baseline: str, dpi
         loc="lower center",
         ncol=len(heuristics),
         bbox_to_anchor=(0.5, -0.06),
-        title="Estrategia",
+        title="Strategy",
     )
     fig.suptitle(
-        f"Variación porcentual respecto a la estrategia base ({baseline})",
+        f"Percentage change relative to the baseline strategy ({baseline})",
         fontsize=11,
         y=1.03,
     )
@@ -426,8 +530,8 @@ def fig_tradeoff_scatter(case_df: pd.DataFrame, summary: pd.DataFrame, out_dir: 
         ax.set_title(scenario_label(scenario), fontsize=10.5)
 
     fig.suptitle(
-        "Compromiso entre tiempo de evacuación y exposición a densidad "
-        "(puntos pequeños = configuraciones individuales; puntos grandes = media por estrategia)",
+        "Trade-off between evacuation time and density exposure "
+        "(small points = individual configurations; large points = per-strategy mean)",
         fontsize=10.5,
         y=1.04,
     )
@@ -454,6 +558,17 @@ def main() -> int:
     written += fig_mean_comparison(summary, output_dir, args.dpi)
     written += fig_delta_vs_baseline(delta, output_dir, args.baseline, args.dpi)
     written += fig_tradeoff_scatter(case_values, summary, output_dir, args.dpi)
+
+    speed_csvs = load_mean_speed_csvs(run_root)
+    if speed_csvs is None:
+        print(
+            "[mean-speed] not found under comparison/scenario_strategy/ - skipping "
+            "mean_speed_comparison figure. Run `python tools/compute_mean_speed_by_scenario.py "
+            f"--run-root {run_root}` first to include it."
+        )
+    else:
+        speed_summary, _ = speed_csvs
+        written += fig_mean_speed_comparison(speed_summary, output_dir, args.dpi)
 
     print(f"Wrote {len(written)} files to: {output_dir}")
     for path in written:

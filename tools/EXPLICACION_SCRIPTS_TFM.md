@@ -353,7 +353,7 @@ scenario_composite_summary.csv
 
 ### Objetivo
 
-Estos dos scripts no ejecutan simulaciones ni recalculan métricas: leen los CSV que ya genera `compare_congestion_by_scenario.py` (`scenario_metric_summary.csv`, `scenario_delta_vs_baseline.csv`, `scenario_case_metric_values.csv`) y los reorganizan en las tablas y figuras que se usan directamente en la memoria (Capítulo 7).
+Estos dos scripts no ejecutan simulaciones ni recalculan métricas: leen los CSV que ya genera `compare_congestion_by_scenario.py` (`scenario_metric_summary.csv`, `scenario_delta_vs_baseline.csv`, `scenario_case_metric_values.csv`) y los reorganizan en las tablas y figuras que se usan directamente en la memoria (Capítulo 7). Si además se ha ejecutado `compute_mean_speed_by_scenario.py` (sección 6c más abajo), también recogen sus CSV `scenario_mean_speed_*.csv` para generar una tabla/figura de velocidad; si no, esa tabla/figura se omite con un aviso por consola, sin afectar al resto.
 
 Deben ejecutarse **después** de `compare_congestion_by_scenario.py`, por ejemplo:
 
@@ -364,13 +364,17 @@ python tools/build_thesis_result_figures.py --run-root runs/congestion_heuristic
 
 ### `build_thesis_result_tables.py`
 
-Genera cuatro tablas (CSV + un informe Markdown combinado):
+Genera cinco tablas (CSV + un informe Markdown combinado):
 
 ```text
 diff_time_density_vs_baseline  -> Tevac y D medios por estrategia, y variación % vs. la base
 mean_results_by_scenario       -> media de todas las métricas por escenario (equivalente a las tablas 7.1-7.3)
 best_strategy_by_scenario      -> heurística con mejor valor medio por métrica y escenario (tabla 7.4)
 robustness_cv                  -> CV % de Tevac/D y % de configuraciones en que cada heurística reduce la densidad (tabla 7.5)
+mean_speed_by_scenario          -> estadísticas de velocidad por agente (media/mediana/std/mín/p10/p90/máx,
+                                   en m/s) por estrategia y escenario, con variación % vs. la base para la
+                                   media y el mínimo (la cola de peor congestión). Requiere haber ejecutado
+                                   antes `compute_mean_speed_by_scenario.py`; si no, se omite.
 ```
 
 Salida:
@@ -381,7 +385,7 @@ runs/congestion_heuristics_efficient_high/comparison/thesis_tables/
 
 ### `build_thesis_result_figures.py`
 
-Genera cuatro figuras (PDF vectorial para `\includegraphics` + PNG de vista previa):
+Genera cinco figuras (PDF vectorial para `\includegraphics` + PNG de vista previa):
 
 ```text
 dispersion_outliers   -> un punto por configuración (Tevac y D), media ± desviación típica, y la
@@ -392,6 +396,10 @@ mean_comparison        -> barras agrupadas con la media de Tevac y D por estrate
 delta_vs_baseline      -> variación porcentual de Tevac y D de h1/h2/h3 respecto a la estrategia base
 tradeoff_scatter        -> Tevac vs. D por configuración, con la media de cada estrategia destacada,
                            para ilustrar el compromiso rapidez/congestión
+mean_speed_comparison   -> barras agrupadas con la velocidad media por agente por estrategia y escenario,
+                           con barras de error (±1 desviación típica) y una línea fina que muestra la media
+                           del rango mín-máx propio de cada simulación. Misma dependencia opcional de
+                           `compute_mean_speed_by_scenario.py` que la tabla anterior.
 ```
 
 Salida:
@@ -400,7 +408,37 @@ Salida:
 runs/congestion_heuristics_efficient_high/comparison/thesis_tables/figures/
 ```
 
-La paleta de color es fija en los cuatro gráficos (`none` en gris neutro por ser la referencia; `h1`, `h2`, `h3` en azul, verde-azulado y naranja respectivamente), para que las figuras sean consistentes entre sí al incluirlas en la memoria.
+La paleta de color es fija en los cinco gráficos (`none` en gris neutro por ser la referencia; `h1`, `h2`, `h3` en azul, verde-azulado y naranja respectivamente), para que las figuras sean consistentes entre sí al incluirlas en la memoria.
+
+Todas las figuras generadas por `build_thesis_result_figures.py` están rotuladas en inglés (títulos, ejes, leyenda). Las tablas generadas por `build_thesis_result_tables.py` se mantienen deliberadamente en español (`Tevac`, `D`, `Vmed`, ... acorde al texto de la memoria) — solo se pidió traducir las figuras.
+
+---
+
+## 6c. `compute_mean_speed_by_scenario.py`
+
+### Objetivo
+
+Paso adicional y opcional que calcula estadísticas reales de velocidad por agente —media, mediana, desviación típica, mínimo, p10, p90 y máximo, todo en m/s— directamente a partir de los archivos `.sqlite` de trayectorias crudas de JuPedSim (`artifacts/db/<entorno>_mode_<n>.sqlite`, los mismos que usa `congestion_analysis/congestion_gif.py`), agregadas por escenario.
+
+Es un paso deliberadamente separado de `build_thesis_result_tables.py` / `build_thesis_result_figures.py`: esos dos scripts solo leen CSV pequeños ya agregados y nunca releen las bases de datos de la simulación, y la velocidad no se puede derivar de esos CSV agregados. En concreto, `avg_path_cost` es una media temporal de la distancia RESTANTE de la ruta, no la distancia total recorrida, por lo que `avg_path_cost / avg_evac_time` no sería una velocidad físicamente correcta — hay que leer las trayectorias reales por agente.
+
+Debe ejecutarse **después** de `compare_congestion_by_scenario.py` y **antes** de `build_thesis_result_tables.py` / `build_thesis_result_figures.py`, por ejemplo:
+
+```powershell
+python tools/compute_mean_speed_by_scenario.py --run-root runs/congestion_heuristics_efficient_high
+```
+
+Sobre el run completo `congestion_heuristics_efficient_high` (60 combinaciones caso/heurística) tarda menos de un minuto.
+
+### Salida
+
+```text
+runs/congestion_heuristics_efficient_high/comparison/scenario_strategy/scenario_mean_speed_case_values.csv
+runs/congestion_heuristics_efficient_high/comparison/scenario_strategy/scenario_mean_speed_summary.csv
+runs/congestion_heuristics_efficient_high/comparison/scenario_strategy/scenario_mean_speed_delta_vs_baseline.csv
+```
+
+Estos CSV alimentan la tabla `mean_speed_by_scenario` y la figura `mean_speed_comparison` descritas en la sección 6b anterior. Si este script no se ha ejecutado todavía, ambas se omiten de forma controlada (con un aviso por consola que señala este script) sin hacer fallar el resto del pipeline.
 
 ---
 
@@ -598,6 +636,13 @@ runs/congestion_heuristics_efficient_high/comparison/trajectory_time_evolution/
 runs/congestion_heuristics_efficient_high/comparison/congestion_gifs/
 ```
 
+### Estadísticas de velocidad media
+
+```text
+runs/congestion_heuristics_efficient_high/comparison/scenario_strategy/scenario_mean_speed_summary.csv
+runs/congestion_heuristics_efficient_high/comparison/scenario_strategy/scenario_mean_speed_delta_vs_baseline.csv
+```
+
 ---
 
 ## 12. Resumen de responsabilidades
@@ -608,8 +653,9 @@ runs/congestion_heuristics_efficient_high/comparison/congestion_gifs/
 | `run_all_congestion_heuristics.py` | Ejecutar todas las simulaciones |
 | `compare_congestion_heuristics.py` | Comparar estrategias por simulación |
 | `compare_congestion_by_scenario.py` | Comparar estrategias por escenario |
-| `build_thesis_result_tables.py` | Tablas de la memoria (diferencias Tevac/D, síntesis, CV) |
-| `build_thesis_result_figures.py` | Figuras de la memoria (dispersión, medias, deltas, trade-off) |
+| `build_thesis_result_tables.py` | Tablas de la memoria (diferencias Tevac/D, síntesis, CV, velocidad media) |
+| `build_thesis_result_figures.py` | Figuras de la memoria (dispersión, medias, deltas, trade-off, velocidad media) |
+| `compute_mean_speed_by_scenario.py` | Estadísticas de velocidad por agente a partir de trayectorias crudas |
 | `diagnose_h2_k.py` | Diagnosticar el valor de `k` en `h2` |
 | `profile_single_congestion_case.py` | Depurar y perfilar una simulación concreta |
 | `tools/random_experiments/case_generation.py` | Lógica interna de generación de casos |
