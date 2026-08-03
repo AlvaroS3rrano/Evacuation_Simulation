@@ -1,18 +1,20 @@
-# Comandos utilizados para la realización del TFM
+# Commands used to run the TFM experiments
 
-Este documento recoge, en el orden en que se utilizaron, los comandos principales empleados para la realización de los experimentos del TFM.
+This document lists, in the order they were used, the main commands run to carry out the TFM experiments.
 
-Se asume que se trabaja desde la rama `main` y desde la raíz del repositorio:
+All commands assume the `main` branch and the repository root as the working directory:
 
 ```text
 C:\GitHub\Evacuation_Simulation
 ```
 
+> For what each script does and what it produces, see `tools/SCRIPTS_EXPLANATION_TFM.md`. This document only records the commands and their main output paths.
+
 ---
 
-## 1. Diagnóstico del parámetro `k` para la estrategia `h2`
+## 1. `k` parameter diagnostic for the `h2` strategy
 
-En primer lugar, se ejecutó un diagnóstico del parámetro `k` para analizar el comportamiento de la estrategia `h2` con distintos horizontes de reserva.
+First, a diagnostic run over the `k` parameter analyzed how the `h2` strategy behaves under different reservation horizons.
 
 ```powershell
 python .\tools\diagnose_h2_k.py `
@@ -20,13 +22,7 @@ python .\tools\diagnose_h2_k.py `
   --k-values 2 3 4 5 6 8 10
 ```
 
-Este comando genera los resultados del diagnóstico en:
-
-```text
-runs/h2_k_diagnostic/
-```
-
-Archivos principales generados:
+Output:
 
 ```text
 runs/h2_k_diagnostic/h2_k_diagnostic_summary.csv
@@ -35,9 +31,9 @@ runs/h2_k_diagnostic/h2_k_diagnostic_report.md
 
 ---
 
-## 2. Generación del YAML random de escenarios de congestión
+## 2. Random congestion-scenario YAML generation
 
-A continuación, se generó el archivo YAML con las configuraciones experimentales random utilizadas en las simulaciones principales.
+Next, the YAML file with the random experimental configurations used in the main simulations was generated.
 
 ```powershell
 python .\tools\generate_random_congestion_yaml.py `
@@ -47,7 +43,7 @@ python .\tools\generate_random_congestion_yaml.py `
   --required-targets two_exits:17
 ```
 
-Este comando genera:
+Output:
 
 ```text
 configs/random_efficient_high_congestion.yaml
@@ -56,9 +52,9 @@ configs/random_efficient_high_congestion.metadata.json
 
 ---
 
-## 3. Ejecución de todas las simulaciones con las estrategias de guiado
+## 3. Running all simulations across the guidance strategies
 
-Una vez generado el YAML experimental, se ejecutaron todas las simulaciones con las cuatro estrategias de guiado:
+Once the experimental YAML was generated, every simulation was run with the four guidance strategies:
 
 ```text
 none
@@ -67,13 +63,11 @@ h2
 h3
 ```
 
-El valor de horizonte utilizado fue:
+using a reservation horizon of:
 
 ```text
 k = 6
 ```
-
-Comando utilizado:
 
 ```powershell
 python .\tools\run_all_congestion_heuristics.py `
@@ -83,23 +77,18 @@ python .\tools\run_all_congestion_heuristics.py `
   --runs-dir runs/congestion_heuristics_efficient_high
 ```
 
-Los resultados se guardan en:
+Output:
 
 ```text
 runs/congestion_heuristics_efficient_high/
-```
-
-Archivo principal de seguimiento:
-
-```text
 runs/congestion_heuristics_efficient_high/run_manifest.json
 ```
 
 ---
 
-## 4. Construcción de métricas derivadas
+## 4. Derived metrics
 
-Tras ejecutar las simulaciones, se calcularon las métricas derivadas de evacuación, congestión y ruta.
+After running the simulations, the derived evacuation, congestion, and route metrics were computed.
 
 ```powershell
 python .\tools\build_derived_metrics.py `
@@ -107,7 +96,7 @@ python .\tools\build_derived_metrics.py `
   --simulation-config random_efficient_high_congestion.yaml
 ```
 
-Este comando genera, para cada simulación, archivos como:
+For each simulation, this generates files such as:
 
 ```text
 artifacts/csv/evacuation_metrics.csv
@@ -117,9 +106,9 @@ artifacts/csv/comparison_metrics.csv
 
 ---
 
-## 5. Comparación de heurísticas por simulación
+## 5. Per-simulation heuristic comparison
 
-Después de generar las métricas derivadas, se construyó el informe comparativo por simulación.
+With the derived metrics in place, the per-simulation comparison report was built.
 
 ```powershell
 python .\tools\compare_congestion_heuristics.py `
@@ -130,7 +119,7 @@ python .\tools\compare_congestion_heuristics.py `
   --skip-visual-pdfs
 ```
 
-Salida principal:
+Output:
 
 ```text
 runs/congestion_heuristics_efficient_high/comparison/comparison_report.md
@@ -138,9 +127,9 @@ runs/congestion_heuristics_efficient_high/comparison/comparison_report.md
 
 ---
 
-## 6. Comparación agregada por escenario
+## 6. Aggregated per-scenario comparison
 
-Finalmente, se generó el informe comparativo agregado por escenario.
+Finally, the aggregated per-scenario comparison report was generated.
 
 ```powershell
 python .\tools\compare_congestion_by_scenario.py `
@@ -148,39 +137,25 @@ python .\tools\compare_congestion_by_scenario.py `
   --baseline none
 ```
 
-Salida principal:
+Output:
 
 ```text
 runs/congestion_heuristics_efficient_high/comparison/scenario_strategy/scenario_strategy_report.md
 ```
 
-Este informe agrega las distintas configuraciones pertenecientes a cada escenario y calcula métricas como:
-
-```text
-mean
-std
-cv_pct
-delta_pct_mean
-win_rate_vs_baseline_pct
-```
-
-para las métricas principales de tiempo y congestión.
-
 ---
 
-## 7. Generación de PDFs visuales para los casos base
+## 7. Visual PDFs for the base cases
 
-De forma posterior a la ejecución de las simulaciones y a la construcción de las métricas derivadas, se generaron los PDFs visuales correspondientes a los casos base de cada escenario.
+After running the simulations and building the derived metrics, the visual PDFs for each scenario's base case were generated.
 
-Los casos base considerados fueron:
+Base cases considered:
 
 ```text
 base_short_vs_wide
 base_two_corridors
 base_two_exits
 ```
-
-Comando utilizado:
 
 ```powershell
 python .\tools\compare_congestion_heuristics.py `
@@ -189,61 +164,85 @@ python .\tools\compare_congestion_heuristics.py `
   --heuristics none h1 h2 h3 `
   --cases base_short_vs_wide base_two_corridors base_two_exits `
   --simulation-config random_efficient_high_congestion.yaml `
-  --density-frame-step 500
+  --density-frame-step 500 `
+  --congestion-highlight-frames 1000 3000 `
+  --time-unit seconds
 ```
 
-Los PDFs se generan en:
+Output:
 
 ```text
 runs/congestion_heuristics_efficient_high/comparison/visual_snapshots/
 ```
 
-Estos PDFs permiten comparar visualmente, para cada caso base, las trayectorias y los mapas de densidad obtenidos con las distintas estrategias de guiado.
+These PDFs allow visually comparing, for each base case, the trajectories and density maps obtained with the different guidance strategies.
+
+`--time-unit seconds` labels density frames, the trajectory time-evolution image, and the congestion GIF/snapshots in real time (`t=...s`) instead of raw frame numbers, converted using each case's simulation fps (see `tools/SCRIPTS_EXPLANATION_TFM.md` for details); it falls back to frame labels per case if fps can't be read. Highlight frames beyond a case's terminal frame (e.g. `3000` for the shorter `base_two_corridors`/`base_two_exits` runs) are skipped automatically.
 
 ---
 
-## 8. Generación de las tablas de resultados de la memoria
+## 8. Mean walking-speed statistics
 
-Una vez generado el informe agregado por escenario (paso 6), se construyeron las tablas utilizadas en el Capítulo 7 de la memoria (diferencias de tiempo y densidad frente a la estrategia base, resultados medios por escenario, síntesis de la mejor estrategia y coeficiente de variación).
+Once the per-scenario report existed (step 6), per-agent walking-speed statistics were computed from the raw trajectory data.
+
+```powershell
+python .\tools\compute_mean_speed_by_scenario.py `
+  --run-root .\runs\congestion_heuristics_efficient_high
+```
+
+Output:
+
+```text
+runs/congestion_heuristics_efficient_high/comparison/scenario_strategy/scenario_mean_speed_case_values.csv
+runs/congestion_heuristics_efficient_high/comparison/scenario_strategy/scenario_mean_speed_summary.csv
+runs/congestion_heuristics_efficient_high/comparison/scenario_strategy/scenario_mean_speed_delta_vs_baseline.csv
+```
+
+---
+
+## 9. Thesis result tables
+
+With the per-scenario report (step 6) and the mean-speed statistics (step 8) available, the tables used in Chapter 7 of the thesis were built.
 
 ```powershell
 python .\tools\build_thesis_result_tables.py `
   --run-root .\runs\congestion_heuristics_efficient_high
 ```
 
-Este comando no vuelve a leer las simulaciones: reutiliza los CSV ya generados en el paso 6 (`scenario_metric_summary.csv`, `scenario_delta_vs_baseline.csv`, `scenario_case_metric_values.csv`).
+This command does not re-read the simulations: it reuses the CSVs already produced in steps 6 and 8.
 
-Genera, en formato CSV y en un informe Markdown combinado:
+Output:
 
 ```text
 runs/congestion_heuristics_efficient_high/comparison/thesis_tables/diff_time_density_vs_baseline.csv
 runs/congestion_heuristics_efficient_high/comparison/thesis_tables/mean_results_by_scenario.csv
 runs/congestion_heuristics_efficient_high/comparison/thesis_tables/best_strategy_by_scenario.csv
 runs/congestion_heuristics_efficient_high/comparison/thesis_tables/robustness_cv.csv
+runs/congestion_heuristics_efficient_high/comparison/thesis_tables/mean_speed_by_scenario.csv
 runs/congestion_heuristics_efficient_high/comparison/thesis_tables/thesis_tables_report.md
 ```
 
 ---
 
-## 9. Generación de las figuras de resultados de la memoria
+## 10. Thesis result figures
 
-A continuación se generaron las cuatro figuras incluidas en el Capítulo 7 (comparación de medias, variación porcentual frente a la base, compromiso tiempo/densidad y dispersión por configuración).
+Finally, the figures included in Chapter 7 were generated.
 
 ```powershell
 python .\tools\build_thesis_result_figures.py `
   --run-root .\runs\congestion_heuristics_efficient_high
 ```
 
-Al igual que el script anterior, parte de los CSV ya generados en el paso 6 y no requiere volver a ejecutar simulaciones.
+Like the previous script, this reuses the CSVs already produced in steps 6 and 8 and does not re-run any simulation.
 
-Genera, en PDF (vectorial, para incluir en la memoria) y en PNG (vista previa):
+Output (vector PDF for the thesis + PNG preview):
 
 ```text
 runs/congestion_heuristics_efficient_high/comparison/thesis_tables/figures/mean_comparison.{pdf,png}
 runs/congestion_heuristics_efficient_high/comparison/thesis_tables/figures/delta_vs_baseline.{pdf,png}
 runs/congestion_heuristics_efficient_high/comparison/thesis_tables/figures/tradeoff_scatter.{pdf,png}
 runs/congestion_heuristics_efficient_high/comparison/thesis_tables/figures/dispersion_outliers.{pdf,png}
+runs/congestion_heuristics_efficient_high/comparison/thesis_tables/figures/mean_speed_comparison.{pdf,png}
 ```
 
-Los PDF se copiaron a la carpeta `figures/` del proyecto de la memoria y se referencian desde `07_analisis_resultados.tex` mediante `\includegraphics`.
-
+The PDF files were copied into the thesis project's `figures/` folder and are referenced from `07_analisis_resultados.tex` via `\includegraphics`.

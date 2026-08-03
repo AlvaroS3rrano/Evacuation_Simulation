@@ -172,6 +172,19 @@ def parse_args() -> argparse.Namespace:
             "all heuristics), in addition to the GIF."
         ),
     )
+    parser.add_argument(
+        "--time-unit",
+        choices=["frame", "seconds"],
+        default="frame",
+        help=(
+            "Unit used to label frames in titles, colorbars, and highlight-frame "
+            "filenames across visual PDFs, trajectory time-evolution images, and "
+            "congestion GIFs. Does not change which frames are selected/sampled — "
+            "those are still given in raw frame numbers via the other flags. "
+            "Falls back to frame with a console warning if fps can't be read "
+            "from a case's trajectory database."
+        ),
+    )
     return parser.parse_args()
 
 
@@ -236,6 +249,7 @@ def main() -> int:
             visual_subdir=args.visual_subdir,
             trajectory_frame_stride=args.trajectory_frame_stride,
             trajectory_max_agents=trajectory_max_agents,
+            time_unit=args.time_unit,
         )
 
     if not args.skip_trajectory_time_evolution:
@@ -249,6 +263,7 @@ def main() -> int:
             subdir=args.trajectory_time_subdir,
             trajectory_frame_stride=args.trajectory_frame_stride,
             trajectory_max_agents=trajectory_max_agents,
+            time_unit=args.time_unit,
         )
 
     if not args.skip_congestion_gifs:
@@ -265,6 +280,7 @@ def main() -> int:
             cutoff_radius=args.voronoi_cutoff_radius,
             cmap_name=args.gif_cmap,
             highlight_frames=args.congestion_highlight_frames,
+            time_unit=args.time_unit,
         )
 
     write_outputs(

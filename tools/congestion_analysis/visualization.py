@@ -153,6 +153,37 @@ def choose_trajectory_db(run_dir: Path) -> Path | None:
     return fallback[0] if fallback else None
 
 
+def read_trajectory_fps(db_path: Path | None) -> float | None:
+    if db_path is None or not db_path.exists():
+        return None
+
+    try:
+        with sqlite3.connect(db_path) as conn:
+            row = conn.execute(
+                "SELECT value FROM metadata WHERE key = 'fps'"
+            ).fetchone()
+    except sqlite3.Error:
+        return None
+
+    if row is None or row[0] is None:
+        return None
+
+    try:
+        return float(row[0])
+    except (TypeError, ValueError):
+        return None
+
+
+def resolve_case_fps(case_records: dict[str, "RunVisualRecord"]) -> float | None:
+    for record in case_records.values():
+        db_path = choose_trajectory_db(record.run_dir)
+        fps = read_trajectory_fps(db_path)
+        if fps is not None:
+            return fps
+
+    return None
+
+
 def choose_trajectory_image(run_dir: Path) -> Path | None:
     images_dir = run_dir / "artifacts" / "images"
     if not images_dir.exists():
@@ -415,6 +446,8 @@ def _plot_density_panel(
     norm: Normalize,
     cmap: Any,
     frame: int,
+    time_unit: str = "frame",
+    fps: float | None = None,
 ) -> None:
     _plot_polygon_boundaries(ax, env.walkable_area, linewidth=1.0, alpha=0.85)
 
@@ -436,7 +469,7 @@ def _plot_density_panel(
         ax.text(
             0.5,
             0.5,
-            f"No density data\nframe={frame}",
+            f"No density data\n{_frame_axis_label(frame, time_unit=time_unit, fps=fps)}",
             ha="center",
             va="center",
             transform=ax.transAxes,
@@ -582,6 +615,7 @@ def generate_visual_comparison_pdfs(
     visual_subdir: str = "visual_snapshots",
     trajectory_frame_stride: int = 10,
     trajectory_max_agents: int | None = 300,
+    time_unit: str = "frame",
 ) -> list[Path]:
     from evac_sim.envs.environment_factory import select_environment
 
@@ -660,6 +694,17 @@ def generate_visual_comparison_pdfs(
             include_terminal_frame=include_terminal_density_frame,
         )
 
+        case_time_unit = time_unit
+        case_fps: float | None = None
+        if time_unit == "seconds":
+            case_fps = resolve_case_fps(case_records)
+            if case_fps is None:
+                print(
+                    f"[visual] WARN case={case_id} time_unit=seconds requested but fps "
+                    "unavailable; falling back to frame"
+                )
+                case_time_unit = "frame"
+
         pdf_path = visual_dir / f"{case_id}_visual_comparison.pdf"
 
         with PdfPages(pdf_path) as pdf:
@@ -721,7 +766,8 @@ def generate_visual_comparison_pdfs(
 
                 fig, axes = _create_2x2_figure(
                     title=(
-                        f"{case_id} | density frame={frame} | "
+                        f"{case_id} | density "
+                        f"{_frame_axis_label(int(frame), time_unit=case_time_unit, fps=case_fps)} | "
                         "density=count(distinct agents in area)"
                     ),
                     with_sidebar=True,
@@ -736,6 +782,8 @@ def generate_visual_comparison_pdfs(
                         norm=norm,
                         cmap=cmap,
                         frame=int(frame),
+                        time_unit=case_time_unit,
+                        fps=case_fps,
                     )
 
                 for idx in range(len(selected_heuristics[:4]), 4):
@@ -755,6 +803,18 @@ def generate_visual_comparison_pdfs(
         print(f"Visual comparison PDF: {pdf_path}")
 
     return pdf_paths
+
+
+def _frame_axis_label(frame: int, *, time_unit: str, fps: float | None) -> str:
+    if time_unit == "seconds" and fps:
+        return f"t={frame / fps:.1f}s"
+    return f"frame={frame}"
+
+
+def _bin_size_label(bin_size: int, *, time_unit: str, fps: float | None) -> str:
+    if time_unit == "seconds" and fps:
+        return f"colored by time (bin size={bin_size / fps:.1f}s)"
+    return f"colored by frame (bin size={bin_size})"
 
 
 def _build_frame_bins(terminal_frame: int, bin_size: int) -> list[tuple[int, int]]:
@@ -782,8 +842,30 @@ def _plot_time_colored_trajectory_panel(
     trajectory_df: pd.DataFrame | None,
     bins: Sequence[tuple[int, int]],
     cmap: Any,
+    target_nodes: Sequence[Any] = (),
+    time_unit: str = "frame",
+    fps: float | None = None,
 ) -> None:
+    from evac_sim.viz.plots import (
+        _overlay_start_and_target_markers,
+        _overlay_target_area_identifiers,
+    )
+
     _plot_polygon_boundaries(ax, env.walkable_area, linewidth=1.0, alpha=0.9)
+
+    target_nodes = list(target_nodes or [])
+    _overlay_target_area_identifiers(
+        ax,
+        target_nodes=target_nodes,
+        specific_areas=env.specific_areas,
+        waypoints=env.waypoints,
+    )
+    _overlay_start_and_target_markers(
+        ax,
+        trajectory_df=pd.DataFrame(),
+        waypoints=env.waypoints,
+        target_nodes=target_nodes,
+    )
 
     if trajectory_df is None or trajectory_df.empty:
         ax.text(
@@ -823,10 +905,17 @@ def _plot_time_colored_trajectory_panel(
                 alpha=0.5,
             )
 
+    agent_count = trajectory_df["agent_id"].nunique()
+    if time_unit == "seconds" and fps:
+        duration = trajectory_df["frame"].max() / fps
+        sample_label = f"agents={agent_count} duration={duration:.1f}s"
+    else:
+        sample_label = f"agents={agent_count} frames={trajectory_df['frame'].nunique()}"
+
     ax.text(
         0.02,
         0.02,
-        f"agents={trajectory_df['agent_id'].nunique()} frames={trajectory_df['frame'].nunique()}",
+        sample_label,
         transform=ax.transAxes,
         ha="left",
         va="bottom",
@@ -851,6 +940,7 @@ def generate_trajectory_time_evolution_images(
     subdir: str = "trajectory_time_evolution",
     trajectory_frame_stride: int = 10,
     trajectory_max_agents: int | None = 300,
+    time_unit: str = "frame",
 ) -> list[Path]:
     """Render, per case, agent trajectories colored by the frame bin they occurred in.
 
@@ -919,11 +1009,24 @@ def generate_trajectory_time_evolution_images(
 
         bins = _build_frame_bins(terminal_frame, frame_bin_size)
         cmap = plt.get_cmap("viridis", len(bins))
+        target_nodes = list(case_cfg.get("targets", []) or [])
+
+        case_time_unit = time_unit
+        case_fps: float | None = None
+        if time_unit == "seconds":
+            case_fps = resolve_case_fps(case_records)
+            if case_fps is None:
+                print(
+                    f"[trajectory-time] WARN case={case_id} time_unit=seconds requested but "
+                    "fps unavailable; falling back to frame"
+                )
+                case_time_unit = "frame"
 
         fig, axes = _create_2x2_figure(
             title=(
-                f"{case_id} | trajectories colored by frame "
-                f"(bin size={frame_bin_size}) | config={used_config.name}"
+                f"{case_id} | trajectories "
+                f"{_bin_size_label(frame_bin_size, time_unit=case_time_unit, fps=case_fps)} | "
+                f"config={used_config.name}"
             ),
             with_sidebar=True,
         )
@@ -936,6 +1039,9 @@ def generate_trajectory_time_evolution_images(
                 trajectory_df=trajectory_tables.get(heuristic),
                 bins=bins,
                 cmap=cmap,
+                target_nodes=target_nodes,
+                time_unit=case_time_unit,
+                fps=case_fps,
             )
 
         for idx in range(len(selected_heuristics[:4]), 4):
@@ -951,7 +1057,11 @@ def generate_trajectory_time_evolution_images(
             boundaries=boundaries,
             ticks=boundaries,
         )
-        cbar.set_label("Frame")
+        if case_time_unit == "seconds" and case_fps:
+            cbar.set_label("Time (s)")
+            cbar.ax.set_yticklabels([f"{b / case_fps:.1f}" for b in boundaries])
+        else:
+            cbar.set_label("Frame")
 
         png_path = out_dir / f"{case_id}_trajectories_time_evolution.png"
         fig.savefig(png_path, dpi=150)

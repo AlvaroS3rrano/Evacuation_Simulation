@@ -8,7 +8,7 @@ All commands are assumed to be run from the `main` branch and from the repositor
 C:\GitHub\Evacuation_Simulation
 ```
 
-> This is an English translation of `tools/EXPLICACION_SCRIPTS_TFM.md`. Keep both files in sync when the scripts change.
+> See `tools/COMANDOS_REALIZACION_TFM.md` for the exact commands run, in chronological order, to reproduce the TFM experiments.
 
 ---
 
@@ -242,14 +242,15 @@ runs/congestion_heuristics_efficient_high/comparison/trajectory_time_evolution/
 
 runs/congestion_heuristics_efficient_high/comparison/congestion_gifs/{case_id}/
   {case_id}_congestion.gif
-  {case_id}_frame_{frame:06d}.png   (only if specific frames are requested)
+  {case_id}_frame_{frame:06d}.png   (only if specific frames are requested; {case_id}_t{seconds}.png with --time-unit seconds)
 ```
 
 - **Trajectory image colored by time bin** (`trajectory_time_evolution/`): one image per case with every agent's trajectory colored by the frame bin it occurred in (e.g. frames 0-500 one color, 500-1000 another, etc.). The bin width is controlled by `--trajectory-time-bin-size` (default 500 frames), independent of the `--density-frame-step` used for the density PDFs.
 - **Congestion GIF** (`congestion_gifs/{case_id}/{case_id}_congestion.gif`): a per-case animation, one panel per heuristic, showing the evolution of per-agent Voronoi density (`pedpy.compute_individual_voronoi_polygons` + `plot_voronoi_cells`) over the course of the simulation. The color scale is fixed across the whole animation so congestion stays comparable between frames. Controlled via `--gif-max-frames`, `--gif-frame-step`, `--gif-fps`, `--voronoi-cutoff-radius`, and `--gif-cmap`.
 - **Specific-frame snapshots** (`--congestion-highlight-frames <frame1> <frame2> ...`): in addition to the GIF, saves a standalone PNG for each requested frame (same visual style as the GIF), useful for including a specific instant in the write-up without embedding the whole GIF.
+- **Display unit** (`--time-unit {frame,seconds}`, default `frame`): controls how time is *labeled* across the density PDFs, the trajectory time-evolution image, and the congestion GIFs/snapshots — titles, colorbars, highlight-frame filenames, and the per-panel `agents=N ...` annotation (`frames=700` in frame mode vs. `duration=209.7s` in seconds mode, using each panel's own terminal frame). This is purely a display setting — the values passed to `--density-frames`, `--trajectory-time-bin-size`, `--gif-frame-step`, and `--congestion-highlight-frames` are always raw frame numbers regardless of `--time-unit`. Converting to seconds requires the simulation's frame rate, read from the `fps` entry in the trajectory `.sqlite`'s `metadata` table; if it can't be read for a given case, that case's output falls back to frame labels with a console warning instead of failing.
 
-These three new outputs can be disabled with `--skip-trajectory-time-evolution` and `--skip-congestion-gifs` if only the metrics report or the area-density PDF is needed.
+These outputs can be disabled with `--skip-trajectory-time-evolution` and `--skip-congestion-gifs` if only the metrics report or the area-density PDF is needed.
 
 > Requirement: these outputs need the per-agent trajectory `.sqlite` file (`artifacts/db/<env_name>_mode_<n>.sqlite`, written by JuPedSim), not just the `simulation.db` that holds the risk/density metrics. If that `.sqlite` is missing for a given case/heuristic, the corresponding panel is rendered empty with a "No trajectory data" note.
 

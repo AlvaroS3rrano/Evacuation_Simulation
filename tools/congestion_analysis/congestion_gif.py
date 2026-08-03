@@ -15,11 +15,13 @@ from .visualization import (
     RunVisualRecord,
     _common_terminal_frame,
     _create_2x2_figure,
+    _frame_axis_label,
     _ordered_heuristics,
     _plot_polygon_boundaries,
     build_visual_records,
     choose_trajectory_db,
     load_case_config,
+    resolve_case_fps,
 )
 
 
@@ -126,6 +128,8 @@ def _draw_congestion_frame(
     voronoi_tables: dict[str, pd.DataFrame | None],
     norm: Normalize,
     cmap_name: str,
+    time_unit: str = "frame",
+    fps: float | None = None,
 ) -> None:
     for idx, heuristic in enumerate(selected_heuristics[:4]):
         ax = axes[idx]
@@ -148,7 +152,7 @@ def _draw_congestion_frame(
             ax.text(
                 0.5,
                 0.5,
-                f"No data\nframe={frame}",
+                f"No data\n{_frame_axis_label(int(frame), time_unit=time_unit, fps=fps)}",
                 ha="center",
                 va="center",
                 transform=ax.transAxes,
@@ -174,7 +178,8 @@ def _draw_congestion_frame(
         axes[idx].axis("off")
 
     fig.suptitle(
-        f"{case_id} | congestion (Voronoi density) | frame={int(frame)}",
+        f"{case_id} | congestion (Voronoi density) | "
+        f"{_frame_axis_label(int(frame), time_unit=time_unit, fps=fps)}",
         fontsize=14,
     )
 
@@ -207,6 +212,7 @@ def generate_congestion_gifs(
     cutoff_radius: float | None = None,
     cmap_name: str = "YlGn",
     highlight_frames: Sequence[int] | None = None,
+    time_unit: str = "frame",
 ) -> tuple[list[Path], list[Path]]:
     """Generate one Voronoi-density congestion GIF per case (one panel per heuristic).
 
@@ -245,6 +251,17 @@ def generate_congestion_gifs(
         except Exception as exc:
             print(f"[congestion-gif] SKIP case={case_id} reason={exc}")
             continue
+
+        case_time_unit = time_unit
+        case_fps: float | None = None
+        if time_unit == "seconds":
+            case_fps = resolve_case_fps(case_records)
+            if case_fps is None:
+                print(
+                    f"[congestion-gif] WARN case={case_id} time_unit=seconds requested but "
+                    "fps unavailable; falling back to frame"
+                )
+                case_time_unit = "frame"
 
         traj_tables: dict[str, pedpy.TrajectoryData | None] = {}
 
@@ -329,6 +346,8 @@ def generate_congestion_gifs(
                 voronoi_tables=voronoi_tables,
                 norm=norm,
                 cmap_name=cmap_name,
+                time_unit=case_time_unit,
+                fps=case_fps,
             )
 
         anim = FuncAnimation(fig, _update, frames=gif_frames, blit=False)
@@ -393,9 +412,16 @@ def generate_congestion_gifs(
                 voronoi_tables=highlight_voronoi,
                 norm=norm,
                 cmap_name=cmap_name,
+                time_unit=case_time_unit,
+                fps=case_fps,
             )
 
-            snap_path = case_dir / f"{case_id}_frame_{highlight_frame:06d}.png"
+            if case_time_unit == "seconds" and case_fps:
+                snap_suffix = f"t{highlight_frame / case_fps:.1f}s"
+            else:
+                snap_suffix = f"frame_{highlight_frame:06d}"
+
+            snap_path = case_dir / f"{case_id}_{snap_suffix}.png"
             snap_fig.savefig(snap_path, dpi=150)
             plt.close(snap_fig)
 
